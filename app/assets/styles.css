@@ -1,0 +1,118 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/onest';
+
+@source '../../**/*.{vue,ts,js,svg}';
+
+@theme {
+  --breakpoint-sm: 360px;
+  --breakpoint-md: 991px;
+  --breakpoint-lg: 1920px;
+  --color-primary: #141414;
+  --color-white: #ffffff;
+  --font-display: 'Onest Variable', 'sans-serif';
+  --default-transition-duration: 0.3s;
+}
+
+@layer base {
+  :root {
+    --min-width-number: 360;
+    --max-width-number: 1920;
+
+    --spacing: calc(100dvw / var(--min-width-number));
+    @media (min-width: 767px) {
+      --spacing: calc(100dvw / var(--max-width-number));
+    }
+  }
+
+  * {
+    outline: none;
+  }
+}
+
+@utility w-min-content {
+  min-width: calc(var(--min-width-number) * var(--spacing));
+}
+
+@utility w-max-content {
+  max-width: calc(var(--max-width-number) * var(--spacing));
+}
+
+@utility lining-nums {
+  font-variant-numeric: lining-nums;
+}
+
+@utility text-* {
+  font-size: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-* {
+  border-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-t-* {
+  border-top-left-radius: calc(var(--spacing) * --value(integer));
+  border-top-right-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-b-* {
+  border-bottom-left-radius: calc(var(--spacing) * --value(integer));
+  border-bottom-right-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-r-* {
+  border-top-right-radius: calc(var(--spacing) * --value(integer));
+  border-bottom-right-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-l-* {
+  border-top-left-radius: calc(var(--spacing) * --value(integer));
+  border-bottom-left-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-tr-* {
+  border-top-right-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-tl-* {
+  border-top-left-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-br-* {
+  border-bottom-right-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility rounded-bl-* {
+  border-bottom-left-radius: calc(var(--spacing) * --value(integer));
+}
+
+@utility border-* {
+  border-width: calc(var(--spacing) * --value(integer));
+}
+
+@utility gap-* {
+  gap: calc(var(--spacing) * --value(integer));
+}
+
+@utility backdrop-blur-* {
+  backdrop-filter: blur(calc(var(--spacing) * --value(integer)));
+}
+
+@utility blur-* {
+  filter: blur(calc(var(--spacing) * --value(integer)));
+}
+
+@utility border-t-* {
+  border-top-color: --value(--color-*);
+}
+
+@utility border-l-* {
+  border-left-color: --value(--color-*);
+}
+
+@utility border-spacing-* {
+  border-spacing: --value(--color-*);
+}
+
+@utility columns-w-* {
+  column-width: calc(var(--spacing) * --value(integer));
+}

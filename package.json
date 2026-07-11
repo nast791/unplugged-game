@@ -1,0 +1,37 @@
+{
+  "name": "unplugged-game",
+  "type": "module",
+  "private": true,
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "clean": "nuxt cleanup",
+    "format": "prettier --write .",
+    "tabletop-engine:setup": "tabletop-engine setup",
+    "tabletop-engine:update": "tabletop-engine update",
+    "tabletop-engine:update:engine": "tabletop-engine update engine"
+  },
+  "dependencies": {
+    "@fontsource-variable/onest": "5.2.11",
+    "@nast791/engine": "0.3.0",
+    "@nuxt/icon": "2.3.1",
+    "@nuxt/image": "2.0.0",
+    "@peterbud/nuxt-query": "1.9.0",
+    "@tailwindcss/vite": "4.3.2",
+    "konva": "10.3.0",
+    "nuxt": "4.4.8",
+    "prettier": "3.9.5",
+    "prettier-plugin-tailwindcss": "0.8.0",
+    "vite-svg-loader": "5.1.1",
+    "vue": "3.5.39",
+    "vue-konva": "3.4.0",
+    "vue-router": "5.1.0"
+  }
+}
