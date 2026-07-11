@@ -1,0 +1,130 @@
+export default {
+  id: 'arena',
+  name: 'Арена',
+  players: 2,
+  settings: {
+    nodeSize: 72,
+    gridScale: 1,
+  },
+  // position: 1 — старт игрока 0; position: 2 — игрок 1
+  // heroStart — фиксированная клетка героя (авторасстановка)
+  // сетка 5×3 = 15 клеток
+  nodes: [
+    // ряд 1
+    {
+      id: 1,
+      x: 80,
+      y: 100,
+      zones: ['#3B82F6'],
+      neighbors: [2, 6],
+      position: 1,
+    },
+    {
+      id: 2,
+      x: 200,
+      y: 100,
+      zones: ['#94a3b8'],
+      neighbors: [1, 3, 7],
+    },
+    {
+      id: 3,
+      x: 320,
+      y: 100,
+      zones: ['#94a3b8'],
+      neighbors: [2, 4, 8],
+    },
+    {
+      id: 4,
+      x: 440,
+      y: 100,
+      zones: ['#94a3b8'],
+      neighbors: [3, 5, 9],
+    },
+    {
+      id: 5,
+      x: 560,
+      y: 100,
+      zones: ['#EF4444'],
+      neighbors: [4, 10],
+      position: 2,
+    },
+    // ряд 2
+    {
+      id: 6,
+      x: 80,
+      y: 240,
+      zones: ['#3B82F6'],
+      neighbors: [1, 7, 11],
+      position: 1,
+      heroStart: true,
+    },
+    {
+      id: 7,
+      x: 200,
+      y: 240,
+      zones: ['#94a3b8'],
+      neighbors: [2, 6, 8, 12],
+    },
+    {
+      id: 8,
+      x: 320,
+      y: 240,
+      zones: ['#94a3b8'],
+      neighbors: [3, 7, 9, 13],
+    },
+    {
+      id: 9,
+      x: 440,
+      y: 240,
+      zones: ['#94a3b8'],
+      neighbors: [4, 8, 10, 14],
+    },
+    {
+      id: 10,
+      x: 560,
+      y: 240,
+      zones: ['#EF4444'],
+      neighbors: [5, 9, 15],
+      position: 2,
+      heroStart: true,
+    },
+    // ряд 3
+    {
+      id: 11,
+      x: 80,
+      y: 380,
+      zones: ['#3B82F6'],
+      neighbors: [6, 12],
+      position: 1,
+    },
+    {
+      id: 12,
+      x: 200,
+      y: 380,
+      zones: ['#94a3b8'],
+      neighbors: [7, 11, 13],
+    },
+    {
+      id: 13,
+      x: 320,
+      y: 380,
+      zones: ['#94a3b8'],
+      neighbors: [8, 12, 14],
+    },
+    {
+      id: 14,
+      x: 440,
+      y: 380,
+      zones: ['#94a3b8'],
+      neighbors: [9, 13, 15],
+    },
+    {
+      id: 15,
+      x: 560,
+      y: 380,
+      zones: ['#EF4444'],
+      neighbors: [10, 14],
+      position: 2,
+    },
+  ],
+};

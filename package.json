@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@fontsource-variable/onest": "5.2.11",
-    "@nast791/engine": "0.3.0",
+    "@nast791/engine": "file:../tabletop-engine/packages/engine",
     "@nuxt/icon": "2.3.1",
     "@nuxt/image": "2.0.0",
     "@peterbud/nuxt-query": "1.9.0",

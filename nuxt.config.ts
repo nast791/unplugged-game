@@ -10,10 +10,11 @@ export default defineNuxtConfig({
   modules: ['@nast791/engine', '@nuxt/image', '@peterbud/nuxt-query', '@nuxt/icon'],
   tabletopEngine: {
     apiPrefix: '/api/tabletop',
+    actions: '#shared/actions/index.js',
   },
   vite: {
     optimizeDeps: {
-      include: [],
+      include: ['vue-konva', 'konva'],
       esbuildOptions: {
         define: {
           global: 'window',
@@ -35,6 +36,11 @@ export default defineNuxtConfig({
   nitro: {
     compressPublicAssets: true,
     sourceMap: false,
+    // Хост-код партии (actions/events/helpers) — зона проекта, не engine.
+    externals: {
+      inline: [/[\\/]shared[\\/]/],
+    },
+    watch: ['shared'],
   },
   app: {
     head: {

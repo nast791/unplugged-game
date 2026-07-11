@@ -1,0 +1,35 @@
+export default [
+  {
+    id: 'beta_shot',
+    title: 'Выстрел',
+    type: 'attack',
+    value: 5,
+    quantity: 4,
+    fighter: 'beta',
+  },
+  {
+    id: 'beta_dodge',
+    title: 'Уклонение',
+    type: 'defense',
+    value: 2,
+    quantity: 3,
+    fighter: 'beta',
+  },
+  {
+    id: 'beta_feint',
+    title: 'Обманка',
+    type: 'hybrid',
+    value: 3,
+    quantity: 2,
+    fighter: 'beta',
+  },
+  {
+    id: 'beta_shift',
+    title: 'Смещение',
+    type: 'effect',
+    value: 0,
+    quantity: 2,
+    fighter: 'beta',
+    events: [{ type: 'DRAW_CARDS', count: 1 }],
+  },
+]

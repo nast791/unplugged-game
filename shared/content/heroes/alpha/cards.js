@@ -1,0 +1,35 @@
+export default [
+  {
+    id: 'alpha_strike',
+    title: 'Удар',
+    type: 'attack',
+    value: 4,
+    quantity: 4,
+    fighter: 'alpha',
+  },
+  {
+    id: 'alpha_guard',
+    title: 'Защита',
+    type: 'defense',
+    value: 3,
+    quantity: 3,
+    fighter: 'alpha',
+  },
+  {
+    id: 'alpha_push',
+    title: 'Натиск',
+    type: 'hybrid',
+    value: 3,
+    quantity: 2,
+    fighter: 'alpha',
+  },
+  {
+    id: 'alpha_plan',
+    title: 'План',
+    type: 'effect',
+    value: 0,
+    quantity: 2,
+    fighter: 'alpha',
+    events: [{ type: 'DRAW_CARDS', count: 1 }],
+  },
+]

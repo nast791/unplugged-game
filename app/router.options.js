@@ -14,20 +14,20 @@ export default {
           component: () => import('@/pages/index.vue'),
           meta: {
             seo: {
-              title: 'Арена',
+              title: 'Лобби',
             },
           },
         },
-        // {
-        //   path: 'game/:id',
-        //   name: 'game-id',
-        //   component: () => import('@/pages/game.vue'),
-        //   meta: {
-        //     seo: {
-        //       title: 'Битва',
-        //     },
-        //   },
-        // },
+        {
+          path: 'game',
+          name: 'game',
+          component: () => import('@/pages/game.vue'),
+          meta: {
+            seo: {
+              title: 'Партия',
+            },
+          },
+        },
       ],
     },
   ],
