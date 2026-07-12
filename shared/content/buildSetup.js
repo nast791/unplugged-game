@@ -1,11 +1,11 @@
 import arenaMap from './maps/arena.js';
-import alphaHero from './heroes/alpha/index.js';
-import alphaCards from './heroes/alpha/cards.js';
+import medusaHero from './heroes/medusa/index.js';
+import medusaCards from './heroes/medusa/cards.js';
 import betaHero from './heroes/beta/index.js';
 import betaCards from './heroes/beta/cards.js';
 
 const HERO_PACKS = {
-  alpha: { ...alphaHero, cards: alphaCards },
+  medusa: { ...medusaHero, cards: medusaCards },
   beta: { ...betaHero, cards: betaCards },
 };
 
@@ -73,11 +73,11 @@ export const buildMapState = (mapId = 'arena') => {
   };
 };
 
-/** Клетка heroStart в стартовой зоне игрока (position === seatId+1). */
+/** Клетка heroStart в стартовой области игрока (position === seatId+1). */
 export const findHeroStartCell = (map, seatId) => {
-  const zone = Number(seatId) + 1;
+  const startArea = Number(seatId) + 1;
   return (map?.nodes ?? []).find(
-    n => Number(n.position) === zone && n.heroStart === true,
+    n => Number(n.position) === startArea && n.heroStart === true,
   ) ?? null;
 };
 
@@ -127,11 +127,11 @@ export const buildPlayerSeat = ({ seatId, team, heroId } = {}) => {
   };
 };
 
-/** Лобби по умолчанию: arena + alpha vs beta; герои уже на heroStart. */
+/** Лобби по умолчанию: arena + Медуза vs Бета; герои уже на heroStart. */
 export const buildDefaultLobbySetup = () => {
   const map = buildMapState('arena');
   const seats = autoPlaceHeroes(map, [
-    buildPlayerSeat({ seatId: '0', team: 'A', heroId: 'alpha' }),
+    buildPlayerSeat({ seatId: '0', team: 'A', heroId: 'medusa' }),
     buildPlayerSeat({ seatId: '1', team: 'B', heroId: 'beta' }),
   ]);
   return { map, seats };

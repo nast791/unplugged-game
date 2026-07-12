@@ -7,10 +7,20 @@ export default defineNuxtConfig({
   features: {
     devLogs: false,
   },
-  modules: ['@nast791/engine', '@nuxt/image', '@peterbud/nuxt-query', '@nuxt/icon'],
+  modules: [
+    '@nast791/engine',
+    '@nast791/cards',
+    '@nuxt/test-utils/module',
+    '@nuxt/image',
+    '@peterbud/nuxt-query',
+    '@nuxt/icon',
+  ],
   tabletopEngine: {
     apiPrefix: '/api/tabletop',
     actions: '#shared/actions/index.js',
+  },
+  tabletopCards: {
+    effects: '#shared/cardEffects.js',
   },
   vite: {
     optimizeDeps: {

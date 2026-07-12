@@ -1,4 +1,4 @@
-import { livingHeroes } from '#shared/lib.js';
+import { livingHeroes } from '#shared/helpers.js';
 
 /** CHECK_WINNER — игрок жив, пока жив его герой; ≤1 живых → enterGameEnd. */
 export const CHECK_WINNER = (state, _payload = {}, { api } = {}) => {

@@ -1,17 +1,21 @@
 import { PHASES } from '@nast791/engine/constants';
 import { maxHandSize } from '#shared/constants/hand.js';
-import { discardFromHand } from '#shared/lib.js';
+import { discardFromHand } from '#shared/helpers.js';
+
+/** api экшена или ctx карт с .api */
+const asApi = x =>
+  x && typeof x.enterTurnEnd === 'function' ? x : x?.api;
 
 /**
- * DISCARD_CARDS — сброс из hand при state.handDiscard (лимит в конце хода).
- * payload: { playerId, cardId } | { playerId, cardIds }
- * Когда hand ≤ max — enterTurnEnd.
+ * DISCARD_CARDS — сброс из hand при state.handDiscard.
+ * Тот же handler для sendAction и card effects.
  */
 export const DISCARD_CARDS = (
   state,
   { playerId, cardId, cardIds } = {},
-  { api } = {},
+  ctxOrApi = {},
 ) => {
+  const api = asApi(ctxOrApi);
   if (state.phase !== PHASES.turn) {
     throw new Error(`DISCARD_CARDS только в phase=turn, сейчас "${state.phase}"`);
   }

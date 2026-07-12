@@ -27,13 +27,25 @@
         isMyTurn:
         <strong :class="isMyTurn ? 'text-green-700' : 'opacity-50'">{{ isMyTurn }}</strong>
       </p>
+      <p v-if="effectPrompt" class="sm:col-span-3 text-emerald-900">
+        {{ effectPrompt.name }}
+        <template v-if="effectPrompt.kind === 'PROMPT'">
+          · {{ effectPrompt.message }}
+        </template>
+        <template v-else-if="effectPrompt.kind === 'HIGHLIGHT_TARGETS'">
+          · выберите цель ({{ effectPrompt.candidates?.length || 0 }})
+        </template>
+      </p>
       <p v-if="handDiscard" class="sm:col-span-3 text-violet-800">
         сброс руки: нужно сбросить ещё {{ handDiscard.mustDiscard }} (лимит
         {{ handDiscard.max }})
       </p>
       <p v-if="movement" class="sm:col-span-3 text-sky-800">
-        перемещение открыто · origins
-        {{ JSON.stringify(movement.origins || {}) }}
+        перемещение открыто
+        <template v-if="movement.bonus">
+          · усиление +{{ movement.bonus }}
+        </template>
+        · origins {{ JSON.stringify(movement.origins || {}) }}
       </p>
       <p v-if="lastCombat" class="sm:col-span-3 text-emerald-800">
         бой: {{ lastCombat.attackValue }} vs {{ lastCombat.defenseValue }} →
@@ -88,14 +100,22 @@
             <template v-else-if="handDiscard && iMustDiscard">
               Рука &gt; {{ handDiscard.max }}: выберите карту и «Сбросить».
             </template>
+            <template v-else-if="effectPrompt && iMustEffect">
+              <template v-if="effectPrompt.kind === 'PROMPT'">
+                {{ effectPrompt.message || effectPrompt.name }}
+              </template>
+              <template v-else>
+                {{ effectPrompt.name }}: кликните подсвеченного врага.
+              </template>
+            </template>
             <template v-else-if="combat"> DEFEND: карта defense|hybrid или пас. </template>
             <template v-else-if="movement">
-              Перемещение: в радиусе move от старта — сколько угодно (можно
-              назад), затем «Завершить перемещение».
+              Шаги в радиусе move(+усиление) бесплатны. Карта → «Усилить» (1
+              раз). «Завершить» = 1 AP + добор.
             </template>
             <template v-else>
-              MOVE открывает перемещение (без AP). ATTACK: attack|hybrid → враг.
-              PLAY_CARD — effect.
+              MOVE (завершить = 1 AP) · усиление сбросом карты · ATTACK /
+              PLAY_CARD (1 AP). AP: {{ actionsLeft }}.
             </template>
           </p>
           <ul v-if="isPlacement" class="flex flex-col gap-1 text-12 opacity-70">
@@ -155,6 +175,9 @@
             <span class="font-medium">{{ card.title || card.id }}</span>
             <span class="opacity-70">
               · {{ card.type }}{{ card.value != null ? ` ${card.value}` : '' }}
+              <template v-if="card.bonus != null">
+                · бон.{{ card.bonus }}
+              </template>
             </span>
             <span class="mt-0.5 block opacity-80">
               боец: {{ cardFighterLabel(card) }}
@@ -173,8 +196,35 @@
           >
             Сбросить (ещё {{ handDiscard.mustDiscard }})
           </button>
+          <template v-if="effectPrompt && iMustEffect && effectPrompt.kind === 'PROMPT'">
+            <button
+              v-for="ans in effectPrompt.answers || []"
+              :key="ans.value"
+              type="button"
+              class="px-3 py-2 text-14 disabled:opacity-40"
+              :class="
+                String(ans.value) === 'yes' || String(ans.value) === 'apply'
+                  ? 'bg-primary text-white'
+                  : 'border border-primary'
+              "
+              :disabled="pending || isGameOver"
+              @click="onSkillAnswer(ans.value)"
+            >
+              {{ ans.text || ans.value }}
+            </button>
+          </template>
           <button
-            v-if="movement && isMyTurn && !handDiscard"
+            v-if="canBonusMove"
+            type="button"
+            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
+            :disabled="pending || isGameOver"
+            @click="onBonusMove"
+          >
+            Усилить перемещение
+            <template v-if="selectedCardId"> (бон.)</template>
+          </button>
+          <button
+            v-if="movement && isMyTurn && !handDiscard && !effectPrompt"
             type="button"
             class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
             :disabled="pending || isGameOver"
@@ -210,7 +260,7 @@
             </button>
           </template>
           <button
-            v-if="!isPlacement && !combat && !handDiscard"
+            v-if="!isPlacement && !combat && !handDiscard && !effectPrompt"
             type="button"
             class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
             :disabled="pending || !isMyTurn || !selectedEffectCard || movement || combat || isGameOver"
@@ -227,6 +277,7 @@
               combat ||
               movement ||
               handDiscard ||
+              effectPrompt ||
               !isMyTurn ||
               isGameOver
             "
@@ -293,10 +344,12 @@ const {
   combat,
   movement,
   handDiscard,
+  effectPrompt,
   lastCombat,
   iAmReady,
   iAmDefender,
   iMustDiscard,
+  iMustEffect,
   myFighters,
   myHand,
   myFightersPlaced,
@@ -304,6 +357,7 @@ const {
   selectedLabel,
   selectedDefenseCard,
   selectedEffectCard,
+  canBonusMove,
   boardInteractive,
   highlightedCellIds,
   mapSummary,
@@ -315,10 +369,13 @@ const {
   onDiscard,
   onEndTurn,
   onConfirmMove,
+  onBonusMove,
   onConfirmPlacement,
   onResign,
   onPlayCard,
   onDefend,
+  onSkillSkip,
+  onSkillAnswer,
   onSelectFighterFromBoard,
   onSelectNode,
 } = useGameSession();

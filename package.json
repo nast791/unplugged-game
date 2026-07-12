@@ -14,12 +14,16 @@
     "postinstall": "nuxt prepare",
     "clean": "nuxt cleanup",
     "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "tabletop-engine:setup": "tabletop-engine setup",
     "tabletop-engine:update": "tabletop-engine update",
-    "tabletop-engine:update:engine": "tabletop-engine update engine"
+    "tabletop-engine:update:engine": "tabletop-engine update engine",
+    "tabletop-engine:update:cards": "tabletop-engine update cards"
   },
   "dependencies": {
     "@fontsource-variable/onest": "5.2.11",
+    "@nast791/cards": "file:../tabletop-engine/packages/cards",
     "@nast791/engine": "file:../tabletop-engine/packages/engine",
     "@nuxt/icon": "2.3.1",
     "@nuxt/image": "2.0.0",
@@ -33,5 +37,11 @@
     "vue": "3.5.39",
     "vue-konva": "3.4.0",
     "vue-router": "5.1.0"
+  },
+  "devDependencies": {
+    "@nuxt/test-utils": "4.0.3",
+    "@vue/test-utils": "2.4.11",
+    "happy-dom": "20.10.6",
+    "vitest": "4.1.10"
   }
 }

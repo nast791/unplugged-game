@@ -1,7 +1,7 @@
 import { PHASES } from '@nast791/engine/constants';
 import { isDefenseCard } from '#shared/constants/cards.js';
 import { RESOLVE_COMBAT } from '#shared/events/index.js';
-import { discardFromHand } from '#shared/lib.js';
+import { discardFromHand } from '#shared/helpers.js';
 
 /**
  * DEFEND — { cardId? }; defense|hybrid или пас (defense=0).

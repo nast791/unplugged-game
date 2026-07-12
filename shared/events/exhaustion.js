@@ -1,5 +1,5 @@
 import { PHASES } from '@nast791/engine/constants';
-import { livingHeroes } from '#shared/lib.js';
+import { livingHeroes } from '#shared/helpers.js';
 import { DEAL_DAMAGE } from './dealDamage.js';
 
 /**

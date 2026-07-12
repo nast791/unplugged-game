@@ -1,19 +1,21 @@
 import { PHASES } from '@nast791/engine/constants';
+import { TRIGGERS } from '@nast791/cards/constants';
+import { getCardEngine } from '@nast791/cards/server';
 import {
   CARD_TYPES,
   isAttackCard,
   isEffectCard,
 } from '#shared/constants/cards.js';
-import { runEvents, SPEND_AP } from '#shared/events/index.js';
+import { SPEND_AP } from '#shared/events/index.js';
 import {
   assertNoPendingCombat,
   assertNoPendingMovement,
   discardFromHand,
   findInHand,
-} from '#shared/lib.js';
+} from '#shared/helpers.js';
 
 /**
- * PLAY_CARD — type=effect: discard → card.events → SPEND_AP.
+ * PLAY_CARD — type=effect: discard → cards.resolve(onPlay) → SPEND_AP.
  */
 export const playCard = (state, action, api) => {
   if (state.phase !== PHASES.turn) {
@@ -50,17 +52,19 @@ export const playCard = (state, action, api) => {
   }
 
   discardFromHand(player, cardId);
-  runEvents(state, card.events, {
+
+  const { state: next } = getCardEngine().resolve(card, TRIGGERS.onPlay, {
+    state,
     player,
     api,
     fighterId: action.fighterId,
   });
 
-  SPEND_AP(state);
-  if (state.actionsLeft === 0) {
-    return api.enterTurnEnd(state);
+  SPEND_AP(next);
+  if (next.actionsLeft === 0) {
+    return api.enterTurnEnd(next);
   }
-  return state;
+  return next;
 };
 
 export default playCard;

@@ -171,7 +171,7 @@ const nodeCircleConfig = node => {
   const lit = isHighlighted(node);
   return {
     radius: nodeSize.value / 2,
-    fill: Array.isArray(node.zones) && node.zones[0] ? node.zones[0] : '#cbd5e1',
+    fill: Array.isArray(node.areas) && node.areas[0] ? node.areas[0] : '#cbd5e1',
     opacity: lit ? 1 : isStartNode(node) ? 0.9 : 0.55,
     stroke: lit ? '#0284c7' : '#141414',
     strokeWidth: lit ? 4 : isStartNode(node) ? 2 : 1,

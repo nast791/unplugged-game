@@ -4,10 +4,10 @@ import {
   findNode,
   findOwnedFighter,
   playerFightersPlaced,
-} from '#shared/lib.js';
+} from '#shared/helpers.js';
 
-/** Стартовая зона: node.position === Number(playerId) + 1 */
-export const isStartZoneForPlayer = (node, playerId) => {
+/** Стартовая область: node.position === Number(playerId) + 1 */
+export const isStartAreaForPlayer = (node, playerId) => {
   if (node?.position == null) return false;
   return Number(node.position) === Number(playerId) + 1;
 };
@@ -17,12 +17,12 @@ export const isHeroStartCell = node => node?.heroStart === true;
 /** Клетки для ручной расстановки помощников (старт без heroStart). */
 export const assistantStartCellIds = (state, playerId) =>
   (state.map?.nodes ?? [])
-    .filter(n => isStartZoneForPlayer(n, playerId) && !isHeroStartCell(n))
+    .filter(n => isStartAreaForPlayer(n, playerId) && !isHeroStartCell(n))
     .map(n => n.id);
 
-export const startZoneCellIds = (state, playerId) =>
+export const startAreaCellIds = (state, playerId) =>
   (state.map?.nodes ?? [])
-    .filter(n => isStartZoneForPlayer(n, playerId))
+    .filter(n => isStartAreaForPlayer(n, playerId))
     .map(n => n.id);
 
 const maybeAdvance = state => {
@@ -46,7 +46,7 @@ const confirmPlacement = (state, player) => {
 /**
  * PLACE — только gameStart.
  * Герои уже на heroStart (авто) — ставить/двигать нельзя.
- * Помощники: { fighterId, cellId } в стартовой зоне без heroStart.
+ * Помощники: { fighterId, cellId } в стартовой области без heroStart.
  * Подтвердить: { mode: 'confirm' }
  */
 export const place = (state, action) => {
@@ -89,7 +89,7 @@ export const place = (state, action) => {
   if (!node) {
     throw new Error(`PLACE: клетка "${cellId}" не найдена на карте`);
   }
-  if (!isStartZoneForPlayer(node, action.playerId) || isHeroStartCell(node)) {
+  if (!isStartAreaForPlayer(node, action.playerId) || isHeroStartCell(node)) {
     const allowed = assistantStartCellIds(state, action.playerId).join(', ') || '—';
     throw new Error(
       `PLACE: помощникам клетки ${allowed} (не heroStart)`,

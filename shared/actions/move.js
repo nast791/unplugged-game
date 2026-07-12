@@ -1,11 +1,12 @@
 import { PHASES } from '@nast791/engine/constants';
-import { STANDSTILL } from '#shared/events/index.js';
+import { APPLY_BONUS, STANDSTILL } from '#shared/events/index.js';
 import {
   assertNoPendingCombat,
   findNode,
   findOwnedFighter,
+  movementBudget,
   occupiedCellIds,
-} from '#shared/lib.js';
+} from '#shared/helpers.js';
 
 /**
  * Кратчайший путь по neighbors, с отсечением по maxSteps.
@@ -70,17 +71,17 @@ export const reachableCellIds = (nodes, fromId, maxSteps, blocked = null) => {
 
 /**
  * Зона перемещения: origin + все свободные клетки в радиусе move.
- * (origin всегда в зоне — можно вернуться.)
+ * (origin всегда в радиусе — можно вернуться.)
  */
 export const movementZoneIds = (nodes, originId, radius, blocked = null) => {
-  const zone = new Set(
+  const reach = new Set(
     reachableCellIds(nodes, originId, radius, blocked).map(id => String(id)),
   );
-  zone.add(String(originId));
-  return zone;
+  reach.add(String(originId));
+  return reach;
 };
 
-/** Путь from→to только по клеткам зоны радиуса (без лимита шагов). */
+/** Путь from→to только по клеткам радиуса перемещения (без лимита шагов). */
 export const canWalkInRadius = (
   nodes,
   fromId,
@@ -90,8 +91,8 @@ export const canWalkInRadius = (
   blocked = null,
 ) => {
   if (String(fromId) === String(toId)) return true;
-  const zone = movementZoneIds(nodes, originId, radius, blocked);
-  if (!zone.has(String(toId)) || !zone.has(String(fromId))) return false;
+  const reach = movementZoneIds(nodes, originId, radius, blocked);
+  if (!reach.has(String(toId)) || !reach.has(String(fromId))) return false;
 
   const byId = new Map(nodes.map(n => [String(n.id), n]));
   const queue = [String(fromId)];
@@ -103,7 +104,7 @@ export const canWalkInRadius = (
     const neighbors = Array.isArray(node?.neighbors) ? node.neighbors : [];
     for (const raw of neighbors) {
       const nextId = String(raw);
-      if (seen.has(nextId) || !zone.has(nextId)) continue;
+      if (seen.has(nextId) || !reach.has(nextId)) continue;
       if (nextId === String(toId)) return true;
       seen.add(nextId);
       queue.push(nextId);
@@ -117,6 +118,7 @@ const ensureMovement = (state, playerId) => {
     state.movement = {
       playerId: String(playerId),
       origins: {},
+      bonus: 0,
     };
     return state.movement;
   }
@@ -147,26 +149,46 @@ const confirmMovement = (state, action, api) => {
   return STANDSTILL(state, {}, { player, api });
 };
 
+/** Усиление перемещения: сброс карты → +bonus к радиусу (без эффектов карты). */
+const applyMovementBonus = (state, action) => {
+  assertNoPendingCombat(state, 'MOVE bonus');
+
+  const player = state.players.find(p => String(p.id) === String(action.playerId));
+  if (!player) {
+    throw new Error(`MOVE bonus: игрок ${action.playerId} не найден`);
+  }
+
+  const cardId = action.cardId ?? action.bonusCardId;
+  return APPLY_BONUS(state, { cardId, stat: 'movement' }, { player });
+};
+
 /**
  * MOVE — turn.
- * Шаг: { fighterId, cellId } — в радиусе move от origins[fighter]
- *   (фиксируется при первом шаге); внутри зоны — сколько угодно, можно назад.
- * Конец: { mode: 'confirm' } — 1 AP + DRAW_CARDS(1) или EXHAUSTION при пустой колоде.
+ * Усиление: { mode: 'bonus', cardId } — сброс карты, +card.bonus к move (1 раз).
+ * Шаг: { fighterId, cellId } — в радиусе move+bonus от origins[fighter].
+ * Конец: { mode: 'confirm' } — 1 AP + DRAW / EXHAUSTION.
  */
 export const move = (state, action, api) => {
   if (state.phase !== PHASES.turn) {
     throw new Error(`MOVE только в phase=turn, сейчас "${state.phase}"`);
   }
-  assertNoPendingCombat(state, 'MOVE');
 
   if (action.mode === 'confirm' || action.confirm === true) {
     return confirmMovement(state, action, api);
   }
 
+  if (action.mode === 'bonus' || action.bonusCardId != null) {
+    return applyMovementBonus(state, action);
+  }
+
+  assertNoPendingCombat(state, 'MOVE');
+
   const fighterId = action.fighterId;
   const cellId = action.cellId;
   if (fighterId == null || cellId == null) {
-    throw new Error('MOVE: нужны fighterId и cellId (или mode: "confirm")');
+    throw new Error(
+      'MOVE: нужны fighterId и cellId (или mode: "confirm" | "bonus")',
+    );
   }
 
   const { player, fighter, index } = findOwnedFighter(
@@ -198,8 +220,7 @@ export const move = (state, action, api) => {
 
   const movement = ensureMovement(state, action.playerId);
   const fid = String(fighterId);
-  const budget =
-    Number(fighter.move || 0) + Number(fighter.bonusMovement || 0);
+  const budget = movementBudget(fighter, movement);
   if (budget <= 0) {
     throw new Error(`MOVE: у "${fighterId}" move=0`);
   }

@@ -1,6 +1,6 @@
 import { ACTION_TYPES, PHASES } from '@nast791/engine/constants';
 import { HOST_ACTION_TYPES } from '#shared/actions/index.js';
-import { occupiedCellIds } from '#shared/lib.js';
+import { occupiedCellIds, movementBudget } from '#shared/helpers.js';
 import { assistantStartCellIds } from '#shared/actions/place.js';
 import { movementZoneIds } from '#shared/actions/move.js';
 import { isAttackCard, isDefenseCard, isEffectCard } from '#shared/constants/cards.js';
@@ -64,6 +64,7 @@ export const useGameSession = () => {
   const combat = computed(() => view.value?.combat ?? null);
   const movement = computed(() => view.value?.movement ?? null);
   const handDiscard = computed(() => view.value?.handDiscard ?? null);
+  const effectPrompt = computed(() => view.value?.effectPrompt ?? null);
   const lastCombat = computed(() => view.value?.lastCombat ?? null);
 
   const iAmReady = computed(() => me.value?.placementReady === true);
@@ -76,6 +77,11 @@ export const useGameSession = () => {
     () =>
       handDiscard.value &&
       String(handDiscard.value.playerId) === String(you.value),
+  );
+  const iMustEffect = computed(
+    () =>
+      effectPrompt.value &&
+      String(effectPrompt.value.playerId) === String(you.value),
   );
 
   const myFighters = computed(() => {
@@ -115,6 +121,19 @@ export const useGameSession = () => {
     () => selectedCard.value && isAttackCard(selectedCard.value.type),
   );
 
+  /** Можно усилить перемещение: своя очередь, есть карта, ещё не усиливали. */
+  const canBonusMove = computed(
+    () =>
+      isMyTurn.value &&
+      !isPlacement.value &&
+      !combat.value &&
+      !handDiscard.value &&
+      !effectPrompt.value &&
+      !isGameOver.value &&
+      !!selectedCard.value &&
+      !movement.value?.bonusApplied,
+  );
+
   const selectedCardLabel = computed(() => {
     const c = selectedCard.value;
     if (!c) return '—';
@@ -133,6 +152,7 @@ export const useGameSession = () => {
     if (pending.value || isGameOver.value) return false;
     if (handDiscard.value) return iMustDiscard.value;
     if (combat.value) return iAmDefender.value;
+    if (effectPrompt.value) return iMustEffect.value;
     if (isPlacement.value) return !iAmReady.value;
     return isMyTurn.value;
   });
@@ -143,6 +163,14 @@ export const useGameSession = () => {
 
   const highlightedCellIds = computed(() => {
     if (!canAct.value || combat.value) return [];
+
+    if (effectPrompt.value && iMustEffect.value) {
+      if (effectPrompt.value.kind !== 'HIGHLIGHT_TARGETS') return [];
+      return (effectPrompt.value.candidates ?? [])
+        .map(c => c.position)
+        .filter(id => id != null)
+        .map(String);
+    }
 
     const fighter = myFighters.value.find(
       f => String(f.id) === String(selectedFighterId.value),
@@ -171,8 +199,7 @@ export const useGameSession = () => {
     }
 
     if (!isMyTurn.value || fighter.position == null) return [];
-    const budget =
-      Number(fighter.move || 0) + Number(fighter.bonusMovement || 0);
+    const budget = movementBudget(fighter, movement.value);
     if (budget <= 0) return [];
     const blocked = occupiedCellIds(
       { players: players.value },
@@ -180,13 +207,13 @@ export const useGameSession = () => {
     );
     const origin =
       movement.value?.origins?.[String(fighter.id)] ?? fighter.position;
-    const zone = movementZoneIds(
+    const reach = movementZoneIds(
       view.value?.map?.nodes ?? [],
       origin,
       budget,
       blocked,
     );
-    return [...zone].filter(id => String(id) !== String(fighter.position));
+    return [...reach].filter(id => String(id) !== String(fighter.position));
   });
 
   const mapSummary = computed(() => {
@@ -243,47 +270,46 @@ export const useGameSession = () => {
     ensureSelection();
   };
 
-  const syncHotseat = async () => {
-    if (isGameOver.value) return;
+  /** Кто должен смотреть/ходить: handDiscard → DEFEND → effectPrompt → currentPlayer. */
+  const syncHotseat = async (preserveHint = false) => {
+    const v = view.value;
+    if (!v || v.phase === PHASES.gameEnd) return;
 
-    if (handDiscard.value) {
-      const who = handDiscard.value.playerId;
-      if (who != null && String(playerId.value) !== String(who)) {
-        await switchViewer(who);
-        hint.value = `Сброс руки до ${handDiscard.value.max}`;
+    let target = null;
+    let nextHint = null;
+
+    if (v.handDiscard?.playerId != null) {
+      target = String(v.handDiscard.playerId);
+      nextHint = `Сброс руки до ${v.handDiscard.max}`;
+    } else if (v.combat?.defenderPlayerId != null) {
+      target = String(v.combat.defenderPlayerId);
+      nextHint = `DEFEND: ${target}`;
+    } else if (v.effectPrompt?.playerId != null) {
+      target = String(v.effectPrompt.playerId);
+      if (v.effectPrompt.kind === 'PROMPT') {
+        nextHint = `${v.effectPrompt.name || 'Способность'}: ${v.effectPrompt.message || 'ответ'}`;
       } else {
-        hint.value = `Сбросьте ещё ${handDiscard.value.mustDiscard}`;
+        nextHint = `${v.effectPrompt.name || 'Способность'}: выберите цель`;
       }
-      return;
+    } else if (v.phase === PHASES.gameStart) {
+      const viewer = v.players?.find(p => String(p.id) === String(playerId.value));
+      if (viewer?.placementReady === true) {
+        const next = v.players?.find(p => p.placementReady !== true);
+        if (next) {
+          target = String(next.id);
+          nextHint = `Расставляет: ${next.name || next.id}`;
+        }
+      }
+    } else if (v.currentPlayer != null) {
+      target = String(v.currentPlayer);
+      const p = v.players?.find(x => String(x.id) === target);
+      nextHint = `Ход: ${p?.name || target}`;
     }
 
-    if (combat.value) {
-      const defender = combat.value.defenderPlayerId;
-      if (defender != null && String(playerId.value) !== String(defender)) {
-        await switchViewer(defender);
-        hint.value = `DEFEND: ${defender}`;
-      }
+    if (target != null && String(playerId.value) !== target) {
+      await switchViewer(target);
+      if (!preserveHint && nextHint) hint.value = nextHint;
       return;
-    }
-
-    if (!isPlacement.value) {
-      const current = currentPlayerId.value;
-      if (current != null && String(playerId.value) !== String(current)) {
-        await switchViewer(current);
-        hint.value = `Ход: ${currentPlayer.value?.name || current}`;
-      } else {
-        ensureSelection();
-      }
-      return;
-    }
-
-    if (iAmReady.value) {
-      const next = players.value.find(p => p.placementReady !== true);
-      if (next && String(next.id) !== String(playerId.value)) {
-        await switchViewer(next.id);
-        hint.value = `Расставляет: ${next.name || next.id}`;
-        return;
-      }
     }
     ensureSelection();
   };
@@ -372,7 +398,7 @@ export const useGameSession = () => {
     run(async () => {
       if (!selectedCard.value) throw new Error('Выберите карту для сброса');
       await sendAction({
-        type: HOST_ACTION_TYPES.DISCARD,
+        type: HOST_ACTION_TYPES.DISCARD_CARDS,
         cardId: cardRef(selectedCard.value),
       });
       selectedCardId.value = null;
@@ -391,10 +417,26 @@ export const useGameSession = () => {
   const onConfirmMove = () =>
     run(async () => {
       await sendAction({ type: HOST_ACTION_TYPES.MOVE, mode: 'confirm' });
+      await syncHotseat(true);
       hint.value = handDiscard.value
         ? `Сбросьте ещё ${handDiscard.value.mustDiscard}`
-        : 'Перемещение завершено';
-      await syncHotseat();
+        : `Перемещение: −1 AP · осталось ${actionsLeft.value}`;
+    });
+
+  const onBonusMove = () =>
+    run(async () => {
+      if (!selectedCard.value) throw new Error('Выберите карту для усиления');
+      const card = selectedCard.value;
+      await sendAction({
+        type: HOST_ACTION_TYPES.MOVE,
+        mode: 'bonus',
+        cardId: cardRef(card),
+      });
+      selectedCardId.value = null;
+      const bonus =
+        Number(view.value?.movement?.bonus) || Number(card.bonus) || 0;
+      hint.value = `Усиление перемещения (бон.${card.bonus ?? 0} → радиус +${bonus})`;
+      await syncHotseat(true);
     });
 
   const onConfirmPlacement = () =>
@@ -434,14 +476,60 @@ export const useGameSession = () => {
         msg = `${msg} · победил ${
           lc.winner === 'attacker' ? 'атакующий' : 'защитник'
         } · боевой урон ${lc.combatDamage}`;
+        if ((Number(actionsLeft.value) || 0) > 0) {
+          msg = `${msg} · ещё AP ${actionsLeft.value}`;
+        }
       }
       hint.value = msg;
+      // view.you после DEFEND = защитник; вернуть на currentPlayer.
+      await syncHotseat(true);
+    });
+
+  const onSkillAnswer = answer =>
+    run(async () => {
+      await sendAction({
+        type: HOST_ACTION_TYPES.RESOLVE_EFFECT,
+        answer,
+      });
+      hint.value =
+        String(answer) === 'no'
+          ? 'Способность пропущена'
+          : 'Выберите подсвеченную цель';
+      await syncHotseat();
+    });
+
+  const onSkillSkip = () => onSkillAnswer('no');
+
+  const onSkillApply = targetId =>
+    run(async () => {
+      const skillName = effectPrompt.value?.name || 'SKILL';
+      await sendAction({
+        type: HOST_ACTION_TYPES.RESOLVE_EFFECT,
+        targetId,
+      });
+      const label = findFighterLabel(players.value, targetId);
+      hint.value = `${skillName} → ${label}`;
       await syncHotseat();
     });
 
   const onSelectFighterFromBoard = ({ fighterId, playerId: ownerId }) => {
     if (combat.value) {
       hint.value = 'Сейчас DEFEND, не выбор бойца';
+      return;
+    }
+    if (effectPrompt.value && iMustEffect.value) {
+      if (effectPrompt.value.kind !== 'HIGHLIGHT_TARGETS') {
+        hint.value = 'Сначала ответьте на вопрос способности';
+        return;
+      }
+      const ok = (effectPrompt.value.candidates ?? []).some(
+        c => String(c.fighterId) === String(fighterId),
+      );
+      if (!ok) {
+        hint.value = 'Цель не среди подсвеченных';
+        return;
+      }
+      onSkillApply(fighterId);
       return;
     }
     if (String(ownerId) === String(you.value)) {
@@ -458,6 +546,22 @@ export const useGameSession = () => {
   const onSelectNode = cellId => {
     if (combat.value) {
       hint.value = 'Сначала DEFEND';
+      return;
+    }
+    if (effectPrompt.value) {
+      if (effectPrompt.value.kind === 'HIGHLIGHT_TARGETS' && iMustEffect.value) {
+        const enemy = findEnemyAtCell(players.value, you.value, cellId);
+        if (enemy) {
+          onSelectFighterFromBoard({
+            fighterId: enemy.fighter.id,
+            playerId: enemy.playerId,
+          });
+          return;
+        }
+        hint.value = 'Кликните подсвеченного врага';
+        return;
+      }
+      hint.value = effectPrompt.value.message || 'Ответьте на способность';
       return;
     }
     if (!canAct.value) {
@@ -558,10 +662,12 @@ export const useGameSession = () => {
     combat,
     movement,
     handDiscard,
+    effectPrompt,
     lastCombat,
     iAmReady,
     iAmDefender,
     iMustDiscard,
+    iMustEffect,
     myFighters,
     myHand,
     myFightersPlaced,
@@ -570,6 +676,7 @@ export const useGameSession = () => {
     selectedDefenseCard,
     selectedEffectCard,
     canAct,
+    canBonusMove,
     boardInteractive,
     highlightedCellIds,
     mapSummary,
@@ -581,10 +688,14 @@ export const useGameSession = () => {
     onDiscard,
     onEndTurn,
     onConfirmMove,
+    onBonusMove,
     onConfirmPlacement,
     onResign,
     onPlayCard,
     onDefend,
+    onSkillSkip,
+    onSkillAnswer,
+    onSkillApply,
     onSelectFighterFromBoard,
     onSelectNode,
   };

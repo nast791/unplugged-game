@@ -27,6 +27,18 @@ export const findFighter = (state, fighterId) => {
   return { player: null, fighter: null, index: -1 };
 };
 
+/** Id области клетки = первый цвет в node.areas (одинаковый цвет = одна область). */
+export const nodeAreaId = node => {
+  const areas = node?.areas;
+  if (!Array.isArray(areas) || areas.length === 0) return null;
+  return String(areas[0]);
+};
+
+export const areaIdAtCell = (state, cellId) => {
+  if (cellId == null) return null;
+  return nodeAreaId(findNode(state, cellId));
+};
+
 export const playerFightersPlaced = player => {
   if (!Array.isArray(player?.fighters) || player.fighters.length === 0) return true;
   return player.fighters.every(f => f.position != null);
@@ -82,6 +94,15 @@ export const discardFromHand = (player, cardId) => {
   player.discard.push(card);
   return card;
 };
+
+/** Значение УСИЛЕНИЯ карты (поле bonus, не combat value). */
+export const cardBonusValue = card => Math.max(0, Number(card?.bonus) || 0);
+
+/** Эффективный радиус перемещения: move + bonusMovement + bonus перемещения. */
+export const movementBudget = (fighter, movement = null) =>
+  Number(fighter?.move || 0) +
+  Number(fighter?.bonusMovement || 0) +
+  Number(movement?.bonus || 0);
 
 export const assertNoPendingCombat = (state, label) => {
   if (state.combat) {

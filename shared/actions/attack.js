@@ -8,7 +8,7 @@ import {
   findFighter,
   findInHand,
   findOwnedFighter,
-} from '#shared/lib.js';
+} from '#shared/helpers.js';
 import { bfsDistance } from './move.js';
 
 /**
