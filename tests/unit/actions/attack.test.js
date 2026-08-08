@@ -10,8 +10,8 @@ describe('ATTACK', () => {
     const atk = p.hand.find(c => c.id === 'atk');
     // card.fighter=alpha but alpha@8 not adjacent to beta@10 (dist=2, range=1)
     // move alpha to 9 first via mutating, or use attack from pawn — card binds to alpha
-    p.fighters.find(f => f.id === 'alpha').position = 9;
-    p.fighters.find(f => f.id === 'pawn').position = 8;
+    p.fighters.find(f => f.id === 'alpha').currentPosition = 9;
+    p.fighters.find(f => f.id === 'pawn').currentPosition = 8;
 
     const api = createApi();
     attack(

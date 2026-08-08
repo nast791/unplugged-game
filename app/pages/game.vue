@@ -146,7 +146,7 @@
               · hp {{ fighter.currentHp }}/{{ fighter.hp }}
               ·
               {{
-                fighter.position == null ? 'не на доске' : `кл. ${fighter.position}`
+                fighter.currentPosition == null ? 'не на доске' : `кл. ${fighter.currentPosition}`
               }}
               <template v-if="isPlacement && fighter.type === 'hero'">
                 · авто
@@ -374,7 +374,6 @@ const {
   onResign,
   onPlayCard,
   onDefend,
-  onSkillSkip,
   onSkillAnswer,
   onSelectFighterFromBoard,
   onSelectNode,

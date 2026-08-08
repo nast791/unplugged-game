@@ -11,8 +11,8 @@ describe('scenario: move bonus', () => {
     const p = player(state);
     // alpha move=1 → без bonus не дойдёт до 10
     p.fighters.find(f => f.id === 'alpha').move = 1;
-    p.fighters.find(f => f.id === 'pawn').position = null;
-    player(state, '1').fighters.find(f => f.id === 'beta').position = null;
+    p.fighters.find(f => f.id === 'pawn').currentPosition = null;
+    player(state, '1').fighters.find(f => f.id === 'beta').currentPosition = null;
 
     const fx = p.hand.find(c => c.id === 'fx'); // bonus 2
     move(state, { playerId: '0', mode: 'bonus', cardId: fx.instanceId });
@@ -21,7 +21,7 @@ describe('scenario: move bonus', () => {
     // радиус 1+2=3 → путь 8→9→10 ок
     move(state, { playerId: '0', fighterId: 'alpha', cellId: 9 });
     move(state, { playerId: '0', fighterId: 'alpha', cellId: 10 });
-    expect(p.fighters.find(f => f.id === 'alpha').position).toBe(10);
+    expect(p.fighters.find(f => f.id === 'alpha').currentPosition).toBe(10);
 
     const api = createApi();
     const next = move(state, { playerId: '0', mode: 'confirm' }, api);

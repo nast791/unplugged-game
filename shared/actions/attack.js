@@ -1,5 +1,5 @@
 import { PHASES } from '@nast791/engine/constants';
-import { isAttackCard } from '#shared/constants/cards.js';
+import { cardTypes } from '#shared/constants/deck.js';
 import { SPEND_AP } from '#shared/events/index.js';
 import {
   assertNoPendingCombat,
@@ -38,7 +38,7 @@ export const attack = (state, action, api) => {
   if (!card) {
     throw new Error(`ATTACK: карты "${cardId}" нет в hand`);
   }
-  if (!isAttackCard(card.type)) {
+  if (!cardTypes.find(t => t.name === card.type)?.turn?.includes('attack')) {
     throw new Error(
       `ATTACK: карта type="${card.type}" (нужен attack|hybrid)`,
     );
@@ -61,7 +61,7 @@ export const attack = (state, action, api) => {
       `ATTACK: fighter "${fighterId}" не принадлежит игроку ${action.playerId}`,
     );
   }
-  if (attacker.position == null) {
+  if (attacker.currentPosition == null) {
     throw new Error(
       `ATTACK: ${attacker.name || fighterId} не на клетке — подведите его к цели`,
     );
@@ -74,13 +74,13 @@ export const attack = (state, action, api) => {
   if (String(defenderPlayer.id) === String(action.playerId)) {
     throw new Error('ATTACK: нельзя атаковать своего бойца');
   }
-  if (target.position == null) {
+  if (target.currentPosition == null) {
     throw new Error(`ATTACK: цель "${targetId}" не на клетке`);
   }
 
   const range = Number(attacker.attackRange ?? 1);
-  const from = attacker.position;
-  const to = target.position;
+  const from = attacker.currentPosition;
+  const to = target.currentPosition;
   const dist = bfsDistance(state.map?.nodes ?? [], from, to, range);
   if (dist === Infinity || dist > range) {
     throw new Error(
@@ -88,19 +88,17 @@ export const attack = (state, action, api) => {
     );
   }
 
-  discardFromHand(attackerPlayer, cardId);
+  const attackCard = discardFromHand(attackerPlayer, cardId);
 
   state.combat = {
     attackerPlayerId: String(action.playerId),
     defenderPlayerId: String(defenderPlayer.id),
     attackerFighterId: String(fighterId),
     targetFighterId: String(targetId),
-    attackValue: Number(card.value) || 0,
-    attackCardId: card.instanceId ?? card.id,
+    attackValue: Number(attackCard?.value ?? card.value) || 0,
+    attackCardId: attackCard?.instanceId ?? attackCard?.id ?? card.id,
+    attackCard: attackCard ?? card,
   };
-
-  // index unused but keeps fighter ref clear for future muts
-  void index;
 
   SPEND_AP(state);
   return state;

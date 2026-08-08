@@ -1,38 +1,47 @@
 import { findFighter } from '#shared/helpers.js';
+import { resolveVar } from '#shared/facts/vars.js';
 import { CHECK_WINNER } from './checkWinner.js';
 
 /**
  * DEAL_DAMAGE — урон по бойцу/бойцам.
  *
  * { fighterId, damage }
- * { targets: id[], damage }
- * { target: N, damage } — взять N id из ctx.vars.targets (после HIGHLIGHT)
+ * { targets: id[] | '$var', damage }
+ * { target: N, damage } — N id из ctx.vars.targets (после HIGHLIGHT)
  */
 export const DEAL_DAMAGE = (state, payload = {}, ctx = {}) => {
   const { api } = ctx;
+  const vars = ctx.vars ?? {};
   const amount = Math.max(0, Number(payload.damage) || 0);
 
-  let targets = payload.targets;
+  let fighterId = resolveVar(payload.fighterId, vars);
+  let targets = resolveVar(payload.targets, vars);
+
   if (
-    payload.fighterId == null &&
+    fighterId == null &&
     !Array.isArray(targets) &&
+    typeof targets !== 'string' &&
     typeof payload.target === 'number'
   ) {
-    targets = (ctx.vars?.targets ?? []).slice(0, payload.target);
+    targets = (vars.targets ?? []).slice(0, payload.target);
   }
 
   const ids = [];
-  if (payload.fighterId != null) ids.push(payload.fighterId);
-  if (Array.isArray(targets)) ids.push(...targets);
+  if (fighterId != null) ids.push(fighterId);
+  if (Array.isArray(targets)) {
+    ids.push(...targets);
+  } else if (targets != null && targets !== '') {
+    ids.push(targets);
+  }
 
   if (!ids.length) {
     throw new Error('DEAL_DAMAGE: нужен fighterId, targets или target (из vars)');
   }
 
-  for (const fighterId of ids) {
-    const { player: owner, fighter, index } = findFighter(state, fighterId);
+  for (const id of ids) {
+    const { player: owner, fighter, index } = findFighter(state, id);
     if (!owner || !fighter) {
-      throw new Error(`DEAL_DAMAGE: fighter "${fighterId}" не найден`);
+      throw new Error(`DEAL_DAMAGE: fighter "${id}" не найден`);
     }
 
     const nextHp = Math.max(0, Number(fighter.currentHp) - amount);

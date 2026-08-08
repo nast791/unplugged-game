@@ -6,6 +6,7 @@ export default {
     {
       id: 'alpha',
       name: 'Альфа',
+      type: 'hero',
       hp: 15,
       move: 2,
       attackType: 'melee',
@@ -17,6 +18,7 @@ export default {
     {
       id: 'alpha_pawn',
       name: 'Пешка Альфы',
+      type: 'assistant',
       hp: 4,
       move: 2,
       attackType: 'melee',

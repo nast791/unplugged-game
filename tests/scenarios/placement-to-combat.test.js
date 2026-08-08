@@ -40,14 +40,14 @@ describe('scenario: placement → combat', () => {
             fighter({
               id: 'alpha',
               type: 'hero',
-              position: 6,
+              currentPosition: 6,
               currentHp: 15,
               move: 2,
             }),
             fighter({
               id: 'pawn',
               type: 'assistant',
-              position: null,
+              currentPosition: null,
               currentHp: 4,
             }),
           ],
@@ -72,13 +72,13 @@ describe('scenario: placement → combat', () => {
             fighter({
               id: 'beta',
               type: 'hero',
-              position: 10,
+              currentPosition: 10,
               currentHp: 13,
             }),
             fighter({
               id: 'scout',
               type: 'assistant',
-              position: null,
+              currentPosition: null,
               currentHp: 3,
             }),
           ],
@@ -121,7 +121,7 @@ describe('scenario: placement → combat', () => {
     // Вместо этого: отменим подход — поставим alpha на 9 без второго confirm
     // через прямой state для атаки после первого confirm:
     state.movement = null;
-    player(state).fighters.find(f => f.id === 'alpha').position = 9;
+    player(state).fighters.find(f => f.id === 'alpha').currentPosition = 9;
     state.actionsLeft = 1;
 
     attack(

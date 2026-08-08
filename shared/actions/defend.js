@@ -1,11 +1,12 @@
 import { PHASES } from '@nast791/engine/constants';
-import { isDefenseCard } from '#shared/constants/cards.js';
-import { RESOLVE_COMBAT } from '#shared/events/index.js';
+import { getCardEngine } from '@nast791/cards/server';
+import { cardTypes } from '#shared/constants/deck.js';
+import { RUN_COMBAT } from '#shared/events/index.js';
 import { discardFromHand } from '#shared/helpers.js';
 
 /**
  * DEFEND — { cardId? }; defense|hybrid или пас (defense=0).
- * Победитель боя: RESOLVE_COMBAT (только боевые числа карт).
+ * Пайплайн боя: before-фазы → RESOLVE_COMBAT (числа) → after-фазы.
  */
 export const defend = (state, action, api) => {
   if (state.phase !== PHASES.turn) {
@@ -30,25 +31,30 @@ export const defend = (state, action, api) => {
 
   let defenseValue = 0;
   let defendedWithCard = false;
+  let defenseCard = null;
   if (action.cardId != null) {
-    const card = discardFromHand(defender, action.cardId);
-    if (!card) {
+    defenseCard = discardFromHand(defender, action.cardId);
+    if (!defenseCard) {
       throw new Error(`DEFEND: карты "${action.cardId}" нет в hand`);
     }
-    if (!isDefenseCard(card.type)) {
+    if (!cardTypes.find(t => t.name === defenseCard.type)?.turn?.includes('defense')) {
       throw new Error(
-        `DEFEND: карта type="${card.type}" (нужен defense|hybrid)`,
+        `DEFEND: карта type="${defenseCard.type}" (нужен defense|hybrid)`,
       );
     }
-    defenseValue = Number(card.value) || 0;
+    defenseValue = Number(defenseCard.value) || 0;
     defendedWithCard = true;
   }
 
-  const next = RESOLVE_COMBAT(
+  const next = RUN_COMBAT(
     state,
-    { combat, defenseValue, defendedWithCard },
-    { api },
+    { combat, defenseValue, defendedWithCard, defenseCard },
+    { api, cards: getCardEngine() },
   );
+
+  if (next.effectPrompt) {
+    return next;
+  }
   if (next.phase === PHASES.gameEnd) {
     return next;
   }

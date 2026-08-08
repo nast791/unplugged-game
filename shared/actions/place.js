@@ -95,15 +95,15 @@ export const place = (state, action) => {
       `PLACE: помощникам клетки ${allowed} (не heroStart)`,
     );
   }
-  if (String(fighter.position) === String(node.id)) {
+  if (String(fighter.currentPosition) === String(node.id)) {
     throw new Error('PLACE: fighter уже на этой клетке');
   }
 
   const occupiedByOwn = (player.fighters ?? []).some(
     f =>
       String(f.id) !== String(fighterId) &&
-      f.position != null &&
-      String(f.position) === String(node.id),
+      f.currentPosition != null &&
+      String(f.currentPosition) === String(node.id),
   );
   if (occupiedByOwn) {
     throw new Error(`PLACE: клетка ${cellId} уже занята вашим бойцом`);
@@ -111,7 +111,7 @@ export const place = (state, action) => {
 
   player.fighters[index] = {
     ...fighter,
-    position: node.id,
+    currentPosition: node.id,
     startPosition: node.id,
   };
 

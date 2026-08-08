@@ -1,5 +1,5 @@
 import { PHASES } from '@nast791/engine/constants';
-import { maxHandSize } from '#shared/constants/hand.js';
+import { rules } from '#shared/constants/rules.js';
 import { discardFromHand } from '#shared/helpers.js';
 
 /** api экшена или ctx карт с .api */
@@ -51,7 +51,7 @@ export const DISCARD_CARDS = (
     }
   }
 
-  const max = Number(pending.max) || maxHandSize(state);
+  const max = Number(pending.max) || rules.maxHandSize;
   const handLen = Array.isArray(player.hand) ? player.hand.length : 0;
 
   if (handLen > max) {

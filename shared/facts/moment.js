@@ -1,6 +1,6 @@
 /**
- * PHASE — текущая фаза партии (state.phase) совпадает с params.id.
- * Фазу в контент не хардкодят в хосте: сверяется факт с state.phase.
+ * PHASE — ctx.phase (или state.phase) совпадает с params.id.
+ * Для боя cards.dispatch передаёт phase override (after_combat и т.п.).
  */
 export const PHASE = (ctx, params = {}) => {
   const id = params.id ?? params.phase;

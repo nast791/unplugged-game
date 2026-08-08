@@ -1,15 +1,31 @@
-/** Колода Медузы (без card-triggers — позже). */
+/** Колода Медузы. */
 export default [
   {
-    "id": "medusa_01",
-    "title": "Взгляд смерти",
-    "type": "attack",
-    "value": 2,
-    "bonus": 4,
-    "quantity": 3,
-    "fighter": "medusa",
-    "text": "ПОСЛЕ БИТВЫ: В случае вашей победы враг, которого вы атаковали, получает 8 урона.",
-    "phase": "after_combat"
+    id: 'medusa_01',
+    title: 'Взгляд смерти',
+    type: 'attack',
+    value: 2,
+    bonus: 4,
+    quantity: 3,
+    fighter: 'medusa',
+    text: 'ПОСЛЕ БИТВЫ: В случае вашей победы враг, которого вы атаковали, получает 8 урона.',
+    hook: 'after_combat',
+    effects: [
+      {
+        id: 'death_gaze',
+        triggers: [
+          { fact: 'PHASE', params: { id: 'after_combat' } },
+          {
+            fact: 'COMBAT',
+            params: { winner: 'self', select: 'defender' },
+            var: 'defender',
+          },
+        ],
+        events: [
+          { type: 'DEAL_DAMAGE', targets: '$defender', damage: 8 },
+        ],
+      },
+    ],
   },
   {
     "id": "medusa_02",
@@ -20,7 +36,7 @@ export default [
     "quantity": 3,
     "fighter": "medusa",
     "text": "ВО ВРЕМЯ БИТВЫ: Можете прибавить бонусное значение другой карты к силе этой атаки.",
-    "phase": "during_combat"
+    "hook": "during_combat"
   },
   {
     "id": "medusa_03",
@@ -31,7 +47,7 @@ export default [
     "quantity": 3,
     "fighter": "medusa",
     "text": "ПОСЛЕ БИТВЫ: Ваш враг, участвовавший в битве, должен сбросить 1 карту.",
-    "phase": "after_combat"
+    "hook": "after_combat"
   },
   {
     "id": "medusa_04",
@@ -42,7 +58,7 @@ export default [
     "quantity": 2,
     "fighter": "harpies",
     "text": "ПОСЛЕ БИТВЫ: Можете передвинуть каждую Гарпию на расстояние до 3 клеток.",
-    "phase": "after_combat"
+    "hook": "after_combat"
   },
   {
     "id": "medusa_05",
@@ -53,7 +69,7 @@ export default [
     "quantity": 3,
     "fighter": "harpies",
     "text": "ПОСЛЕ БИТВЫ: Ваш оппонент, участвовавший в битве, должен сбросить 1 карту.",
-    "phase": "after_combat"
+    "hook": "after_combat"
   },
   {
     "id": "medusa_06",
@@ -64,7 +80,7 @@ export default [
     "quantity": 3,
     "fighter": "any",
     "text": "ПОСЛЕ БИТВЫ: Можете передвинуть своего бойца, участвовавшего в этой битве, на расстояние до 3 клеток.",
-    "phase": "after_combat"
+    "hook": "after_combat"
   },
   {
     "id": "medusa_07",
@@ -75,7 +91,7 @@ export default [
     "quantity": 3,
     "fighter": "any",
     "text": "ПОСЛЕ БИТВЫ: Доберите 1 карту из колоды.",
-    "phase": "after_combat"
+    "hook": "after_combat"
   },
   {
     "id": "medusa_08",
@@ -86,7 +102,7 @@ export default [
     "quantity": 3,
     "fighter": "any",
     "text": "МГНОВЕННО: Игнорируйте все текстовые свойства на карте оппонента.",
-    "phase": "instant"
+    "hook": "instant"
   },
   {
     "id": "medusa_09",
@@ -97,7 +113,7 @@ export default [
     "quantity": 3,
     "fighter": "any",
     "text": "ПОСЛЕ БИТВЫ: Доберите 1 карту из колоды. В случае вашей победы, вместо 1 карты доберите 2.",
-    "phase": "after_combat"
+    "hook": "after_combat"
   },
   {
     "id": "medusa_10",
@@ -108,7 +124,7 @@ export default [
     "quantity": 2,
     "fighter": "medusa",
     "text": "Выберите любого бойца в одной области с Медузой: он получает 2 урона.",
-    "phase": "instant"
+    "hook": "instant"
   },
   {
     "id": "medusa_11",
@@ -119,6 +135,6 @@ export default [
     "quantity": 2,
     "fighter": "any",
     "text": "Передвиньте всех своих бойцов на расстояние до 3 клеток. Допускается проход сквозь клетки с врагами. Потом воскресите 1 убитую Гарпию на любой свободной клетке в области Медузы.",
-    "phase": "instant"
+    "hook": "instant"
   }
 ]

@@ -68,10 +68,10 @@ const gazeState = () => {
   const p0 = player(state, '0');
   p0.skill = medusaSkill;
   p0.fighters = [
-    fighter({ id: 'medusa', name: 'Медуза', position: 1, currentHp: 16 }),
+    fighter({ id: 'medusa', name: 'Медуза', currentPosition: 1, currentHp: 16 }),
   ];
   player(state, '1').fighters = [
-    fighter({ id: 'beta', name: 'Beta', position: 2, currentHp: 13 }),
+    fighter({ id: 'beta', name: 'Beta', currentPosition: 2, currentHp: 13 }),
   ];
   return state;
 };
@@ -86,7 +86,7 @@ describe('onPhase → cards.dispatch / resume', () => {
 
   it('триггеры не прошли → нет prompt', () => {
     const state = gazeState();
-    player(state, '1').fighters[0].position = 3;
+    player(state, '1').fighters[0].currentPosition = 3;
     onPhase(state, createApi());
     expect(state.effectPrompt).toBeNull();
   });

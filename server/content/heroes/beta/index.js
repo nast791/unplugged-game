@@ -6,6 +6,7 @@ export default {
     {
       id: 'beta',
       name: 'Бета',
+      type: 'hero',
       hp: 13,
       move: 3,
       attackType: 'ranged',
@@ -17,6 +18,7 @@ export default {
     {
       id: 'beta_scout',
       name: 'Разведчик Беты',
+      type: 'assistant',
       hp: 3,
       move: 3,
       attackType: 'melee',

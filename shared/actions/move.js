@@ -1,4 +1,5 @@
 import { PHASES } from '@nast791/engine/constants';
+import { rules } from '#shared/constants/rules.js';
 import { APPLY_BONUS, STANDSTILL } from '#shared/events/index.js';
 import {
   assertNoPendingCombat,
@@ -201,7 +202,7 @@ export const move = (state, action, api) => {
       `MOVE: fighter "${fighterId}" не принадлежит игроку ${action.playerId}`,
     );
   }
-  if (fighter.position == null) {
+  if (fighter.currentPosition == null) {
     throw new Error(`MOVE: fighter "${fighterId}" ещё не расставлен`);
   }
 
@@ -209,13 +210,32 @@ export const move = (state, action, api) => {
   if (!node) {
     throw new Error(`MOVE: клетка "${cellId}" не найдена на карте`);
   }
-  if (String(fighter.position) === String(node.id)) {
+  if (String(fighter.currentPosition) === String(node.id)) {
     throw new Error('MOVE: fighter уже на этой клетке');
   }
 
-  const blocked = occupiedCellIds(state, { exceptFighterId: fighterId });
-  if (blocked.has(String(node.id))) {
+  const blockedDest = occupiedCellIds(state, { exceptFighterId: fighterId });
+  if (blockedDest.has(String(node.id))) {
     throw new Error(`MOVE: клетка ${cellId} занята`);
+  }
+
+  const blockedPath = occupiedCellIds(state, { exceptFighterId: fighterId });
+  if (rules.canPassThroughTeammates) {
+    for (const ally of player.fighters ?? []) {
+      if (ally.currentPosition != null && String(ally.id) !== String(fighterId)) {
+        blockedPath.delete(String(ally.currentPosition));
+      }
+    }
+  }
+  if (rules.canPassThroughEnemies) {
+    for (const p of state.players ?? []) {
+      if (String(p.id) === String(action.playerId)) continue;
+      for (const enemy of p.fighters ?? []) {
+        if (enemy.currentPosition != null) {
+          blockedPath.delete(String(enemy.currentPosition));
+        }
+      }
+    }
   }
 
   const movement = ensureMovement(state, action.playerId);
@@ -226,7 +246,7 @@ export const move = (state, action, api) => {
   }
 
   if (movement.origins[fid] == null) {
-    movement.origins[fid] = fighter.position;
+    movement.origins[fid] = fighter.currentPosition;
   }
   const origin = movement.origins[fid];
 
@@ -234,11 +254,11 @@ export const move = (state, action, api) => {
   if (
     !canWalkInRadius(
       nodes,
-      fighter.position,
+      fighter.currentPosition,
       node.id,
       origin,
       budget,
-      blocked,
+      blockedPath,
     )
   ) {
     throw new Error(
@@ -248,7 +268,7 @@ export const move = (state, action, api) => {
 
   player.fighters[index] = {
     ...fighter,
-    position: node.id,
+    currentPosition: node.id,
   };
 
   return state;

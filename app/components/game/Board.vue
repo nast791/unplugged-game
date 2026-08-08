@@ -97,8 +97,8 @@ const placedFighters = computed(() => {
   const list = [];
   for (const player of props.players || []) {
     for (const fighter of player.fighters || []) {
-      if (fighter.position == null) continue;
-      const node = nodeById.value.get(String(fighter.position));
+      if (fighter.currentPosition == null) continue;
+      const node = nodeById.value.get(String(fighter.currentPosition));
       if (!node) continue;
       list.push({
         playerId: String(player.id),
@@ -111,7 +111,7 @@ const placedFighters = computed(() => {
   }
   const groups = new Map();
   for (const token of list) {
-    const key = String(token.fighter.position);
+    const key = String(token.fighter.currentPosition);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(token);
   }

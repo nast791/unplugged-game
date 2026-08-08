@@ -3,7 +3,7 @@ import { HOST_ACTION_TYPES } from '#shared/actions/index.js';
 import { occupiedCellIds, movementBudget } from '#shared/helpers.js';
 import { assistantStartCellIds } from '#shared/actions/place.js';
 import { movementZoneIds } from '#shared/actions/move.js';
-import { isAttackCard, isDefenseCard, isEffectCard } from '#shared/constants/cards.js';
+import { cardTypes } from '#shared/constants/deck.js';
 
 const cardRef = card => String(card?.instanceId || card?.id);
 
@@ -21,11 +21,13 @@ const findFighterLabel = (players, fighterId) => {
   return String(fighterId);
 };
 
+const cardTurn = type => cardTypes.find(t => t.name === type)?.turn ?? [];
+
 const findEnemyAtCell = (players, youId, cellId) => {
   for (const player of players || []) {
     if (String(player.id) === String(youId)) continue;
     for (const fighter of player.fighters || []) {
-      if (fighter.position != null && String(fighter.position) === String(cellId)) {
+      if (fighter.currentPosition != null && String(fighter.currentPosition) === String(cellId)) {
         return { fighter, playerId: player.id };
       }
     }
@@ -98,7 +100,7 @@ export const useGameSession = () => {
 
   const myFightersPlaced = computed(() => {
     if (!myFighters.value.length) return true;
-    return myFighters.value.every(f => f.position != null);
+    return myFighters.value.every(f => f.currentPosition != null);
   });
 
   const selectedCard = computed(() => {
@@ -112,13 +114,13 @@ export const useGameSession = () => {
   });
 
   const selectedDefenseCard = computed(
-    () => selectedCard.value && isDefenseCard(selectedCard.value.type),
+    () => selectedCard.value && cardTurn(selectedCard.value.type).includes('defense'),
   );
   const selectedEffectCard = computed(
-    () => selectedCard.value && isEffectCard(selectedCard.value.type),
+    () => selectedCard.value && cardTurn(selectedCard.value.type).includes('effect'),
   );
   const selectedAttackCard = computed(
-    () => selectedCard.value && isAttackCard(selectedCard.value.type),
+    () => selectedCard.value && cardTurn(selectedCard.value.type).includes('attack'),
   );
 
   /** Можно усилить перемещение: своя очередь, есть карта, ещё не усиливали. */
@@ -187,18 +189,18 @@ export const useGameSession = () => {
         myFighters.value
           .filter(
             f =>
-              f.position != null && String(f.id) !== String(fighter.id),
+              f.currentPosition != null && String(f.id) !== String(fighter.id),
           )
-          .map(f => String(f.position)),
+          .map(f => String(f.currentPosition)),
       );
       return allowed.filter(
         id =>
           !blocked.has(String(id)) &&
-          String(id) !== String(fighter.position),
+          String(id) !== String(fighter.currentPosition),
       );
     }
 
-    if (!isMyTurn.value || fighter.position == null) return [];
+    if (!isMyTurn.value || fighter.currentPosition == null) return [];
     const budget = movementBudget(fighter, movement.value);
     if (budget <= 0) return [];
     const blocked = occupiedCellIds(
@@ -206,14 +208,14 @@ export const useGameSession = () => {
       { exceptFighterId: fighter.id },
     );
     const origin =
-      movement.value?.origins?.[String(fighter.id)] ?? fighter.position;
+      movement.value?.origins?.[String(fighter.id)] ?? fighter.currentPosition;
     const reach = movementZoneIds(
       view.value?.map?.nodes ?? [],
       origin,
       budget,
       blocked,
     );
-    return [...reach].filter(id => String(id) !== String(fighter.position));
+    return [...reach].filter(id => String(id) !== String(fighter.currentPosition));
   });
 
   const mapSummary = computed(() => {
@@ -232,7 +234,7 @@ export const useGameSession = () => {
       );
       if (cur && cur.type !== 'hero') return;
       const unplacedAssistant = myFighters.value.find(
-        f => f.type !== 'hero' && f.position == null,
+        f => f.type !== 'hero' && f.currentPosition == null,
       );
       const anyAssistant = myFighters.value.find(f => f.type !== 'hero');
       const pick = unplacedAssistant || anyAssistant;
@@ -245,7 +247,7 @@ export const useGameSession = () => {
       );
       if (stillMine) return;
     }
-    const unplaced = myFighters.value.find(f => f.position == null);
+    const unplaced = myFighters.value.find(f => f.currentPosition == null);
     const pick = unplaced || myFighters.value[0];
     selectedFighterId.value = pick ? String(pick.id) : null;
   };
@@ -345,11 +347,11 @@ export const useGameSession = () => {
       if (bound) selectedFighterId.value = String(bound.id);
     }
     const who = cardFighterName(card, myFighters.value);
-    if (isAttackCard(card.type)) {
+    if (cardTurn(card.type).includes('attack')) {
       hint.value = `${card.title || card.id} (${who}): кликните врага`;
-    } else if (isEffectCard(card.type)) {
+    } else if (cardTurn(card.type).includes('effect')) {
       hint.value = `${card.title || card.id} (${who}): PLAY_CARD`;
-    } else if (isDefenseCard(card.type)) {
+    } else if (cardTurn(card.type).includes('defense')) {
       hint.value = `${card.title || card.id} (${who}): для DEFEND`;
     } else {
       hint.value = `Карта: ${card.title || card.id} · ${who}`;
@@ -607,7 +609,7 @@ export const useGameSession = () => {
           cellId,
         });
         hint.value =
-          fighter.position == null
+          fighter.currentPosition == null
             ? `PLACE → ${cellId}`
             : `PLACE перестановка → ${cellId}`;
         ensureSelection();
@@ -615,7 +617,7 @@ export const useGameSession = () => {
       return;
     }
 
-    if (fighter.position == null) {
+    if (fighter.currentPosition == null) {
       hint.value = 'Боец без клетки';
       return;
     }

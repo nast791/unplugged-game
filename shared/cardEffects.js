@@ -21,6 +21,7 @@ import {
 import { PHASE, MOMENT } from '#shared/facts/moment.js';
 import { FIGHTERS } from '#shared/facts/fighters.js';
 import { ANSWER } from '#shared/facts/answer.js';
+import { COMBAT } from '#shared/facts/combat.js';
 
 const wrap =
   fn =>
@@ -60,6 +61,7 @@ export const facts = {
   MOMENT,
   FIGHTERS,
   ANSWER,
+  COMBAT,
 };
 
 export default { effects, facts };

@@ -1,4 +1,4 @@
-import { maxHandSize } from '#shared/constants/hand.js';
+import { rules } from '#shared/constants/rules.js';
 
 /**
  * CHECK_HAND_LIMIT — перед turnEnd: если hand > max → handDiscard, иначе enterTurnEnd.
@@ -16,7 +16,7 @@ export const CHECK_HAND_LIMIT = (state, _payload = {}, { enterTurnEnd } = {}) =>
     return enterTurnEnd(state);
   }
 
-  const max = maxHandSize(state);
+  const max = rules.maxHandSize;
   const handLen = Array.isArray(player.hand) ? player.hand.length : 0;
 
   if (handLen > max) {

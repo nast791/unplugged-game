@@ -13,6 +13,7 @@ export default {
     {
       id: 'medusa',
       name: 'Медуза',
+      type: 'hero',
       hp: 16,
       move: 3,
       attackType: 'ranged',
@@ -24,6 +25,7 @@ export default {
     {
       id: 'harpies',
       name: 'Гарпии',
+      type: 'assistant',
       count: 3,
       hp: 1,
       move: 3,

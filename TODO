@@ -1,0 +1,23 @@
+# TODO
+
+## Блокеры геймплея
+
+- [ ] `server/api/party/action.post.js` — заглушка. Любой action возвращает тот же state. Играть нельзя.
+- [ ] Клиент → host party: убрать `/api/tabletop`, bootstrap `/game` из `?gameId=&playerId=`, view-адаптер под `useGameHelpers` (`hook`→`phase`, `turn`→`currentPlayer`, `hand.cards`→`hand[]`).
+- [ ] Адаптер state для `shared/actions`: `hook`↔`phase`, `turn`↔`currentPlayer`/`actionsLeft`, zones↔arrays (или переписать helpers под zones).
+- [ ] PLACE: стартовая зона по seat/order, не по `heroId` (`Number('medusa')` → NaN).
+
+## Видимость / projection
+
+- [ ] `createResponse` vs `view` при gameStart: view скрывает чужие `currentPosition`/`startPosition`, createResponse отдаёт fighters как есть → стартовые клетки врага видны в ответе create. Выровнять правила.
+
+## Team mode (shared)
+
+- [ ] `attack.js` — запрет бить союзника (сейчас только same player).
+- [ ] `move.js` — `canPassThroughTeammates` для всех бойцов команды, не только своего слота.
+- [ ] Facts: `opponent` ≠ visibility `enemy`/`team` — в 2v2 карты с `side: 'opponent'` могут бить союзников.
+- [ ] `CHECK_WINNER` — победа по командам, не по игрокам (teams_2v2).
+
+## Мелочи
+
+- [ ] `stateFields` / `playerFields`: добавить `movement`, `handDiscard`, `effectPrompt`, `lastCombat`, `placementReady` для UI.

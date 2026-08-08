@@ -41,7 +41,7 @@ export const areaIdAtCell = (state, cellId) => {
 
 export const playerFightersPlaced = player => {
   if (!Array.isArray(player?.fighters) || player.fighters.length === 0) return true;
-  return player.fighters.every(f => f.position != null);
+  return player.fighters.every(f => f.currentPosition != null);
 };
 
 export const allPlayersPlacementReady = state =>
@@ -58,16 +58,16 @@ export const livingHeroes = player =>
 
 export const occupiedCellIds = (state, { exceptFighterId } = {}) => {
   const set = new Set();
-  for (const player of state?.players ?? []) {
-    for (const fighter of player.fighters ?? []) {
-      if (fighter.position == null) continue;
+  for (const p of state?.players ?? []) {
+    for (const fighter of p.fighters ?? []) {
+      if (fighter.currentPosition == null) continue;
       if (
         exceptFighterId != null &&
         String(fighter.id) === String(exceptFighterId)
       ) {
         continue;
       }
-      set.add(String(fighter.position));
+      set.add(String(fighter.currentPosition));
     }
   }
   return set;
@@ -98,11 +98,9 @@ export const discardFromHand = (player, cardId) => {
 /** Значение УСИЛЕНИЯ карты (поле bonus, не combat value). */
 export const cardBonusValue = card => Math.max(0, Number(card?.bonus) || 0);
 
-/** Эффективный радиус перемещения: move + bonusMovement + bonus перемещения. */
+/** Эффективный радиус перемещения: move + bonus перемещения хода. */
 export const movementBudget = (fighter, movement = null) =>
-  Number(fighter?.move || 0) +
-  Number(fighter?.bonusMovement || 0) +
-  Number(movement?.bonus || 0);
+  Number(fighter?.move || 0) + Number(movement?.bonus || 0);
 
 export const assertNoPendingCombat = (state, label) => {
   if (state.combat) {

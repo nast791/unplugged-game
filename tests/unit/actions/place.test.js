@@ -17,13 +17,13 @@ const placementState = () =>
           fighter({
             id: 'alpha',
             type: 'hero',
-            position: 6,
+            currentPosition: 6,
             currentHp: 15,
           }),
           fighter({
             id: 'pawn',
             type: 'assistant',
-            position: null,
+            currentPosition: null,
             currentHp: 4,
           }),
         ],
@@ -39,13 +39,13 @@ const placementState = () =>
           fighter({
             id: 'beta',
             type: 'hero',
-            position: 10,
+            currentPosition: 10,
             currentHp: 13,
           }),
           fighter({
             id: 'scout',
             type: 'assistant',
-            position: null,
+            currentPosition: null,
             currentHp: 3,
           }),
         ],
@@ -67,7 +67,7 @@ describe('PLACE', () => {
     const state = placementState();
     place(state, { playerId: '0', fighterId: 'pawn', cellId: 1 });
     expect(
-      state.players[0].fighters.find(f => f.id === 'pawn').position,
+      state.players[0].fighters.find(f => f.id === 'pawn').currentPosition,
     ).toBe(1);
   });
 

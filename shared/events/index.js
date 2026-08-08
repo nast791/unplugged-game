@@ -13,6 +13,13 @@ export { CHECK_HAND_LIMIT } from './checkHandLimit.js';
 export { DISCARD_CARDS } from './discardCards.js';
 export { END_TURN } from './endTurn.js';
 export { EXHAUSTION } from './exhaustion.js';
-export { RESOLVE_COMBAT } from './resolveCombat.js';
+export {
+  RESOLVE_COMBAT,
+  RUN_COMBAT,
+  continueCombat,
+  continueCombatAfterResume,
+  buildCombatSteps,
+  resolveCombatWinner,
+} from './resolveCombat.js';
 export { STANDSTILL } from './standstill.js';
 export { APPLY_BONUS } from './bonus.js';

@@ -1,11 +1,7 @@
 import { PHASES } from '@nast791/engine/constants';
 import { TRIGGERS } from '@nast791/cards/constants';
 import { getCardEngine } from '@nast791/cards/server';
-import {
-  CARD_TYPES,
-  isAttackCard,
-  isEffectCard,
-} from '#shared/constants/cards.js';
+import { cardTypes } from '#shared/constants/deck.js';
 import { SPEND_AP } from '#shared/events/index.js';
 import {
   assertNoPendingCombat,
@@ -13,6 +9,8 @@ import {
   discardFromHand,
   findInHand,
 } from '#shared/helpers.js';
+
+const cardTurn = type => cardTypes.find(t => t.name === type)?.turn ?? [];
 
 /**
  * PLAY_CARD — type=effect: discard → cards.resolve(onPlay) → SPEND_AP.
@@ -39,13 +37,13 @@ export const playCard = (state, action, api) => {
     throw new Error(`PLAY_CARD: карты "${cardId}" нет в hand`);
   }
 
-  if (isAttackCard(card.type)) {
+  if (cardTurn(card.type).includes('attack')) {
     throw new Error('PLAY_CARD: attack|hybrid через ATTACK');
   }
-  if (card.type === CARD_TYPES.defense) {
+  if (cardTurn(card.type).includes('defense')) {
     throw new Error('PLAY_CARD: defense через DEFEND (во время боя)');
   }
-  if (!isEffectCard(card.type)) {
+  if (!cardTurn(card.type).includes('effect')) {
     throw new Error(
       `PLAY_CARD: type="${card.type}" не поддержан (нужен effect)`,
     );

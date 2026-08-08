@@ -10,8 +10,8 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
 
   if (params.areaOf != null) {
     const { fighter } = findFighter(state, params.areaOf);
-    if (!fighter?.position) return [];
-    areaId = areaIdAtCell(state, fighter.position);
+    if (!fighter?.currentPosition) return [];
+    areaId = areaIdAtCell(state, fighter.currentPosition);
     if (areaId == null) return [];
   }
 
@@ -22,16 +22,16 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
     if (side === 'self' && !isOwner) continue;
 
     for (const fighter of player.fighters ?? []) {
-      if (fighter.position == null) continue;
+      if (fighter.currentPosition == null) continue;
       if (Number(fighter.currentHp) <= 0) continue;
-      if (areaId != null && areaIdAtCell(state, fighter.position) !== areaId) {
+      if (areaId != null && areaIdAtCell(state, fighter.currentPosition) !== areaId) {
         continue;
       }
       out.push({
         fighterId: String(fighter.id),
         playerId: String(player.id),
         name: fighter.name || fighter.id,
-        position: fighter.position,
+        position: fighter.currentPosition,
       });
     }
   }
