@@ -1,4 +1,3 @@
-import { PHASES } from '@nast791/engine/constants';
 import { combat } from '#shared/constants/hooks.js';
 import { participants } from '#shared/constants/roles.js';
 import { DEAL_DAMAGE } from './dealDamage.js';
@@ -89,7 +88,7 @@ export const RESOLVE_COMBAT = (
       { fighterId: combat.targetFighterId, damage: outcome.combatDamage },
       { api },
     );
-    if (next.phase === PHASES.gameEnd) return next;
+    if (next.hook === 'gameEnd') return next;
     return next;
   }
 
@@ -129,7 +128,7 @@ export const continueCombat = (state, { api, cards } = {}) => {
         { api },
       );
       flow.stepIndex += 1;
-      if (next.phase === PHASES.gameEnd) {
+      if (next.hook === 'gameEnd') {
         next.combatFlow = null;
         return next;
       }

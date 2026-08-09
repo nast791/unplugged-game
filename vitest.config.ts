@@ -11,6 +11,9 @@ export default defineVitestConfig({
   resolve: {
     alias: {
       '#shared': fileURLToPath(new URL('./shared', import.meta.url)),
+      '#tabletop-host-actions': fileURLToPath(
+        new URL('./shared/actions/index.js', import.meta.url),
+      ),
       '#tabletop-card-effects': fileURLToPath(
         new URL('./shared/cardEffects.js', import.meta.url),
       ),

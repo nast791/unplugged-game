@@ -1,8 +1,8 @@
 import { rules } from '#shared/constants/rules.js';
+import { zoneCards } from '#shared/helpers.js';
 
 /**
  * CHECK_HAND_LIMIT — перед turnEnd: если hand > max → handDiscard, иначе enterTurnEnd.
- * Вызывается как beforeEnterTurnEnd (не публичный sendAction).
  */
 export const CHECK_HAND_LIMIT = (state, _payload = {}, { enterTurnEnd } = {}) => {
   if (typeof enterTurnEnd !== 'function') {
@@ -10,14 +10,14 @@ export const CHECK_HAND_LIMIT = (state, _payload = {}, { enterTurnEnd } = {}) =>
   }
 
   const player = (state.players ?? []).find(
-    p => String(p.id) === String(state.currentPlayer),
+    p => String(p.id) === String(state.turn?.playerId),
   );
   if (!player) {
     return enterTurnEnd(state);
   }
 
   const max = rules.maxHandSize;
-  const handLen = Array.isArray(player.hand) ? player.hand.length : 0;
+  const handLen = zoneCards(player.hand).length;
 
   if (handLen > max) {
     state.handDiscard = {

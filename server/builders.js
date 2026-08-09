@@ -25,24 +25,10 @@ export const buildDeck = (cards = []) =>
     })),
   );
 
-const autoStartCell = (mapState, seatIndex) => {
-  const startArea = Number(seatIndex) + 1;
-  return (
-    (mapState?.nodes ?? []).find(
-      n => Number(n.position) === startArea && n.heroStart === true,
-    ) ?? null
-  );
-};
-
-export const buildFighter = (fighter, index = 0, { mapState, seatIndex, heroCount } = {}) => {
+const buildFighter = (fighter, index = 0) => {
   const { count, hp, ...rest } = fighter;
   const copies = count ?? 1;
   const id = copies > 1 ? `${fighter.id}_${index + 1}` : fighter.id;
-  const startCell =
-    fighter.type === 'hero' && heroCount === 1
-      ? autoStartCell(mapState, seatIndex)
-      : null;
-  const cellId = startCell?.id ?? null;
 
   return {
     ...rest,
@@ -55,20 +41,23 @@ export const buildFighter = (fighter, index = 0, { mapState, seatIndex, heroCoun
     move: fighter.move ?? 0,
     startHp: hp,
     currentHp: hp,
-    startPosition: cellId,
-    currentPosition: cellId,
+    startPosition: null,
+    currentPosition: null,
     active: false,
     canPassThroughEnemies: rules.canPassThroughEnemies,
   };
 };
 
 export const buildFighters = (pack, mapState, seatIndex) => {
+  void mapState;
+  void seatIndex;
   const heroList = pack.heroes ?? [];
-  const ctx = { mapState, seatIndex, heroCount: heroList.length };
-  const heroUnits = heroList.map(hero => buildFighter(hero, 0, ctx));
+  const heroUnits = heroList.map(hero => buildFighter(hero, 0));
   const assistants = (pack.assistants ?? []).flatMap(assistant => {
-    const n = assistant.count || 1;
-    return Array.from({ length: n }, (_, i) => buildFighter(assistant, i, ctx));
+    const count = assistant.count || 1;
+    return Array.from({ length: count }, (_, index) =>
+      buildFighter(assistant, index),
+    );
   });
   return [...heroUnits, ...assistants];
 };
@@ -87,6 +76,8 @@ export const buildPlayer = (slot, pack, seatIndex, mapState, rng) => {
     team: slot.team,
     color: pack.color ?? null,
     skill: pack.skill ?? null,
+    placementReady: false,
+    numberedHeroCommitted: false,
     fighters: buildFighters(pack, mapState, seatIndex),
     items: (pack.items ?? []).map((item, i) => ({
       ...item,
@@ -107,4 +98,31 @@ export const buildPlayer = (slot, pack, seatIndex, mapState, rng) => {
       cards: [],
     },
   };
+};
+
+/**
+ * Порядок хода для командного режима: A, B, A, B — без двух игроков одной команды подряд.
+ * players — слоты игроков (human/ai); heroId — выбранный герой контента (medusa, …).
+ */
+export const sortPlayersByTeam = players => {
+  const sorted = [...players].sort((left, right) => left.order - right.order);
+  const byTeam = new Map();
+  for (const player of sorted) {
+    const list = byTeam.get(player.team) ?? [];
+    list.push({ ...player });
+    byTeam.set(player.team, list);
+  }
+
+  const teamQueues = [...byTeam.entries()]
+    .sort(([, left], [, right]) => left[0].order - right[0].order)
+    .map(([, list]) => list);
+
+  const interleaved = [];
+  while (interleaved.length < sorted.length) {
+    for (const queue of teamQueues) {
+      if (queue.length) interleaved.push(queue.shift());
+    }
+  }
+
+  return interleaved.map((player, index) => ({ ...player, order: index + 1 }));
 };

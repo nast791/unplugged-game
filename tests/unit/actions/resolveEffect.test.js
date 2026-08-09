@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PHASES } from '@nast791/engine/constants';
 import { onPhase, resolveEffect } from '#shared/actions/resolveEffect.js';
-import { createApi, createState, fighter, player } from '../../fixtures/state.js';
+import { createApi, createState, fighter, player, PHASES } from '../../fixtures/state.js';
 
 const areaMap = {
   id: 'areas',
@@ -79,7 +78,7 @@ const gazeState = () => {
 describe('onPhase → cards.dispatch / resume', () => {
   it('фаза не turnStart → нет prompt', () => {
     const state = gazeState();
-    state.phase = PHASES.turn;
+    state.hook = PHASES.turn;
     onPhase(state, createApi());
     expect(state.effectPrompt).toBeNull();
   });

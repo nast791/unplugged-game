@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { place } from '#shared/actions/place.js';
+import { runAction, runLifecycle } from '#shared/gameEngine.js';
 import { move } from '#shared/actions/move.js';
 import { attack } from '#shared/actions/attack.js';
 import { defend } from '#shared/actions/defend.js';
 import {
+  ap,
   createApi,
   createState,
   fighter,
@@ -11,19 +12,19 @@ import {
   PHASES,
 } from '../fixtures/state.js';
 
-/**
- * Сквозной сценарий: расстановка → ход → MOVE → ATTACK → DEFEND.
- */
 describe('scenario: placement → combat', () => {
   it('полный цикл до урона и сохранения AP', () => {
-    const state = createState({
+    let state = runLifecycle(
+      createState({
       phase: PHASES.gameStart,
       actionsLeft: 0,
       players: [
         {
           id: '0',
           name: 'A',
+          order: 1,
           placementReady: false,
+          hint: null,
           deck: [{ id: 'd1', instanceId: 'd1_0' }],
           hand: [
             {
@@ -40,7 +41,8 @@ describe('scenario: placement → combat', () => {
             fighter({
               id: 'alpha',
               type: 'hero',
-              currentPosition: 6,
+              currentPosition: null,
+              startPosition: null,
               currentHp: 15,
               move: 2,
             }),
@@ -55,7 +57,9 @@ describe('scenario: placement → combat', () => {
         {
           id: '1',
           name: 'B',
+          order: 2,
           placementReady: false,
+          hint: null,
           deck: [],
           hand: [
             {
@@ -72,7 +76,8 @@ describe('scenario: placement → combat', () => {
             fighter({
               id: 'beta',
               type: 'hero',
-              currentPosition: 10,
+              currentPosition: null,
+              startPosition: null,
               currentHp: 13,
             }),
             fighter({
@@ -87,42 +92,44 @@ describe('scenario: placement → combat', () => {
       map: {
         id: 'arena',
         nodes: [
-          { id: 1, neighbors: [6], position: 1 },
-          { id: 6, neighbors: [1, 7], position: 1, heroStart: true },
-          { id: 7, neighbors: [6, 8], position: null },
-          { id: 8, neighbors: [7, 9], position: null },
-          { id: 9, neighbors: [8, 10], position: null },
-          { id: 5, neighbors: [10], position: 2 },
-          { id: 10, neighbors: [5, 9], position: 2, heroStart: true },
+          { id: 1, neighbors: [6], position: 1, areas: ['#3B82F6'] },
+          { id: 6, neighbors: [1, 7], position: 1, heroStart: true, areas: ['#3B82F6'] },
+          { id: 7, neighbors: [6, 8], position: null, areas: ['#94a3b8'] },
+          { id: 8, neighbors: [7, 9], position: null, areas: ['#94a3b8'] },
+          { id: 9, neighbors: [8, 10], position: null, areas: ['#94a3b8'] },
+          { id: 5, neighbors: [10], position: 2, areas: ['#EF4444'] },
+          { id: 10, neighbors: [5, 9], position: 2, heroStart: true, areas: ['#EF4444'] },
         ],
       },
+    }),
+    );
+
+    state = runAction(state, {
+      type: 'PLACE_FIGHTER',
+      playerId: '0',
+      fighterId: 'pawn',
+      cellId: 1,
     });
-
-    place(state, { playerId: '0', fighterId: 'pawn', cellId: 1 });
-    place(state, { playerId: '0', mode: 'confirm' });
-    place(state, { playerId: '1', fighterId: 'scout', cellId: 5 });
-    place(state, { playerId: '1', mode: 'confirm' });
-    expect(state.phase).toBe(PHASES.turnStart);
-
-    // имитация drain: turnStart → turn
-    state.phase = PHASES.turn;
-    state.actionsLeft = 2;
-    state.currentPlayer = '0';
+    state = runAction(state, { type: 'UI_OK', playerId: '0' });
+    state = runAction(state, {
+      type: 'PLACE_FIGHTER',
+      playerId: '1',
+      fighterId: 'scout',
+      cellId: 5,
+    });
+    state = runAction(state, { type: 'UI_OK', playerId: '1' });
+    expect(state.hook).toBe(PHASES.turn);
 
     const api = createApi();
     move(state, { playerId: '0', fighterId: 'alpha', cellId: 7 });
     move(state, { playerId: '0', fighterId: 'alpha', cellId: 8 });
     move(state, { playerId: '0', mode: 'confirm' }, api);
-    expect(state.actionsLeft).toBe(1);
+    expect(ap(state)).toBe(1);
 
     move(state, { playerId: '0', fighterId: 'alpha', cellId: 9 });
-    // ещё в movement — атаковать нельзя; confirm сначала нельзя без AP... AP=1
-    // закрываем move confirm (потратит последний AP) — тогда attack некуда.
-    // Вместо этого: отменим подход — поставим alpha на 9 без второго confirm
-    // через прямой state для атаки после первого confirm:
     state.movement = null;
     player(state).fighters.find(f => f.id === 'alpha').currentPosition = 9;
-    state.actionsLeft = 1;
+    state.turn.actionsLeft = 1;
 
     attack(
       state,
@@ -135,7 +142,7 @@ describe('scenario: placement → combat', () => {
       api,
     );
     expect(state.combat).toBeTruthy();
-    expect(state.actionsLeft).toBe(0);
+    expect(ap(state)).toBe(0);
 
     const next = defend(
       state,
@@ -144,6 +151,6 @@ describe('scenario: placement → combat', () => {
     );
     expect(next.lastCombat.combatDamage).toBe(1);
     expect(next.players[1].fighters[0].currentHp).toBe(12);
-    expect(next.phase).toBe(PHASES.turnEnd);
+    expect(next.hook).toBe(PHASES.turnEnd);
   });
 });

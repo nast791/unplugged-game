@@ -1,4 +1,4 @@
-/** Хуки жизненного цикла партии. */
+/** Хуки жизненного цикла партии (= state.hook). */
 export const lifecycle = [
   { name: 'gameStart', order: 1 },
   { name: 'turnStart', order: 2 },

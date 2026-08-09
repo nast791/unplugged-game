@@ -1,4 +1,3 @@
-import { PHASES } from '@nast791/engine/constants';
 import { cardTypes } from '#shared/constants/deck.js';
 import { SPEND_AP } from '#shared/events/index.js';
 import {
@@ -16,8 +15,8 @@ import { bfsDistance } from './move.js';
  * Если у карты есть fighter — атакует он (не выбранный помощник).
  */
 export const attack = (state, action, api) => {
-  if (state.phase !== PHASES.turn) {
-    throw new Error(`ATTACK только в phase=turn, сейчас "${state.phase}"`);
+  if (state.hook !== 'turn') {
+    throw new Error(`ATTACK только в hook=turn, сейчас "${state.hook}"`);
   }
   assertNoPendingCombat(state, 'ATTACK');
   assertNoPendingMovement(state, 'ATTACK');

@@ -1,6 +1,7 @@
 import { stacks } from '#shared/constants/deck.js';
 import { playerFields, stateFields } from '#shared/constants/state.js';
-
+import { runUi } from '#shared/core.js';
+import { runLifecycle } from '#shared/gameEngine.js';
 const MAX_PARTIES = 32;
 const parties = new Map();
 
@@ -62,11 +63,6 @@ const canSee = (visibility, rel) => {
   return roles.includes(rel);
 };
 
-const isPublicField = visibility =>
-  canSee(visibility, 'self') &&
-  canSee(visibility, 'team') &&
-  canSee(visibility, 'enemy');
-
 const projectState = (state, rel) => {
   const out = {};
   for (const [key, visibility] of Object.entries(stateFields)) {
@@ -123,26 +119,22 @@ const projectPlayer = (player, state, you) => {
   return out;
 };
 
-/** Ответ POST /api/game/create — без playerId, без скрытых зон. */
-export const createResponse = state => {
-  const out = projectState(state, 'self');
-  out.players = (state.players ?? []).map(player => {
-    const outPlayer = {};
-    for (const [key, visibility] of Object.entries(playerFields)) {
-      if (stack(key) || !isPublicField(visibility)) continue;
-      outPlayer[key] = player[key];
-    }
-    return outPlayer;
-  });
-  return out;
+/** gameStart до enter: один раз прогнать lifecycle на клоне для согласованного view. */
+const normalizeForView = state => {
+  if (state.hook !== 'gameStart' || state._enteredHooks?.gameStart) {
+    return state;
+  }
+  return runLifecycle(structuredClone(state));
 };
 
 /** View — playerId из запроса, роль считаем на лету из id + team. */
 export const view = (state, playerId) => {
-  const you = findYou(state, playerId);
+  const snapshot = normalizeForView(state);
+  const you = findYou(snapshot, playerId);
   return {
-    ...projectState(state, 'self'),
+    ...projectState(snapshot, 'self'),
     you: String(playerId),
-    players: (state.players ?? []).map(p => projectPlayer(p, state, you)),
+    ui: runUi(snapshot, playerId),
+    players: (snapshot.players ?? []).map(p => projectPlayer(p, snapshot, you)),
   };
 };

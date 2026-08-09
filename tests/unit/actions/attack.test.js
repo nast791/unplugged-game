@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { attack } from '#shared/actions/attack.js';
-import { createApi, createState, player } from '../../fixtures/state.js';
+import { ap, createApi, createState, hand, player } from '../../fixtures/state.js';
 
 describe('ATTACK', () => {
   it('открывает combat и тратит 1 AP', () => {
     const state = createState({ actionsLeft: 2 });
-    // pawn@9 adjacent to beta@10
     const p = player(state);
-    const atk = p.hand.find(c => c.id === 'atk');
-    // card.fighter=alpha but alpha@8 not adjacent to beta@10 (dist=2, range=1)
-    // move alpha to 9 first via mutating, or use attack from pawn — card binds to alpha
+    const atk = hand(p).find(c => c.id === 'atk');
     p.fighters.find(f => f.id === 'alpha').currentPosition = 9;
     p.fighters.find(f => f.id === 'pawn').currentPosition = 8;
 
@@ -31,13 +28,13 @@ describe('ATTACK', () => {
       attackValue: 4,
       targetFighterId: 'beta',
     });
-    expect(state.actionsLeft).toBe(1);
-    expect(p.hand.find(c => c.id === 'atk')).toBeUndefined();
+    expect(ap(state)).toBe(1);
+    expect(hand(p).find(c => c.id === 'atk')).toBeUndefined();
   });
 
   it('out of range → error', () => {
     const state = createState();
-    const atk = player(state).hand.find(c => c.id === 'atk');
+    const atk = hand(player(state)).find(c => c.id === 'atk');
     expect(() =>
       attack(state, {
         playerId: '0',

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import svgLoader from 'vite-svg-loader';
 import tailwindcss from '@tailwindcss/vite';
 
@@ -8,16 +9,17 @@ export default defineNuxtConfig({
     devLogs: false,
   },
   modules: [
-    '@nast791/engine',
     '@nast791/cards',
     '@nuxt/test-utils/module',
     '@nuxt/image',
     '@peterbud/nuxt-query',
     '@nuxt/icon',
   ],
-  tabletopEngine: {
-    apiPrefix: '/api/tabletop',
-    actions: '#shared/actions/index.js',
+  alias: {
+    '#shared': fileURLToPath(new URL('./shared', import.meta.url)),
+    '#tabletop-card-effects': fileURLToPath(
+      new URL('./shared/cardEffects.js', import.meta.url),
+    ),
   },
   tabletopCards: {
     effects: '#shared/cardEffects.js',

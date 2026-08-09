@@ -23,6 +23,7 @@ export const playerFields = {
   skill: ['self', 'team', 'enemy'],
   items: ['self', 'team', 'enemy'],
   fighters: ['self', 'team', 'enemy'],
+  placementReady: ['self', 'team', 'enemy'],
   deck: [],
   hand: ['self', 'team'],
   discard: ['self', 'team', 'enemy'],

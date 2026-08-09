@@ -1,12 +1,23 @@
 import { getCardEngine } from '@nast791/cards/server';
 import { continueCombatAfterResume } from '#shared/events/index.js';
 
+const skillSources = state => {
+  const player = (state.players ?? []).find(
+    p => String(p.id) === String(state.turn?.playerId),
+  );
+  if (!player?.skill) return [];
+  return [{ doc: player.skill, player, kind: 'skill' }];
+};
+
 /**
- * Вход в любую фазу → cards.dispatch (triggers сверяются с state.phase).
- * Хост не знает имён фаз и типов pause.
+ * Вход в hook → cards.dispatch (triggers сверяются с phase = state.hook).
  */
 export const onPhase = (state, api) =>
-  getCardEngine().dispatch(state, { api });
+  getCardEngine().dispatch(state, {
+    api,
+    phase: state.hook,
+    sources: skillSources(state),
+  });
 
 /** Engine lifecycle aliases — одна и та же проверка по фазе. */
 export const onGameStart = onPhase;

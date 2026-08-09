@@ -1,20 +1,29 @@
-import { PHASES } from '@nast791/engine/constants';
+import { rules } from '#shared/constants/rules.js';
+import { CHECK_HAND_LIMIT } from '#shared/events/index.js';
+import { createPartyApi } from '#shared/gameEngine.js';
+import { zoneCards } from '#shared/helpers.js';
 
-/** Мок api хоста для events/actions. */
-export const createApi = () => ({
-  enterTurnEnd: state => ({
-    ...state,
-    phase: PHASES.turnEnd,
-  }),
-  enterGameEnd: (state, winner) => ({
-    ...state,
-    phase: PHASES.gameEnd,
-    winner: winner === undefined ? state.winner : winner,
-    actionsLeft: 0,
-  }),
-});
+/** Имена lifecycle-хуков для тестов. */
+export const PHASES = {
+  gameStart: 'gameStart',
+  turnStart: 'turnStart',
+  turn: 'turn',
+  turnEnd: 'turnEnd',
+  gameEnd: 'gameEnd',
+};
 
-const card = (partial) => ({
+export const ap = state => state.turn?.actionsLeft;
+export const hand = player => zoneCards(player?.hand);
+export const deck = player => zoneCards(player?.deck);
+export const discard = player => zoneCards(player?.discard);
+
+/** Мок api для unit-тестов actions/events. */
+export const createApi = () =>
+  createPartyApi({
+    beforeEnterTurnEnd: (state, api) => CHECK_HAND_LIMIT(state, {}, api),
+  });
+
+const card = partial => ({
   type: 'effect',
   value: 0,
   bonus: 1,
@@ -22,13 +31,15 @@ const card = (partial) => ({
   instanceId: partial.instanceId ?? `${partial.id}_0`,
 });
 
-const fighter = (partial) => ({
+const fighter = partial => ({
   type: 'hero',
   move: 2,
   attackRange: 1,
   currentHp: 10,
   ...partial,
 });
+
+const zone = cards => ({ visibility: [], cards: [...cards] });
 
 /** Миникарта: 8—9—10 (соседи), удобно для MOVE/ATTACK. */
 export const miniMap = {
@@ -42,40 +53,45 @@ export const miniMap = {
 };
 
 /**
- * Базовый state для unit/scenario тестов.
+ * Базовый state партии (host format: hook, turn, zones).
  * @param {object} [patch]
  */
 export const createState = (patch = {}) => {
+  const { phase, actionsLeft, players: patchPlayers, map: patchMap, turn: patchTurn, ...rest } =
+    patch;
+
   const state = {
     id: 'test-game',
-    phase: PHASES.turn,
-    currentPlayer: '0',
-    turn: 0,
-    actionsLeft: 2,
+    hook: PHASES.turn,
+    round: 1,
     winner: null,
+    turn: {
+      index: 0,
+      playerId: '0',
+      actionsTotal: rules.actionsPerTurn,
+      actionsLeft: rules.actionsPerTurn,
+      bonus: { movement: 0, attack: 0, defense: 0, actions: 0 },
+    },
     combat: null,
     movement: null,
     handDiscard: null,
     effectPrompt: null,
     lastCombat: null,
     lastBonus: null,
-    rules: {
-      startingPlayer: '0',
-      actionsPerTurn: 2,
-      handSize: 5,
-      maxHandSize: 7,
-    },
     map: structuredClone(miniMap),
+    settings: { startingPlayerId: '0' },
+    log: { battles: [], feed: [] },
     players: [
       {
         id: '0',
         name: 'Alpha',
+        order: 1,
         placementReady: true,
-        deck: [
+        deck: zone([
           card({ id: 'deck_a', title: 'DeckA', bonus: 1 }),
           card({ id: 'deck_b', title: 'DeckB', bonus: 1 }),
-        ],
-        hand: [
+        ]),
+        hand: zone([
           card({
             id: 'atk',
             title: 'Atk',
@@ -101,8 +117,8 @@ export const createState = (patch = {}) => {
             fighter: 'alpha',
             events: [{ type: 'DRAW_CARDS', count: 1 }],
           }),
-        ],
-        discard: [],
+        ]),
+        discard: zone([]),
         fighters: [
           fighter({
             id: 'alpha',
@@ -124,9 +140,10 @@ export const createState = (patch = {}) => {
       {
         id: '1',
         name: 'Beta',
+        order: 2,
         placementReady: true,
-        deck: [card({ id: 'deck_c', bonus: 1 })],
-        hand: [
+        deck: zone([card({ id: 'deck_c', bonus: 1 })]),
+        hand: zone([
           card({
             id: 'bdef',
             title: 'BDef',
@@ -135,8 +152,8 @@ export const createState = (patch = {}) => {
             bonus: 1,
             fighter: 'beta',
           }),
-        ],
-        discard: [],
+        ]),
+        discard: zone([]),
         fighters: [
           fighter({
             id: 'beta',
@@ -148,12 +165,16 @@ export const createState = (patch = {}) => {
         ],
       },
     ],
-    ...patch,
+    ...rest,
   };
 
-  if (patch.players) state.players = patch.players;
-  if (patch.map) state.map = patch.map;
-  if (patch.rules) state.rules = { ...state.rules, ...patch.rules };
+  if (patchPlayers) state.players = patchPlayers;
+  if (patchMap) state.map = patchMap;
+  if (patchTurn) state.turn = { ...state.turn, ...patchTurn };
+  if (phase != null) state.hook = phase;
+  if (actionsLeft != null) {
+    state.turn = { ...state.turn, actionsLeft };
+  }
 
   return structuredClone(state);
 };

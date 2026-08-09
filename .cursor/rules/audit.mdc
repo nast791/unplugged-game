@@ -1,0 +1,57 @@
+---
+description: Чеклист полного аудита проекта UnPlugged
+alwaysApply: false
+---
+# Аудит проекта UnPlugged
+Использовать перед крупным merge, после рефакторинга lifecycle/phases или по запросу «полный аудит».
+## 1. Покрытие тестами
+- [ ] **Core:** `runAction`, `runLifecycle`, `runUiControls` — happy path и guard-ошибки.
+- [ ] **gameStart:** pickNumHero (2+ героя), place (1 герoy, N бойцов), переход `gameStart → turnStart`.
+- [ ] **Ход:** MOVE, ATTACK, DEFEND, END_TURN, AP, pending (combat, movement, handDiscard, effectPrompt).
+- [ ] **Create/view:** `createGame`, `party.view`, hidePos на gameStart, seed не в view.
+- [ ] **Сценарии:** placement-to-combat, move-bonus — end-to-end через `runAction`.
+- [ ] Новый код в `phases/`, `actions-new/`, `helpers/` — unit-тест на каждый публичный контракт.
+- [ ] Нет тестов «ради coverage» на тривиальные getter/setter.
+## 2. Документация
+- [ ] `.cursor/rules/architecture.mdc` актуален относительно кода.
+- [ ] `.cursor/rules/internal-logic.mdc` описывает текущие хуки/phases/actions.
+- [ ] `TODO` — только открытые задачи, без выполненного мусора.
+- [ ] Новые action types / поля state — отражены в internal-logic.
+- [ ] Публичный README (если есть) не противоречит architecture.
+## 3. Мёртвый код и сокращение
+- [ ] Нет неиспользуемых export в `shared/actions/` после миграции на `actions-new/`.
+- [ ] Нет дублирования placement-логики в старом `place.js` и новых phases.
+- [ ] `gameEngine.js` — только re-export или удалён после перехода на `core.js`.
+- [ ] Нет `lifecycle/index.js` и прочих агрегаторов без потребителей.
+- [ ] UI: локальный `hint.ref` не дублирует server `player.hint`.
+- [ ] Удалены `@deprecated` alias после миграции UI.
+## 4. Гварды (assert / active)
+- [ ] **`core.runAction`:** `assertPlayer`, `assertTurn`, `assertPending` — каждый guard покрыт тестом на throw и не дублирует проверки handler/phases.
+- [ ] **gameStart:** PLACE / UI_OK / UI_BACK доступны любому игроку; turn-ходы — только `turn.playerId` (и исключения pending: DEFEND, DISCARD_CARDS, RESOLVE_EFFECT).
+- [ ] **Phases:** `active(state, playerId)` согласован с guards в `ok` / `back` / actions — нельзя обойти guard через UI или другой action type.
+- [ ] **Handlers / actions-new:** бизнес-проверки (locked hero, placementReady, hook) — явные throw с понятным message; нет «тихого» no-op там, где ожидается ошибка.
+- [ ] **Сервер:** `state.post` — id / playerId; create — validateCreate; guards не ослаблены относительно core.
+- [ ] **Новый action / phase** — добавлен guard (или обосновано, почему не нужен) и тест «отклоняет неверный контекст».
+## 5. Баги и логические ошибки
+- [ ] `runLifecycle` не пропускает `gameStart` до `allPlayersPlacementReady`.
+- [ ] `stepHook` / legacy advance не конфликтует с phase active-условиями.
+- [ ] Numbered hero locked в place; pickNumHero не ставит без UI_OK.
+- [ ] Hotseat: `placementReady` и hint видны через projection.
+## 6. Утечки и ресурсы
+- [ ] `party.js` MAX_PARTIES / trim — finished games removed.
+- [ ] `hostState` в Nuxt useState очищается при exit (`clear()`).
+- [ ] Нет роста `log.feed` / `log.battles` без лимита (если применимо).
+- [ ] structuredClone на save/load — нет мутации shared references между клиентами.
+## 7. Несоответствие задуманной логике
+- [ ] Сверка с `internal-logic.mdc` по каждому lifecycle hook.
+- [ ] Team mode TODO — если включён mode 2v2, проверить attack/move/facts/winner.
+- [ ] Карты `@nast791/cards` — phase = hook, не смешивать combat hooks.
+- [ ] View fields ⊆ `stateFields` / `playerFields`.
+## 8. Сломано / не работает
+- [ ] `npm test` — все green.
+- [ ] `nuxt build` — без ошибок.
+- [ ] Лобби → create → game → placement → turn — ручной smoke.
+- [ ] POST state с неверным gameId / playerId — корректные 400.
+- [ ] Regression: RESIGN (когда будет в core) → gameEnd.
+## Отчёт
+После аудита — краткий список: **Critical / Should fix / Nice to have**, с путями файлов и ссылкой на тест, который добавить или починить.

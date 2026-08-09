@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defend } from '#shared/actions/defend.js';
-import { createApi, createState, player, PHASES } from '../../fixtures/state.js';
+import { ap, createApi, createState, hand, player, PHASES } from '../../fixtures/state.js';
 
 const withCombat = (actionsLeft = 1) =>
   createState({
@@ -21,13 +21,13 @@ describe('DEFEND', () => {
     const next = defend(state, { playerId: '1' }, api);
     expect(next.combat).toBeNull();
     expect(next.lastCombat.combatDamage).toBe(4);
-    expect(next.phase).toBe(PHASES.turn);
-    expect(next.actionsLeft).toBe(1);
+    expect(next.hook).toBe(PHASES.turn);
+    expect(ap(next)).toBe(1);
   });
 
   it('картой снижает урон', () => {
     const state = withCombat(2);
-    const def = player(state, '1').hand.find(c => c.id === 'bdef');
+    const def = hand(player(state, '1')).find(c => c.id === 'bdef');
     const api = createApi();
     defend(
       state,
@@ -42,6 +42,6 @@ describe('DEFEND', () => {
     const state = withCombat(0);
     const api = createApi();
     const next = defend(state, { playerId: '1' }, api);
-    expect(next.phase).toBe(PHASES.turnEnd);
+    expect(next.hook).toBe(PHASES.turnEnd);
   });
 });

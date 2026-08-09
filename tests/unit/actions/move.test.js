@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { move } from '#shared/actions/move.js';
-import { createApi, createState, player } from '../../fixtures/state.js';
+import { ap, createApi, createState, hand, player } from '../../fixtures/state.js';
 
 describe('MOVE', () => {
   it('шаг в радиусе move', () => {
@@ -14,7 +14,7 @@ describe('MOVE', () => {
   it('mode bonus усиливает радиус', () => {
     const state = createState();
     const p = player(state);
-    const fx = p.hand.find(c => c.id === 'fx');
+    const fx = hand(p).find(c => c.id === 'fx');
     move(state, { playerId: '0', mode: 'bonus', cardId: fx.instanceId });
     expect(state.movement.bonus).toBe(2);
     expect(state.movement.bonusApplied).toBe(true);
@@ -26,7 +26,7 @@ describe('MOVE', () => {
     const api = createApi();
     move(state, { playerId: '0', fighterId: 'alpha', cellId: 9 });
     const next = move(state, { playerId: '0', mode: 'confirm' }, api);
-    expect(next.actionsLeft).toBe(1);
+    expect(ap(next)).toBe(1);
     expect(next.movement).toBeNull();
   });
 

@@ -25,7 +25,7 @@ describe('DEAL_DAMAGE', () => {
       { fighterId: 'beta', damage: 99 },
       { api },
     );
-    expect(next.phase).toBe(PHASES.gameEnd);
+    expect(next.hook).toBe(PHASES.gameEnd);
     expect(next.winner).toBe('0');
   });
 });

@@ -75,17 +75,20 @@ const humanHeroes = computed(() =>
   setup.heroes.filter(h => h.control === 'human'),
 );
 
+const { seed } = useGameView();
+
 const onStart = async () => {
   error.value = '';
   pending.value = true;
   try {
-    const game = await $fetch('/api/game/create', {
+    const res = await $fetch('/api/game/create', {
       method: 'POST',
-      body: setup,
+      body: { ...setup, playerId: asHeroId.value },
     });
+    seed(res.host, asHeroId.value);
     await navigateTo({
       path: '/game',
-      query: { gameId: game.id, playerId: asHeroId.value },
+      query: { gameId: res.id, playerId: asHeroId.value },
     });
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);

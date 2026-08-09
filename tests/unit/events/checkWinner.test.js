@@ -7,7 +7,7 @@ describe('CHECK_WINNER', () => {
     const state = createState();
     const api = createApi();
     const next = CHECK_WINNER(state, {}, { api });
-    expect(next.phase).toBe(PHASES.turn);
+    expect(next.hook).toBe(PHASES.turn);
   });
 
   it('enterGameEnd, если остался 1 герой', () => {
@@ -15,7 +15,7 @@ describe('CHECK_WINNER', () => {
     state.players[1].fighters = [];
     const api = createApi();
     const next = CHECK_WINNER(state, {}, { api });
-    expect(next.phase).toBe(PHASES.gameEnd);
+    expect(next.hook).toBe(PHASES.gameEnd);
     expect(next.winner).toBe('0');
   });
 });

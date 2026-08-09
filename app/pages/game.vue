@@ -13,6 +13,13 @@
       </NuxtLink>
     </header>
 
+    <p
+      v-if="placementHint"
+      class="border border-primary/20 bg-primary/5 px-4 py-3 text-16"
+    >
+      {{ placementHint }}
+    </p>
+
     <section class="grid gap-2 border border-primary/15 p-3 text-14 sm:grid-cols-3">
       <p>
         phase:
@@ -93,9 +100,12 @@
         <section class="flex flex-col gap-2 border border-primary/15 p-3">
           <p class="text-14 font-medium">Бойцы</p>
           <p class="text-12 opacity-60">
-            <template v-if="isPlacement">
-              Герой уже на старте. Расставьте помощников (клетки без heroStart),
-              затем «Подтвердить».
+            <template v-if="isPlacement && placementPhase === 'place'">
+              Расставьте всех бойцов в своей зоне. Главный герой на номерной
+              клетке не двигается.
+            </template>
+            <template v-else-if="isPlacement && placementPhase === 'pickNumHero'">
+              Выберите героя для номерной клетки (кнопка ОК).
             </template>
             <template v-else-if="handDiscard && iMustDiscard">
               Рука &gt; {{ handDiscard.max }}: выберите карту и «Сбросить».
@@ -148,8 +158,8 @@
               {{
                 fighter.currentPosition == null ? 'не на доске' : `кл. ${fighter.currentPosition}`
               }}
-              <template v-if="isPlacement && fighter.type === 'hero'">
-                · авто
+              <template v-if="isPlacement && fighter.type === 'hero' && fighter.currentPosition != null">
+                · номерная
               </template>
             </span>
           </button>
@@ -233,13 +243,22 @@
             Завершить перемещение
           </button>
           <button
-            v-if="isPlacement"
             type="button"
             class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
-            :disabled="pending || iAmReady || !myFightersPlaced || isGameOver"
-            @click="onConfirmPlacement"
+            :disabled="pending || isGameOver || !okEnabled"
+            @click="onUiOk"
           >
-            {{ iAmReady ? 'Ожидание соперника…' : 'Подтвердить расстановку' }}
+            <template v-if="isPlacement && iAmReady">Ожидание…</template>
+            <template v-else>ОК</template>
+          </button>
+          <button
+            v-if="backVisible"
+            type="button"
+            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
+            :disabled="pending || isGameOver || !backEnabled"
+            @click="onUiBack"
+          >
+            Назад
           </button>
           <template v-if="combat && iAmDefender">
             <button
@@ -311,6 +330,31 @@
       />
     </div>
 
+    <div
+      v-if="showPickNumHero"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    >
+      <div
+        class="flex max-w-md flex-col gap-4 border border-primary/20 bg-white p-6 shadow-lg"
+      >
+        <p class="text-16 font-medium">Герой для номерной клетки</p>
+        <label
+          v-for="hero in myHeroes"
+          :key="hero.id"
+          class="flex cursor-pointer items-center gap-3 border border-primary/15 p-3"
+        >
+          <input
+            v-model="selectedNumHeroId"
+            type="radio"
+            class="size-4"
+            :value="String(hero.id)"
+            @change="onPickNumHero(String(hero.id))"
+          />
+          <span>{{ hero.name || hero.id }}</span>
+        </label>
+      </div>
+    </div>
+
     <details v-if="view" class="text-14 opacity-70">
       <summary class="cursor-pointer">view (raw)</summary>
       <pre class="mt-2 max-h-60 overflow-auto border border-primary/10 p-3 text-12">{{
@@ -321,6 +365,17 @@
 </template>
 
 <script setup>
+const route = useRoute();
+const { bootstrap, clear } = useGameView();
+
+onUnmounted(() => clear());
+
+if (!route.query.gameId || !route.query.playerId) {
+  await navigateTo('/');
+} else {
+  await bootstrap(String(route.query.gameId), String(route.query.playerId));
+}
+
 const {
   view,
   gameId,
@@ -352,7 +407,15 @@ const {
   iMustEffect,
   myFighters,
   myHand,
-  myFightersPlaced,
+  placementHint,
+  ui,
+  placementPhase,
+  showPickNumHero,
+  myHeroes,
+  selectedNumHeroId,
+  okEnabled,
+  backVisible,
+  backEnabled,
   selectedCardLabel,
   selectedLabel,
   selectedDefenseCard,
@@ -370,7 +433,9 @@ const {
   onEndTurn,
   onConfirmMove,
   onBonusMove,
-  onConfirmPlacement,
+  onUiOk,
+  onUiBack,
+  onPickNumHero,
   onResign,
   onPlayCard,
   onDefend,

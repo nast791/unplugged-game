@@ -1,0 +1,137 @@
+---
+description: Внутренняя логика UnPlugged — потоки, условия, исключения
+alwaysApply: false
+---
+# Внутренняя логика UnPlugged
+Документ для быстрого вникания. Источник истины — код в `shared/core.js`, `shared/lifecycle/`, `shared/phases/`, `shared/actions-new/`.
+---
+## 1. Общий поток приложения
+```
+Лобби (index.vue)
+  → POST /api/game/create { mapId, mode, heroes, playerId }
+  → server: runLifecycle(state) перед save
+  → client: seed(host), navigate /game?gameId&playerId
+Игра (game.vue)
+  → bootstrap: hostState из useState + GET /api/party/view
+  → onUnmounted: useGameView.clear()
+  → действие игрока: runAction(hostState, action) локально
+  → POST /api/party/state { gameId, state, playerId }
+  → view = adaptPartyView(response)
+```
+**Сервер:** save/load state, `view(state, playerId)` — проекция видимости (self/team/enemy). Для gameStart без `_enteredHooks` view один раз прогоняет lifecycle на клоне (`normalizeForView`).
+**Клиент:** `shared/gameEngine.js` → core для `gameStart`, legacy для turn/combat.
+---
+## 2. Lifecycle (state.hook)
+Порядок из `shared/constants/hooks.js` → `lifecycle[]`:
+| order | hook       | Тип        | Статус        |
+|-------|------------|------------|---------------|
+| 1     | gameStart  | interactive| **новый core**|
+| 2     | turnStart  | transit    | legacy onPhase + auto-advance |
+| 3     | turn       | interactive| legacy actions |
+| 4     | turnEnd    | transit    | legacy + CHECK_HAND_LIMIT |
+| 5     | gameEnd    | terminal   | legacy |
+**runLifecycle(state):**
+1. Взять `currentHook` по `state.hook` из `lifecycle/registry.js`.
+2. `enter(state)` — один раз при входе (`_enteredHooks` + `runPhase` для каждого игрока).
+3. `body(state)` — **true**, если hook завершён → иначе **stop**.
+4. `exit(state)`.
+5. `hook = nextInLifecycle` → повтор (guard ≤ длина lifecycle).
+Legacy-хуки (turnStart, turn, turnEnd, gameEnd): `gameEngine.advanceHooks` + `stepHook`.
+---
+## 3. gameStart — расстановка
+### 3.1 Lifecycle gameStart
+| Фаза hook | Действие |
+|-----------|----------|
+| **enter** | `_enteredHooks.gameStart`; для каждого игрока `runPhase` (phase enter). |
+| **body**  | `allPlayersPlacementReady(state)` — у каждого `placementReady && все fighters на клетках`. |
+| **exit**  | Сброс `_activePhase`, `numberedHeroCommitted`; переход → `turnStart`. |
+### 3.2 Phases внутри gameStart
+Порядок `active`: **pickNumHero** → **place** (первая подходящая wins).
+#### pickNumHero (2+ героя)
+**active:** `playerHeroes.length > 1` **и** `!numberedHeroCommitted`.
+**hints** (`active` переключает текст):
+- `chooseHero` — пока нет preview на numbered
+- `confirmHero` — preview есть, ждём ОК или Назад
+**enter:** `numberedHeroCommitted = false`.
+**exit:** throw, если multi-hero и `!numberedHeroCommitted`.
+**moves:** `PLACE_FIGHTER` `{ zone: 'numbered', preview: true }` — герой на numbered cell без commit.
+**UI_OK:** `numberedHeroCommitted = true` → active place.
+**UI_BACK:** visible при preview → снять героя с numbered, `_activePhase = null`.
+#### place
+**active:** до `allPlayersPlacementReady`:
+- расстановка: `!placementReady` (+ multi: `numberedHeroCommitted` и герой на numbered);
+- ожидание: `placementReady && !allPlayersPlacementReady`.
+**enter (1 герой):** `PLACE_FIGHTER` `zone: 'numbered'` + `numberedHeroCommitted = true`.
+**hints:**
+- `placeFighters` — пока `!placementReady`
+- `waitingForAllPlayers` — после `UI_OK`, пока не все готовы
+**moves:** `PLACE_FIGHTER` `{ zone: 'area' }` — клетки **того же цвета** (`areas[0]`), что номерная клетка.
+**Locked:** главный герой на numbered cell — `isLockedHero`, throw при move.
+**UI_OK:** все fighters на клетках → `placementReady = true`.
+**UI_BACK:** **невидима** (`back` без `onPress` → throw).
+**ui (ожидание):** без подсветки, controls скрыты.
+### 3.3 Геометрия (`helpers/placement.js`, `helpers/base.js`)
+- `seatIndex` — `player.order - 1` или index в `players[]`.
+- `numberedCellId` — node с `heroStart` в зоне `position === seatIndex + 1`.
+- `startAreaCellIds` / `isPlacementAreaCell` — все nodes с тем же `nodeAreaId`, что номерная клетка.
+- `hasHeroOnNumberedCell`, `isLockedHero`, `hasPickPreview`.
+### 3.4 Create (builders + create.post)
+- Все fighters: `currentPosition: null`, `startPosition: null`.
+- После сборки: **`runLifecycle(state)`** перед `save` — enter gameStart, auto-numbered для 1 героя.
+- `teams_2v2`: `sortPlayersByTeam` → A,B,A,B.
+### 3.5 View на gameStart
+- `hidePos`: чужим fighters `currentPosition/startPosition = null`.
+- `ui` — `runUi(snapshot, playerId)`; snapshot через `normalizeForView` если enter ещё не был.
+- Подсказки — `ui.hint`, не поле в state.
+---
+## 4. turnStart → turn → turnEnd (legacy)
+**turnStart enter:** `onPhase` → cards.dispatch.
+**stepHook turnStart:** → `turn`, reset AP, clear pending fields.
+**turn body:** MOVE, ATTACK, PLAY_CARD, END_TURN, …
+**assertTurn:** только `turn.playerId`, кроме DEFEND/DISCARD/RESOLVE_EFFECT pending.
+**END_TURN:** AP>0 → STANDSTILL; AP=0 → enterTurnEnd.
+**turnEnd:** CHECK_HAND_LIMIT, onPhase, → next turnStart или gameEnd.
+---
+## 5. Actions и moves
+### Новые (actions-new)
+| type           | Файл           | Назначение |
+|----------------|----------------|------------|
+| UI_OK          | moves.js       | active phase → `ok.onPress` |
+| UI_BACK        | moves.js       | active phase → `back.onPress` (если есть) |
+| PLACE_FIGHTER  | placeFighter.js| `{ fighterId, cellId?, zone, preview? }` |
+### Legacy (shared/actions)
+MOVE, ATTACK, DEFEND, PLAY_CARD, DISCARD_CARDS, RESOLVE_EFFECT, END_TURN, RESIGN — до полной миграции.
+**RESIGN:** legacy `enterGameEnd`; TODO — через `runLifecycle`.
+---
+## 6. UI
+**runUi(state, playerId, clientContext?)** — не пишет в state:
+```js
+{ phase, hint, ...phase.ui() }  // modals, highlightedCellIds, controls
+```
+**controls** — из `phase.ui()` → `resolveOkBackControls` или override (place waiting).
+**Клиент:** `useGameSession` — `placementHint` из `runUi`; turn/combat hints — локальный `hint.ref`.
+---
+## 7. Исключения и ошибки
+| Ситуация | Поведение |
+|----------|-----------|
+| `hook === gameEnd` | gameEngine runAction throw «партия завершена» |
+| move вне allow-list phase | core throw «move недоступен» |
+| `action.playerId` не в партии | core throw |
+| PLACE_FIGHTER locked hero | throw |
+| PLACE_FIGHTER после `placementReady` | throw «расстановка уже подтверждена» |
+| PLACE_FIGHTER чужой цвет / вне area | throw «клетки области расстановки» |
+| UI_OK без preview (pickNumHero) | throw |
+| UI_BACK без `back.onPress` (place) | throw «UI_BACK: нет активной фазы» |
+| pickNumHero exit без commit | throw |
+| Не тот turn.playerId (turn hook) | legacy assertTurn |
+---
+## 8. Hotseat
+На gameStart каждый игрок расставляет сам; viewer переключается на игрока без `placementReady`.
+После confirm всех → `runLifecycle` → turnStart.
+---
+## 9. Отложено (TODO)
+- Team mode: attack allies, move teammates, facts opponent, CHECK_WINNER teams.
+- RESIGN через core/runLifecycle.
+- stateFields: movement, handDiscard, effectPrompt, lastCombat.
+- Полная миграция turn/turnEnd в lifecycle modules.
+- Удалить legacy `shared/actions/place.js`.

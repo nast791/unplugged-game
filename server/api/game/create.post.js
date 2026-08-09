@@ -1,11 +1,12 @@
 import { createError, defineEventHandler, readBody } from 'h3';
 import { modes } from '#shared/constants/modes.js';
 import { rules } from '#shared/constants/rules.js';
-import { save, createResponse } from '../../party.js';
+import { save, load, view } from '../../party.js';
 import { heroes as HEROES, maps as MAPS } from '../../content/index.js';
 import { validateCreate } from '../../validations.js';
-import { buildConnections, buildPlayer } from '../../builders.js';
+import { buildConnections, buildPlayer, sortPlayersByTeam } from '../../builders.js';
 import { createRng } from '../../utils.js';
+import { runLifecycle } from '#shared/gameEngine.js';
 
 const badRequest = message => {
   const err = new Error(message);
@@ -24,7 +25,7 @@ export const createGame = (body, { testId, testSeed } = {}) => {
       : String(body.mode).trim();
   const modeDef = modes.find(m => m.name === modeName);
   const mapId = String(body.mapId).trim();
-  const heroes = [...body.heroes]
+  let playerSlots = [...body.heroes]
     .map(raw => ({
       heroId: String(raw.heroId).trim(),
       team: String(raw.team).trim(),
@@ -32,6 +33,10 @@ export const createGame = (body, { testId, testSeed } = {}) => {
       control: String(raw.control).trim().toLowerCase(),
     }))
     .sort((a, b) => a.order - b.order);
+
+  if (modeDef.format === 'teams_2v2') {
+    playerSlots = sortPlayersByTeam(playerSlots);
+  }
   const seed =
     Number.isInteger(testSeed) ? testSeed : Math.floor(Math.random() * 0x100000000);
   const rng = createRng(seed);
@@ -44,10 +49,10 @@ export const createGame = (body, { testId, testSeed } = {}) => {
     connections: buildConnections(nodes),
   };
 
-  const players = heroes.map((slot, i) =>
-    buildPlayer(slot, HEROES[slot.heroId], i, mapState, rng),
+  const players = playerSlots.map((slot, seatIndex) =>
+    buildPlayer(slot, HEROES[slot.heroId], seatIndex, mapState, rng),
   );
-  const startingPlayer = heroes[0].heroId;
+  const startingPlayer = playerSlots[0].heroId;
   const id =
     testId ??
     `game_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -72,22 +77,33 @@ export const createGame = (body, { testId, testSeed } = {}) => {
       seating: modeDef.seating,
       seed,
       startingPlayerId: startingPlayer,
-      heroes: heroes.map(h => ({ ...h })),
+      heroes: playerSlots.map(slot => ({ ...slot })),
     },
     players,
     combat: null,
     log: { battles: [], feed: [] },
   };
 
-  save(state);
+  save(runLifecycle(state));
+  return load(id) ?? state;
+};
 
-  return createResponse(state);
+export const createGameResponse = (body, opts) => {
+  const state = createGame(body, opts);
+  const playerId =
+    body.playerId != null && String(body.playerId).trim()
+      ? String(body.playerId).trim()
+      : (state.settings?.heroes ?? []).find(h => h.control === 'human')?.heroId ??
+        state.settings.startingPlayerId;
+  const host = structuredClone(state);
+  delete host.settings?.seed;
+  return { host, ...view(state, playerId) };
 };
 
 export default defineEventHandler(async event => {
   const body = (await readBody(event)) ?? {};
   try {
-    return createGame(body);
+    return createGameResponse(body);
   } catch (e) {
     throw createError({
       statusCode: e?.statusCode ?? 500,

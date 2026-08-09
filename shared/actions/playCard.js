@@ -1,4 +1,3 @@
-import { PHASES } from '@nast791/engine/constants';
 import { TRIGGERS } from '@nast791/cards/constants';
 import { getCardEngine } from '@nast791/cards/server';
 import { cardTypes } from '#shared/constants/deck.js';
@@ -16,8 +15,8 @@ const cardTurn = type => cardTypes.find(t => t.name === type)?.turn ?? [];
  * PLAY_CARD — type=effect: discard → cards.resolve(onPlay) → SPEND_AP.
  */
 export const playCard = (state, action, api) => {
-  if (state.phase !== PHASES.turn) {
-    throw new Error(`PLAY_CARD только в phase=turn, сейчас "${state.phase}"`);
+  if (state.hook !== 'turn') {
+    throw new Error(`PLAY_CARD только в hook=turn, сейчас "${state.hook}"`);
   }
   assertNoPendingCombat(state, 'PLAY_CARD');
   assertNoPendingMovement(state, 'PLAY_CARD');
@@ -59,7 +58,7 @@ export const playCard = (state, action, api) => {
   });
 
   SPEND_AP(next);
-  if (next.actionsLeft === 0) {
+  if ((Number(next.turn?.actionsLeft) || 0) === 0) {
     return api.enterTurnEnd(next);
   }
   return next;

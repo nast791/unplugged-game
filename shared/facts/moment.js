@@ -7,7 +7,7 @@ export const PHASE = (ctx, params = {}) => {
   if (id == null) {
     throw new Error('fact PHASE: нужен params.id');
   }
-  const phase = ctx.phase ?? ctx.state?.phase ?? ctx.moment;
+  const phase = ctx.phase ?? ctx.state?.hook ?? ctx.moment;
   return {
     ok: String(phase) === String(id),
     value: phase,

@@ -1,4 +1,3 @@
-import { PHASES } from '@nast791/engine/constants';
 import { getCardEngine } from '@nast791/cards/server';
 import { cardTypes } from '#shared/constants/deck.js';
 import { RUN_COMBAT } from '#shared/events/index.js';
@@ -9,8 +8,8 @@ import { discardFromHand } from '#shared/helpers.js';
  * Пайплайн боя: before-фазы → RESOLVE_COMBAT (числа) → after-фазы.
  */
 export const defend = (state, action, api) => {
-  if (state.phase !== PHASES.turn) {
-    throw new Error(`DEFEND только в phase=turn, сейчас "${state.phase}"`);
+  if (state.hook !== 'turn') {
+    throw new Error(`DEFEND только в hook=turn, сейчас "${state.hook}"`);
   }
   const combat = state.combat;
   if (!combat) {
@@ -55,10 +54,10 @@ export const defend = (state, action, api) => {
   if (next.effectPrompt) {
     return next;
   }
-  if (next.phase === PHASES.gameEnd) {
+  if (next.hook === 'gameEnd') {
     return next;
   }
-  if (next.actionsLeft === 0) {
+  if ((Number(next.turn?.actionsLeft) || 0) === 0) {
     return api.enterTurnEnd(next);
   }
   return next;

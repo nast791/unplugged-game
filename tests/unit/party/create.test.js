@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { load } from '../../../server/party.js';
+import { load, view } from '../../../server/party.js';
 import { createGame } from '../../../server/api/game/create.post.js';
+import { sortPlayersByTeam } from '../../../server/builders.js';
 
 const validBody = {
   mapId: 'arena',
@@ -12,24 +13,29 @@ const validBody = {
 };
 
 describe('POST /api/game/create', () => {
-  it('валидное тело → id, seed, map.connections, без карт в ответе', () => {
-    const res = createGame(validBody, { testId: 'test_game', testSeed: 42 });
-    expect(res.id).toBe('test_game');
-    expect(res.settings.seed).toBeUndefined();
-    expect(res.settings.mode).toBe('vs_ai');
-    expect(res.settings.format).toBe('ffa');
-    expect(res.turn.playerId).toBe('medusa');
-    expect(res.map.connections.length).toBeGreaterThan(0);
-    expect(res.players[0].hand).toBeUndefined();
-
+  it('createGame → state на сервере; view скрывает чужие позиции на gameStart', () => {
+    createGame(validBody, { testId: 'test_game', testSeed: 42 });
     const state = load('test_game');
+    expect(state.settings.seed).toBe(42);
     expect(state.players[0].hand.cards).toHaveLength(5);
-    expect(state.players[0].heroId).toBe('medusa');
-    expect(state.players[1].control).toBe('ai');
+
+    const v = view(state, 'medusa');
+    expect(v.id).toBe('test_game');
+    expect(v.settings.seed).toBeUndefined();
+    expect(
+      v.players.find(p => p.id === 'beta').fighters.find(f => f.type === 'hero')
+        .currentPosition,
+    ).toBeNull();
+    expect(
+      v.players.find(p => p.id === 'medusa').fighters.find(f => f.type === 'hero')
+        .currentPosition,
+    ).toBe(6);
+    expect(state._enteredHooks?.gameStart).toBe(true);
+    expect(v.ui?.phase).toBe('place');
   });
 
   it('mode по умолчанию — vs_ai', () => {
-    const res = createGame(
+    createGame(
       {
         mapId: 'arena',
         heroes: [
@@ -39,7 +45,7 @@ describe('POST /api/game/create', () => {
       },
       { testId: 'default_mode', testSeed: 1 },
     );
-    expect(res.settings.mode).toBe('vs_ai');
+    expect(load('default_mode').settings.mode).toBe('vs_ai');
   });
 
   it('vs_ai: два human → ошибка', () => {
@@ -83,12 +89,42 @@ describe('POST /api/game/create', () => {
   });
 
   it('shuffle детерминирован при одном seed', () => {
-    const a = load(
-      createGame(validBody, { testId: 'shuffle_a', testSeed: 99 }).id,
-    ).players[0].hand.cards.map(c => c.id);
-    const b = load(
-      createGame(validBody, { testId: 'shuffle_b', testSeed: 99 }).id,
-    ).players[0].hand.cards.map(c => c.id);
+    createGame(validBody, { testId: 'shuffle_a', testSeed: 99 });
+    createGame(validBody, { testId: 'shuffle_b', testSeed: 99 });
+    const a = load('shuffle_a').players[0].hand.cards.map(c => c.id);
+    const b = load('shuffle_b').players[0].hand.cards.map(c => c.id);
     expect(a).toEqual(b);
+  });
+
+  it('sortPlayersByTeam: A,A,B,B → A,B,A,B', () => {
+    const playerSlots = sortPlayersByTeam([
+      { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
+      { heroId: 'alice', team: 'A', order: 2, control: 'human' },
+      { heroId: 'beta', team: 'B', order: 3, control: 'ai' },
+      { heroId: 'gamma', team: 'B', order: 4, control: 'ai' },
+    ]);
+    expect(playerSlots.map(slot => slot.team)).toEqual(['A', 'B', 'A', 'B']);
+    expect(playerSlots.map(slot => slot.heroId)).toEqual([
+      'medusa',
+      'beta',
+      'alice',
+      'gamma',
+    ]);
+    expect(playerSlots.map(slot => slot.order)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('sortPlayersByTeam: уже чередуются — порядок внутри команд сохраняется', () => {
+    const playerSlots = sortPlayersByTeam([
+      { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
+      { heroId: 'beta', team: 'B', order: 2, control: 'ai' },
+      { heroId: 'alice', team: 'A', order: 3, control: 'human' },
+      { heroId: 'gamma', team: 'B', order: 4, control: 'ai' },
+    ]);
+    expect(playerSlots.map(slot => slot.heroId)).toEqual([
+      'medusa',
+      'beta',
+      'alice',
+      'gamma',
+    ]);
   });
 });

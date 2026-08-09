@@ -44,9 +44,9 @@ const board = (patch = {}) => {
 };
 
 describe('fact PHASE', () => {
-  it('сверяет state.phase / ctx.phase', () => {
+  it('сверяет state.hook / ctx.phase', () => {
     expect(PHASE({ phase: 'turnStart' }, { id: 'turnStart' }).ok).toBe(true);
-    expect(PHASE({ state: { phase: 'turn' } }, { id: 'turnStart' }).ok).toBe(
+    expect(PHASE({ state: { hook: 'turn' } }, { id: 'turnStart' }).ok).toBe(
       false,
     );
   });

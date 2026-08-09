@@ -1,11 +1,7 @@
-import { PHASES } from '@nast791/engine/constants';
-import { livingHeroes } from '#shared/helpers.js';
+import { livingHeroes, zoneCards } from '#shared/helpers.js';
 import { DEAL_DAMAGE } from './dealDamage.js';
 
-/**
- * EXHAUSTION — истощение: урон герою (по умолчанию 2), когда нечего добирать.
- * Нужен api для CHECK_WINNER через DEAL_DAMAGE.
- */
+/** EXHAUSTION — урон герою, когда нечего добирать. */
 export const EXHAUSTION = (
   state,
   { damage = 2 } = {},
@@ -29,7 +25,7 @@ export const EXHAUSTION = (
       { fighterId: hero.id, damage: amount },
       { api },
     );
-    if (next.phase === PHASES.gameEnd) return next;
+    if (next.hook === 'gameEnd') return next;
   }
   return next;
 };

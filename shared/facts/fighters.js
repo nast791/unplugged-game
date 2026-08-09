@@ -44,7 +44,7 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
  */
 export const FIGHTERS = (ctx, params = {}) => {
   const list = queryFighters(ctx.state, params, {
-    ownerPlayerId: ctx.player?.id ?? ctx.state?.currentPlayer,
+    ownerPlayerId: ctx.player?.id ?? ctx.state?.turn?.playerId,
   });
   return { ok: true, value: list };
 };

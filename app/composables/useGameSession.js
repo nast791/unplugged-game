@@ -1,7 +1,7 @@
-import { ACTION_TYPES, PHASES } from '@nast791/engine/constants';
 import { HOST_ACTION_TYPES } from '#shared/actions/index.js';
+import { isCoreHook, runUi } from '#shared/core.js';
 import { occupiedCellIds, movementBudget } from '#shared/helpers.js';
-import { assistantStartCellIds } from '#shared/actions/place.js';
+import { isLockedHero } from '#shared/helpers/placement.js';
 import { movementZoneIds } from '#shared/actions/move.js';
 import { cardTypes } from '#shared/constants/deck.js';
 
@@ -40,7 +40,7 @@ const findEnemyAtCell = (players, youId, cellId) => {
  * Хостовые правила — shared/actions|events; здесь только UI + sendAction.
  */
 export const useGameSession = () => {
-  const { view, gameId, playerId, sendAction, refresh } = useGameView();
+  const { view, hostState, gameId, playerId, sendAction, refresh } = useGameView();
 
   const {
     you,
@@ -61,8 +61,9 @@ export const useGameSession = () => {
   const hint = ref('');
   const selectedFighterId = ref(null);
   const selectedCardId = ref(null);
+  const selectedNumHeroId = ref(null);
 
-  const isPlacement = computed(() => phase.value === PHASES.gameStart);
+  const isPlacement = computed(() => phase.value === 'gameStart');
   const combat = computed(() => view.value?.combat ?? null);
   const movement = computed(() => view.value?.movement ?? null);
   const handDiscard = computed(() => view.value?.handDiscard ?? null);
@@ -70,6 +71,28 @@ export const useGameSession = () => {
   const lastCombat = computed(() => view.value?.lastCombat ?? null);
 
   const iAmReady = computed(() => me.value?.placementReady === true);
+  const ui = computed(() => {
+    const state = hostState.value;
+    const viewerId = you.value;
+    if (state && viewerId && isCoreHook(state.hook)) {
+      return runUi(state, viewerId, {
+        selectedFighterId: selectedFighterId.value,
+      });
+    }
+    return view.value?.ui ?? null;
+  });
+  const placementPhase = computed(() => ui.value?.phase ?? null);
+  const placementHint = computed(() => ui.value?.hint ?? null);
+  const myHeroes = computed(() =>
+    myFighters.value.filter(fighter => fighter.type === 'hero'),
+  );
+  const showPickNumHero = computed(() => Boolean(ui.value?.modals?.pickNumHero));
+  const okEnabled = computed(() => {
+    if (isPlacement.value && iAmReady.value) return false;
+    return ui.value?.controls?.ok?.enabled ?? false;
+  });
+  const backVisible = computed(() => ui.value?.controls?.back?.visible ?? false);
+  const backEnabled = computed(() => ui.value?.controls?.back?.enabled ?? false);
   const iAmDefender = computed(
     () =>
       combat.value &&
@@ -174,31 +197,15 @@ export const useGameSession = () => {
         .map(String);
     }
 
+    if (isPlacement.value) {
+      if (iAmReady.value) return [];
+      return ui.value?.highlightedCellIds ?? [];
+    }
+
     const fighter = myFighters.value.find(
       f => String(f.id) === String(selectedFighterId.value),
     );
     if (!fighter) return [];
-
-    if (isPlacement.value) {
-      if (fighter.type === 'hero' || iAmReady.value) return [];
-      const allowed = assistantStartCellIds(
-        { map: view.value?.map },
-        you.value,
-      );
-      const blocked = new Set(
-        myFighters.value
-          .filter(
-            f =>
-              f.currentPosition != null && String(f.id) !== String(fighter.id),
-          )
-          .map(f => String(f.currentPosition)),
-      );
-      return allowed.filter(
-        id =>
-          !blocked.has(String(id)) &&
-          String(id) !== String(fighter.currentPosition),
-      );
-    }
 
     if (!isMyTurn.value || fighter.currentPosition == null) return [];
     const budget = movementBudget(fighter, movement.value);
@@ -229,16 +236,29 @@ export const useGameSession = () => {
 
   const ensureSelection = () => {
     if (isPlacement.value) {
+      if (placementPhase.value === 'pickNumHero') return;
       const cur = myFighters.value.find(
-        f => String(f.id) === String(selectedFighterId.value),
+        fighter => String(fighter.id) === String(selectedFighterId.value),
       );
-      if (cur && cur.type !== 'hero') return;
-      const unplacedAssistant = myFighters.value.find(
-        f => f.type !== 'hero' && f.currentPosition == null,
+      if (
+        cur &&
+        !isLockedHero(
+          cur,
+          { map: view.value?.map, players: players.value },
+          you.value,
+        )
+      ) {
+        return;
+      }
+      const movable = myFighters.value.find(
+        fighter =>
+          !isLockedHero(
+            fighter,
+            { map: view.value?.map, players: players.value },
+            you.value,
+          ),
       );
-      const anyAssistant = myFighters.value.find(f => f.type !== 'hero');
-      const pick = unplacedAssistant || anyAssistant;
-      selectedFighterId.value = pick ? String(pick.id) : null;
+      selectedFighterId.value = movable ? String(movable.id) : null;
       return;
     }
     if (selectedFighterId.value) {
@@ -275,7 +295,7 @@ export const useGameSession = () => {
   /** Кто должен смотреть/ходить: handDiscard → DEFEND → effectPrompt → currentPlayer. */
   const syncHotseat = async (preserveHint = false) => {
     const v = view.value;
-    if (!v || v.phase === PHASES.gameEnd) return;
+    if (!v || v.phase === 'gameEnd') return;
 
     let target = null;
     let nextHint = null;
@@ -293,7 +313,7 @@ export const useGameSession = () => {
       } else {
         nextHint = `${v.effectPrompt.name || 'Способность'}: выберите цель`;
       }
-    } else if (v.phase === PHASES.gameStart) {
+    } else if (v.phase === 'gameStart') {
       const viewer = v.players?.find(p => String(p.id) === String(playerId.value));
       if (viewer?.placementReady === true) {
         const next = v.players?.find(p => p.placementReady !== true);
@@ -441,15 +461,30 @@ export const useGameSession = () => {
       await syncHotseat(true);
     });
 
-  const onConfirmPlacement = () =>
+  const onUiOk = () =>
     run(async () => {
-      await sendAction({ type: HOST_ACTION_TYPES.PLACE, mode: 'confirm' });
-      hint.value = 'Расстановка подтверждена';
+      await sendAction({ type: 'UI_OK' });
+      await syncHotseat();
+    });
+
+  const onPickNumHero = fighterId =>
+    run(async () => {
+      await sendAction({
+        type: 'PLACE_FIGHTER',
+        fighterId: String(fighterId),
+      });
+      selectedNumHeroId.value = String(fighterId);
+    });
+
+  const onUiBack = () =>
+    run(async () => {
+      await sendAction({ type: 'UI_BACK' });
+      selectedNumHeroId.value = null;
       await syncHotseat();
     });
 
   const onResign = () =>
-    run(() => sendAction({ type: ACTION_TYPES.RESIGN }));
+    run(() => sendAction({ type: HOST_ACTION_TYPES.RESIGN }));
 
   const onPlayCard = () =>
     run(async () => {
@@ -598,20 +633,23 @@ export const useGameSession = () => {
         hint.value = 'Вы уже подтвердили расстановку';
         return;
       }
-      if (fighter.type === 'hero') {
-        hint.value = 'Героя нельзя ставить вручную';
+      if (placementPhase.value === 'pickNumHero') return;
+      if (
+        isLockedHero(
+          fighter,
+          { map: view.value?.map, players: players.value },
+          you.value,
+        )
+      ) {
+        hint.value = 'Главного героя на номерной клетке двигать нельзя';
         return;
       }
       run(async () => {
         await sendAction({
-          type: HOST_ACTION_TYPES.PLACE,
+          type: 'PLACE_FIGHTER',
           fighterId: fighter.id,
           cellId,
         });
-        hint.value =
-          fighter.currentPosition == null
-            ? `PLACE → ${cellId}`
-            : `PLACE перестановка → ${cellId}`;
         ensureSelection();
       });
       return;
@@ -634,10 +672,7 @@ export const useGameSession = () => {
   };
 
   onMounted(() => {
-    if (!view.value?.id) {
-      navigateTo('/');
-      return;
-    }
+    if (!view.value?.id) return;
     ensureSelection();
   });
 
@@ -658,6 +693,15 @@ export const useGameSession = () => {
     pending,
     error,
     hint,
+    placementHint,
+    ui,
+    placementPhase,
+    showPickNumHero,
+    myHeroes,
+    selectedNumHeroId,
+    okEnabled,
+    backVisible,
+    backEnabled,
     selectedFighterId,
     selectedCardId,
     isPlacement,
@@ -691,7 +735,9 @@ export const useGameSession = () => {
     onEndTurn,
     onConfirmMove,
     onBonusMove,
-    onConfirmPlacement,
+    onUiOk,
+    onUiBack,
+    onPickNumHero,
     onResign,
     onPlayCard,
     onDefend,

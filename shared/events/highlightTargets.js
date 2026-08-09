@@ -7,7 +7,7 @@ import { resolveVar } from '#shared/facts/vars.js';
  */
 export const HIGHLIGHT_TARGETS = (ctx, payload = {}) => {
   const state = ctx.state;
-  const playerId = ctx.player?.id ?? state?.currentPlayer;
+  const playerId = ctx.player?.id ?? state?.turn?.playerId;
   const vars = ctx.vars && typeof ctx.vars === 'object' ? ctx.vars : {};
   const params = payload.params ?? {};
 

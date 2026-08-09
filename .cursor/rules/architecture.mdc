@@ -1,0 +1,96 @@
+---
+description: Архитектурные правила UnPlugged — core, lifecycle, phases, actions
+alwaysApply: true
+---
+# Архитектура UnPlugged
+## Терминология
+| Термин | Значение |
+|--------|----------|
+| **Игрок** | Живой человек или компьютер за столом (`control: human \| ai`); `state.players[]`, порядок хода, команда. |
+| **Герой** (контент) | Персонаж из контента — medusa, alice, …; выбор при create (`heroId`), пак карт и бойцов. |
+| **Герой** (на поле) | Боец с `type: 'hero'` в `player.fighters[]` (может быть несколько у одного игрока). |
+| **Помощник** | Боец с `type: 'assistant'` в `player.fighters[]`. |
+| **Боец** | Любая фигура игрока на поле — **и герои, и помощники**; `fighterId`, `PLACE_FIGHTER`, расстановка, бой. |
+Не путать: **игрок** ≠ **герой (контент)**; **боец** — общий термин для всех фигур на доске.
+## Сервер и клиент
+1. **Сервер = хранилище state**, не игровой движок.
+2. **Единственный write с клиента:** `POST /api/party/state` `{ gameId, state, playerId? }`.
+3. **Create:** `POST /api/game/create` → `{ host, ...view }`; `host` — полный state для core на клиенте.
+4. **Read:** `GET /api/party/view?gameId&playerId` — проекция для UI.
+5. **Вся игровая логика на клиенте** через `shared/gameEngine.js` (`runAction`); core — только мигрированные hooks.
+## Core (`shared/core.js`) — универсальный движок
+**`shared/core.js` — универсальный движок игры.** Он **не знает** конкретных имён lifecycle-хуков, phases, actions, guards pending/combat и т.д. Он знает только **что такие сущности существуют** и **как с каждой обращаться** по контракту.
+| Сущность | Где живёт конкретика | Как core обращается |
+|----------|----------------------|---------------------|
+| **Lifecycle hook** | `shared/lifecycle/*.js` + **`lifecycle/registry.js`** | `runLifecycle` → `currentHook.enter/body/exit`, порядок из `hooks.js` |
+| **Phase** | `shared/phases/*.js` + **`phases/registry.js`** | `runPhase`, `runUi` — в core |
+| **Action** | `shared/actions-new/*` | вызов из фаз (`enter`, …) и из `phase.moves` |
+| **Move** | `actions-new/moves.js` (`commonMoves`), `phase.moves[type]` | `runAction` → `commonMoves` или `phase.moves` |
+| **Legacy (не мигрировано)** | `shared/gameEngine.js` | **не в core** |
+**Запрещено в `core.js`:**
+- строковые литералы имён hooks/phases/actions (`'gameStart'`, `'PLACE'`, …);
+- `switch (state.hook)` по конкретным хукам;
+- таблицы handlers под конкретный hook;
+- guards turn/combat/pending — только в `gameEngine.js`.
+**Реестр:** новый мигрированный hook добавляется **только** в `lifecycle/registry.js`, не в core.
+**Публичный API core — только `run` + сущность** (единая терминология):
+- **`runLifecycle(state)`** — цикл lifecycle-хуков из registry
+- **`runAction(state, action)`** — `commonMoves` → `phase.moves` → `runPhase` → `runLifecycle`
+- **`runPhase(state, playerId)`** — enter активной phase игрока
+- **`runUi(state, playerId, clientContext?)`** — `phase` + `hint` + spread **`phase.ui()`**; **не пишется в state**
+Вспомогательные **resolve** (не run): `nextInLifecycle` — в core. Active phase — внутри `runPhase` / `runUi` / `runAction` по `hook.phases`.
+**Контракт lifecycle-модуля:** `name`, **`phases[]`**, `enter`, `body`, `exit` — стрелочные функции; переменная **`currentHook`**, не `def`/`s`.
+**Контракт phase:** `name`, **`active`**, **`hints`** (`{ key: { active, text } }`), **`enter?`**, **`body?`**, **`exit?`**, **`ui`**, **`ok`**, **`back`**, **`moves`** (allow-list CAPS moves клиента).
+**Точка входа клиента:** `gameEngine.runAction` — если `isCoreHook(hook)` → `core.runAction`, иначе legacy.
+## State
+6. Поле фазы партии — **`hook`** (не `phase`); UI адаптирует `hook → phase`.
+7. Порядок lifecycle **только** из `shared/constants/hooks.js` → `lifecycle[]`.
+8. **`combat` hooks** — отдельная ветка; не смешивать с lifecycle refactor без явной задачи.
+9. Не добавлять поля «на будущее» без явной задачи (`mainHeroId`, лишние pending-поля).
+10. **Иерархия:** lifecycle hook → **phases[]**.
+11. Phase: **`active`**, **`enter?` / `body?` / `exit?`**, **`ok` / `back`**, **`moves`**, **`ui`**, **`hints`**.
+12. Условия phase — только в модуле phase (`phase.active`), не в core.
+## Расстановка (gameStart — пример, не в core)
+21. При create: **все `currentPosition` / `startPosition` = null** (нет autoStartCell в builders).
+22. **pickNumHero** — active, если героев > 1 и `!numberedHeroCommitted`; preview через **`PLACE_FIGHTER`** (`zone: numbered`); commit — **`UI_OK`**.
+23. **place** — active до **`allPlayersPlacementReady`** (расстановка + ожидание остальных); **`PLACE_FIGHTER`** (`zone: area` — клетки того же цвета, что номерная).
+24. **Numbered cell** — `heroStart: true` в стартовой зоне (`seatIndex` / `order`).
+25. **Главный герой** — кто на numbered cell; **`mainHeroId` не храним**.
+26. **1 гerой:** в `place.enter` — молча ставим на numbered cell.
+27. **pickNumHero:** radio → **`PLACE_FIGHTER`** preview; **`UI_OK`** commit; **`UI_BACK`** откат preview; hints по **`active`**.
+28. **place:** **`UI_BACK`** невидима и недоступна. После **`UI_OK`** (`placementReady`) — hint «Ожидание расстановки всех игроков», пока не **`allPlayersPlacementReady`**.
+29. **RESIGN** — отложен; в конце через `runLifecycle`.
+## Actions и moves
+30. Старая логика **`shared/actions/`** не развивается; новое — **`shared/actions-new/`**.
+31. **Actions** — универсальные CAPS-функции, map **`actions-new/index.js`** (`PLACE_FIGHTER`, …); вызываются из фаз напрямую и через **`phase.moves`**.
+32. **Moves** — всё, что клиент шлёт через **`runAction`**: **`commonMoves`** (`UI_OK`, `UI_BACK` в `moves.js`) + **`phase.moves`** (allow-list CAPS с параметрами фазы).
+33. **Helpers** — не CAPS; **`helpers/placement.js`**, **`helpers/base.js`** (`resolvePhaseHint`).
+34. **`PLACE_FIGHTER`**: `{ fighterId, cellId?, zone: 'numbered'|'area'|'any', preview? }`.
+## UI
+35. **Подсказки** — текст **сверху экрана**, не log.
+36. **`hints`**: `{ key: { active, text } }`; **`resolvePhaseHint`** в core; **`phase.ui()`** — modals, highlights, controls; **описание потока** — block-comment в **конце** файла phase, **обычным русским языком** (не технический шорткод).
+37. **ОК / Назад** — **`controls`** из **`phase.ui()`**, не из core.
+## View
+40. Роли: `self` | `team` | `enemy` (`shared/constants/roles.js`).
+41. Проекция — `stateFields` / `playerFields`.
+42. На `gameStart` — скрывать чужие позиции (`hidePos` в party.js).
+## Код-стайл
+43. Без однобуквенных переменных, кроме счётчиков циклов.
+44. **`currentHook`**, не `def`.
+45. **Стрелочные функции** в новом коде.
+46. **Минимальный diff** — не рефакторить несвязанное.
+47. **Без лишних обёрток и index-агрегаторов** без доказанной пользы.
+## Структура каталогов
+```
+shared/
+  core.js                 # runLifecycle, runAction, runPhase, runUi
+  actions-new/index.js     # PLACE_FIGHTER, …
+  actions-new/moves.js     # commonMoves: UI_OK, UI_BACK
+  lifecycle/registry.js   # единственный список мигрированных hooks
+  lifecycle/gameStart.js
+  helpers/base.js
+  helpers/placement.js
+  phases/registry.js       # phases by name (exit lookup)
+  phases/pickNumHero.js, place.js
+  gameEngine.js           # runAction, legacy, isCoreHook → core
+```

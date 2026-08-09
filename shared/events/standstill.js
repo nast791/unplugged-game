@@ -1,12 +1,9 @@
-import { PHASES } from '@nast791/engine/constants';
+import { zoneCards } from '#shared/helpers.js';
 import { DRAW_CARDS } from './drawCards.js';
 import { EXHAUSTION } from './exhaustion.js';
 import { SPEND_AP } from './spendAp.js';
 
-/**
- * STANDSTILL — мув на месте: добор 1 или EXHAUSTION при пустой колоде, затем −1 AP.
- * ctx.player обязателен.
- */
+/** STANDSTILL — мув на месте: добор 1 или EXHAUSTION, затем −1 AP. */
 export const STANDSTILL = (state, _payload = {}, { player, api } = {}) => {
   if (!player) {
     throw new Error('STANDSTILL: нужен player');
@@ -14,20 +11,19 @@ export const STANDSTILL = (state, _payload = {}, { player, api } = {}) => {
 
   state.movement = null;
 
-  const deckEmpty = !Array.isArray(player.deck) || player.deck.length === 0;
-  if (deckEmpty) {
+  if (zoneCards(player.deck).length === 0) {
     const next = EXHAUSTION(state, { damage: 2 }, { player, api });
-    if (next.phase === PHASES.gameEnd) return next;
+    if (next.hook === 'gameEnd') return next;
   } else {
     DRAW_CARDS(state, { count: 1 }, { player });
   }
 
-  if ((Number(state.actionsLeft) || 0) <= 0) {
+  if ((Number(state.turn?.actionsLeft) || 0) <= 0) {
     throw new Error('STANDSTILL: actionsLeft уже 0');
   }
   SPEND_AP(state);
 
-  if ((Number(state.actionsLeft) || 0) <= 0) {
+  if ((Number(state.turn?.actionsLeft) || 0) <= 0) {
     return api.enterTurnEnd(state);
   }
   return state;

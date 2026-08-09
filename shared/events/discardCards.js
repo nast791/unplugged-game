@@ -1,23 +1,18 @@
-import { PHASES } from '@nast791/engine/constants';
 import { rules } from '#shared/constants/rules.js';
-import { discardFromHand } from '#shared/helpers.js';
+import { discardFromHand, zoneCards } from '#shared/helpers.js';
 
-/** api экшена или ctx карт с .api */
 const asApi = x =>
   x && typeof x.enterTurnEnd === 'function' ? x : x?.api;
 
-/**
- * DISCARD_CARDS — сброс из hand при state.handDiscard.
- * Тот же handler для sendAction и card effects.
- */
+/** DISCARD_CARDS — сброс из hand при state.handDiscard. */
 export const DISCARD_CARDS = (
   state,
   { playerId, cardId, cardIds } = {},
   ctxOrApi = {},
 ) => {
   const api = asApi(ctxOrApi);
-  if (state.phase !== PHASES.turn) {
-    throw new Error(`DISCARD_CARDS только в phase=turn, сейчас "${state.phase}"`);
+  if (state.hook !== 'turn') {
+    throw new Error(`DISCARD_CARDS только в hook=turn, сейчас "${state.hook}"`);
   }
 
   const pending = state.handDiscard;
@@ -52,7 +47,7 @@ export const DISCARD_CARDS = (
   }
 
   const max = Number(pending.max) || rules.maxHandSize;
-  const handLen = Array.isArray(player.hand) ? player.hand.length : 0;
+  const handLen = zoneCards(player.hand).length;
 
   if (handLen > max) {
     state.handDiscard = {

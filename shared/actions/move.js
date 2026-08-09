@@ -1,4 +1,3 @@
-import { PHASES } from '@nast791/engine/constants';
 import { rules } from '#shared/constants/rules.js';
 import { APPLY_BONUS, STANDSTILL } from '#shared/events/index.js';
 import {
@@ -170,8 +169,8 @@ const applyMovementBonus = (state, action) => {
  * Конец: { mode: 'confirm' } — 1 AP + DRAW / EXHAUSTION.
  */
 export const move = (state, action, api) => {
-  if (state.phase !== PHASES.turn) {
-    throw new Error(`MOVE только в phase=turn, сейчас "${state.phase}"`);
+  if (state.hook !== 'turn') {
+    throw new Error(`MOVE только в hook=turn, сейчас "${state.hook}"`);
   }
 
   if (action.mode === 'confirm' || action.confirm === true) {

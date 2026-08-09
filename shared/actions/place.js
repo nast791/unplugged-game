@@ -1,33 +1,44 @@
-import { PHASES } from '@nast791/engine/constants';
 import {
   allPlayersPlacementReady,
   findNode,
-  findOwnedFighter,
   playerFightersPlaced,
-} from '#shared/helpers.js';
+} from '#shared/helpers/placement.js';
+import { findOwnedFighter } from '#shared/helpers/base.js';
 
-/** Стартовая область: node.position === Number(playerId) + 1 */
-export const isStartAreaForPlayer = (node, playerId) => {
-  if (node?.position == null) return false;
-  return Number(node.position) === Number(playerId) + 1;
+/** Индекс места за столом: order (1-based) или позиция в players[]. */
+export const seatIndex = (state, playerId) => {
+  const player = state.players?.find(p => String(p.id) === String(playerId));
+  if (!player) return -1;
+  if (Number.isInteger(player.order)) return player.order - 1;
+  return state.players.findIndex(p => String(p.id) === String(playerId));
+};
+
+/** Стартовая область: node.position === seatIndex + 1 */
+export const isStartAreaForPlayer = (node, seatIndex) => {
+  if (node?.position == null || seatIndex < 0) return false;
+  return Number(node.position) === Number(seatIndex) + 1;
 };
 
 export const isHeroStartCell = node => node?.heroStart === true;
 
 /** Клетки для ручной расстановки помощников (старт без heroStart). */
-export const assistantStartCellIds = (state, playerId) =>
-  (state.map?.nodes ?? [])
-    .filter(n => isStartAreaForPlayer(n, playerId) && !isHeroStartCell(n))
+export const assistantStartCellIds = (state, playerId) => {
+  const seat = seatIndex(state, playerId);
+  return (state.map?.nodes ?? [])
+    .filter(n => isStartAreaForPlayer(n, seat) && !isHeroStartCell(n))
     .map(n => n.id);
+};
 
-export const startAreaCellIds = (state, playerId) =>
-  (state.map?.nodes ?? [])
-    .filter(n => isStartAreaForPlayer(n, playerId))
+export const startAreaCellIds = (state, playerId) => {
+  const seat = seatIndex(state, playerId);
+  return (state.map?.nodes ?? [])
+    .filter(n => isStartAreaForPlayer(n, seat))
     .map(n => n.id);
+};
 
 const maybeAdvance = state => {
   if (allPlayersPlacementReady(state)) {
-    state.phase = PHASES.turnStart;
+    state.hook = 'turnStart';
   }
   return state;
 };
@@ -50,8 +61,8 @@ const confirmPlacement = (state, player) => {
  * Подтвердить: { mode: 'confirm' }
  */
 export const place = (state, action) => {
-  if (state.phase !== PHASES.gameStart) {
-    throw new Error(`PLACE только в phase=gameStart, сейчас "${state.phase}"`);
+  if (state.hook !== 'gameStart') {
+    throw new Error(`PLACE только в hook=gameStart, сейчас "${state.hook}"`);
   }
 
   const player = state.players.find(p => String(p.id) === String(action.playerId));
@@ -89,7 +100,10 @@ export const place = (state, action) => {
   if (!node) {
     throw new Error(`PLACE: клетка "${cellId}" не найдена на карте`);
   }
-  if (!isStartAreaForPlayer(node, action.playerId) || isHeroStartCell(node)) {
+  if (
+    !isStartAreaForPlayer(node, seatIndex(state, action.playerId)) ||
+    isHeroStartCell(node)
+  ) {
     const allowed = assistantStartCellIds(state, action.playerId).join(', ') || '—';
     throw new Error(
       `PLACE: помощникам клетки ${allowed} (не heroStart)`,

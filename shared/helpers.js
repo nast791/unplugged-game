@@ -39,17 +39,6 @@ export const areaIdAtCell = (state, cellId) => {
   return nodeAreaId(findNode(state, cellId));
 };
 
-export const playerFightersPlaced = player => {
-  if (!Array.isArray(player?.fighters) || player.fighters.length === 0) return true;
-  return player.fighters.every(f => f.currentPosition != null);
-};
-
-export const allPlayersPlacementReady = state =>
-  (state.players ?? []).every(p => {
-    if (!Array.isArray(p.fighters) || p.fighters.length === 0) return true;
-    return p.placementReady === true && playerFightersPlaced(p);
-  });
-
 export const livingFighters = player =>
   (player?.fighters ?? []).filter(f => Number(f.currentHp) > 0);
 
@@ -73,11 +62,14 @@ export const occupiedCellIds = (state, { exceptFighterId } = {}) => {
   return set;
 };
 
+export const zoneCards = zone => {
+  if (Array.isArray(zone)) return zone;
+  return zone?.cards ?? [];
+};
+
 export const findInHand = (player, cardId) => {
-  const hand = player?.hand;
-  if (!Array.isArray(hand) || cardId == null) {
-    return { card: null, index: -1 };
-  }
+  const hand = zoneCards(player?.hand);
+  if (cardId == null) return { card: null, index: -1 };
   const key = String(cardId);
   const index = hand.findIndex(
     c => String(c.instanceId) === key || String(c.id) === key,
@@ -86,12 +78,27 @@ export const findInHand = (player, cardId) => {
   return { card: hand[index], index };
 };
 
+const pushDiscard = (player, card) => {
+  if (player.discard?.cards) {
+    player.discard.cards.push(card);
+    return;
+  }
+  if (Array.isArray(player.discard)) {
+    player.discard.push(card);
+    return;
+  }
+  player.discard = { visibility: [], cards: [card] };
+};
+
 export const discardFromHand = (player, cardId) => {
   const { card, index } = findInHand(player, cardId);
   if (!card) return null;
-  player.hand.splice(index, 1);
-  if (!Array.isArray(player.discard)) player.discard = [];
-  player.discard.push(card);
+  if (player.hand?.cards) {
+    player.hand.cards.splice(index, 1);
+  } else if (Array.isArray(player.hand)) {
+    player.hand.splice(index, 1);
+  }
+  pushDiscard(player, card);
   return card;
 };
 

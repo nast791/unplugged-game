@@ -1,21 +1,13 @@
-import { PHASES } from '@nast791/engine/constants';
 import { cardBonusValue, discardFromHand } from '#shared/helpers.js';
 
-/**
- * APPLY_BONUS — сброс 1 карты ради значения УСИЛЕНИЯ (поле card.bonus).
- * Эффекты / triggers карты не применяются.
- * Карты поверженных бойцов тоже можно сбросить.
- *
- * payload: { cardId, stat?: 'movement' }
- * movement: открывает/усиливает state.movement (один раз за перемещение).
- */
+/** APPLY_BONUS — сброс карты ради bonus (movement и т.д.). */
 export const APPLY_BONUS = (
   state,
   { cardId, stat = 'movement' } = {},
   { player } = {},
 ) => {
-  if (state.phase !== PHASES.turn) {
-    throw new Error(`APPLY_BONUS только в phase=turn, сейчас "${state.phase}"`);
+  if (state.hook !== 'turn') {
+    throw new Error(`APPLY_BONUS только в hook=turn, сейчас "${state.hook}"`);
   }
   if (!player) {
     throw new Error('APPLY_BONUS: нужен player');
@@ -57,7 +49,6 @@ export const APPLY_BONUS = (
     return state;
   }
 
-  // Задел под усиление атаки/защиты эффектами карт.
   state.lastBonus = {
     amount,
     stat: String(stat),
