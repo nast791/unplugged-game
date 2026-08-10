@@ -5,7 +5,6 @@ import hostActions, {
   beforeEnterTurnEnd,
   gameHandlers,
 } from '#shared/actions/index.js';
-import { rules } from '#shared/constants/rules.js';
 import {
   isCoreHook,
   runAction as runCoreAction,
@@ -68,40 +67,26 @@ const legacyStepHook = state => {
     case 'gameStart':
       return state;
     case 'turnStart':
-      return {
-        ...state,
-        hook: 'turn',
-        movement: null,
-        handDiscard: null,
-        lastCombat: null,
-        effectPrompt: null,
-        turn: {
-          ...state.turn,
-          actionsLeft: state.turn?.actionsTotal ?? rules.actionsPerTurn,
-        },
-      };
+      return state;
     case 'turnEnd':
       if (state.winner != null) return enterGameEnd(state, state.winner);
-      return {
-        ...state,
-        hook: 'turnStart',
-        turn: {
-          ...state.turn,
-          index: (state.turn?.index ?? 0) + 1,
-          playerId: nextPlayerId(state),
-        },
-      };
+      return { ...state, hook: 'turnStart' };
     default:
       return state;
   }
 };
 
-/** Legacy auto-advance: turnStart → turn, turnEnd → … (не gameStart — там core). */
+/** Legacy auto-advance: turnEnd → turnStart (core) → turn; gameStart — только core. */
 export const advanceHooks = (state, runLifecycleFn) => {
   let next = state;
   for (let step = 0; step < 8; step += 1) {
     const before = next.hook;
     if (before === 'gameStart') break;
+
+    if (isCoreHook(before)) {
+      next = runCoreLifecycle(next);
+      break;
+    }
 
     const lifecycleName = HOOK_LIFECYCLE[before];
     if (lifecycleName && typeof runLifecycleFn === 'function') {

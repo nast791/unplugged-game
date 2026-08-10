@@ -52,7 +52,6 @@ export const createGame = (body, { testId, testSeed } = {}) => {
   const players = playerSlots.map((slot, seatIndex) =>
     buildPlayer(slot, HEROES[slot.heroId], seatIndex, mapState, rng),
   );
-  const startingPlayer = playerSlots[0].heroId;
   const id =
     testId ??
     `game_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -64,10 +63,11 @@ export const createGame = (body, { testId, testSeed } = {}) => {
     winner: null,
     turn: {
       index: 0,
-      playerId: startingPlayer,
+      playerId: null,
       actionsTotal: rules.actionsPerTurn,
       actionsLeft: rules.actionsPerTurn,
       bonus: { movement: 0, attack: 0, defense: 0, actions: 0 },
+      actedRound: [],
     },
     map: mapState,
     settings: {
@@ -76,7 +76,6 @@ export const createGame = (body, { testId, testSeed } = {}) => {
       format: modeDef.format,
       seating: modeDef.seating,
       seed,
-      startingPlayerId: startingPlayer,
       heroes: playerSlots.map(slot => ({ ...slot })),
     },
     players,
@@ -94,7 +93,9 @@ export const createGameResponse = (body, opts) => {
     body.playerId != null && String(body.playerId).trim()
       ? String(body.playerId).trim()
       : (state.settings?.heroes ?? []).find(h => h.control === 'human')?.heroId ??
-        state.settings.startingPlayerId;
+        [...(state.players ?? [])].sort(
+          (left, right) => Number(left.order ?? 0) - Number(right.order ?? 0),
+        )[0]?.id;
   const host = structuredClone(state);
   delete host.settings?.seed;
   return { host, ...view(state, playerId) };

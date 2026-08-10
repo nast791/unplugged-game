@@ -2,10 +2,6 @@
 
 ## Core + lifecycle + phases (расстановка)
 
-- [x] `shared/core.js`: `runAction`, `runLifecycle`, `runUi`.
-- [x] `shared/lifecycle/gameStart.js` + phases pickNumHero, place.
-- [x] `shared/helpers/placement.js`, `shared/actions-new/`.
-- [x] UI: подсказки сверху, ОК/Назад, pickNumHero modal.
 - [ ] Миграция turn/turnEnd с legacy stepHook в lifecycle modules.
 - [ ] Удалить старый `shared/actions/place.js` после полной миграции.
 
@@ -18,5 +14,10 @@
 
 ## В конце всей логики игры
 
-- [ ] RESIGN через core/runLifecycle (не хардкод enterGameEnd в action).
+- [ ] RESIGN проработать логику на каждом хуке игры, т.к. можно сдаться в любой момент.
 - [ ] `stateFields` / `playerFields`: movement, handDiscard, effectPrompt, lastCombat — по мере появления полей.
+- [ ] скиллы героев
+- [ ] общий логгер
+- [ ] логгер боя
+
+

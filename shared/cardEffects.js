@@ -18,10 +18,8 @@ import {
   SPEND_AP,
   STANDSTILL,
 } from '#shared/events/index.js';
-import { PHASE, MOMENT } from '#shared/facts/moment.js';
-import { FIGHTERS } from '#shared/facts/fighters.js';
-import { ANSWER } from '#shared/facts/answer.js';
-import { COMBAT } from '#shared/facts/combat.js';
+import { facts as legacyFacts } from '#shared/facts/index.js';
+import { facts as newFacts } from '#shared/facts-new/registry.js';
 
 const wrap =
   fn =>
@@ -56,12 +54,6 @@ export const effects = {
   APPLY_BONUS: wrap(APPLY_BONUS),
 };
 
-export const facts = {
-  PHASE,
-  MOMENT,
-  FIGHTERS,
-  ANSWER,
-  COMBAT,
-};
+export const facts = { ...legacyFacts, ...newFacts };
 
 export default { effects, facts };

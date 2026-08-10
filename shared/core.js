@@ -2,15 +2,57 @@
  * Универсальный движок игры.
  * Конкретика: lifecycle/registry.js, phases/registry.js, actions-new/*.
  *
- * Публичный API: runLifecycle, runAction, runPhase, runUi.
+ * Публичный API: runLifecycle, runAction, runPhase, runUi, runFact, runFacts.
  */
 import { lifecycle } from '#shared/constants/hooks.js';
 import { commonMoves } from '#shared/actions-new/moves.js';
+import { facts } from '#shared/facts-new/registry.js';
 import { findPlayer, resolvePhaseHint } from '#shared/helpers/base.js';
 import { lifecycleHooks } from '#shared/lifecycle/registry.js';
 import { phases } from '#shared/phases/registry.js';
 
 export { isCoreHook } from '#shared/lifecycle/registry.js';
+
+const buildFactContext = (partyState, context = {}) => {
+  const playerId =
+    context.playerId ?? context.player?.id ?? partyState.turn?.playerId;
+  const player =
+    context.player ??
+    (playerId != null ? findPlayer(partyState, playerId) : null);
+
+  return {
+    ...context,
+    state: partyState,
+    phase: partyState.hook,
+    player,
+    vars: { ...(context.vars ?? {}) },
+  };
+};
+
+/** Один fact из реестра facts-new/registry.js. */
+export const runFact = (partyState, factName, params = {}, context = {}) => {
+  const fn = facts[factName];
+  if (typeof fn !== 'function') {
+    throw new Error(`fact "${factName}" не найден`);
+  }
+  return fn(buildFactContext(partyState, context), params);
+};
+
+/** Цепочка facts (AND); trigger.var пишет value в vars. */
+export const runFacts = (partyState, triggers, context = {}) => {
+  const vars = { ...(context.vars ?? {}) };
+  for (const trigger of triggers ?? []) {
+    const { ok, value } = runFact(
+      partyState,
+      trigger.fact,
+      trigger.params ?? {},
+      { ...context, vars },
+    );
+    if (!ok) return { ok: false, vars };
+    if (trigger.var) vars[trigger.var] = value;
+  }
+  return { ok: true, vars };
+};
 
 const sortedLifecycle = [...lifecycle].sort(
   (left, right) => left.order - right.order,
@@ -134,5 +176,7 @@ export default {
   runAction,
   runPhase,
   runUi,
+  runFact,
+  runFacts,
   nextInLifecycle,
 };

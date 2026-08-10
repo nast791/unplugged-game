@@ -71,6 +71,7 @@ export const createState = (patch = {}) => {
       actionsTotal: rules.actionsPerTurn,
       actionsLeft: rules.actionsPerTurn,
       bonus: { movement: 0, attack: 0, defense: 0, actions: 0 },
+      actedRound: [],
     },
     combat: null,
     movement: null,
@@ -79,7 +80,7 @@ export const createState = (patch = {}) => {
     lastCombat: null,
     lastBonus: null,
     map: structuredClone(miniMap),
-    settings: { startingPlayerId: '0' },
+    settings: {},
     log: { battles: [], feed: [] },
     players: [
       {

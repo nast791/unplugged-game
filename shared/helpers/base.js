@@ -30,6 +30,43 @@ export const findOwnedFighter = (partyState, playerId, fighterId) => {
 export const playerHeroes = player =>
   (player?.fighters ?? []).filter(fighter => fighter.type === 'hero');
 
+/** Живые бойцы игрока; type — 'hero' | 'assistant' или любой, если не задан. */
+export const livingFighters = (player, { type } = {}) =>
+  (player?.fighters ?? []).filter(fighter => {
+    if (Number(fighter.currentHp) <= 0) return false;
+    if (type != null && fighter.type !== type) return false;
+    return true;
+  });
+
+const teammates = (partyState, player) =>
+  (partyState.players ?? []).filter(
+    entry =>
+      entry.team === player.team && String(entry.id) !== String(player.id),
+  );
+
+export const isTeamFormat = partyState =>
+  partyState.settings?.format === 'teams_2v2';
+
+/**
+ * Игрок жив для хода / победы.
+ * FFA: жив, пока жив его герой.
+ * Команда: в team нужен ≥1 живой герой, иначе все мёртвы; свой герой;
+ * или (мёртвый герой) свои живые помощники при живом герое союзника.
+ * Без героя и без помощников игрок выбывает, даже если союзник с героем жив.
+ */
+export const isPlayerAlive = (partyState, player) => {
+  if (!player) return false;
+  if (livingFighters(player, { type: 'hero' }).length > 0) return true;
+  if (!isTeamFormat(partyState)) return false;
+
+  const allyHasLivingHero = teammates(partyState, player).some(
+    ally => livingFighters(ally, { type: 'hero' }).length > 0,
+  );
+  if (!allyHasLivingHero) return false;
+
+  return livingFighters(player, { type: 'assistant' }).length > 0;
+};
+
 /** Первый hint с active === true (порядок ключей = приоритет). */
 export const resolvePhaseHint = (hints, partyState, playerId, clientContext = {}) => {
   for (const entry of Object.values(hints ?? {})) {
