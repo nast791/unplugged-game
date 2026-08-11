@@ -1,0 +1,54 @@
+---
+description: Стиль кода, Vue/Tailwind, язык документации UnPlugged
+alwaysApply: true
+---
+
+# Стиль кода UnPlugged
+
+## JavaScript / Vue
+
+- В **новом и изменяемом** коде — **стрелочные функции**, если синтаксис позволяет.
+- Новый код приложения — **`.js`** и **`.vue` с `<script setup>` без `lang="ts"`**.
+- composables, utils, plugins, middleware, server routes — **`.js`**.
+- **Не** добавлять `.ts` / `.tsx` и **не** вводить `lang="ts"` в новые Vue-компоненты без явной просьбы команды.
+
+## Язык
+
+- Пользовательская документация, поясняющие тексты, block-comment в конце phase/lifecycle — **на русском**.
+
+## Документация в коде
+
+- **Не писать JSDoc** (`/** ... */`, `@param`, `@returns`, `@typedef`, `@deprecated` и т.п.).
+- Исключение: block-comment **в конце** phase/lifecycle с описанием потока (см. architecture.mdc) — обычный русский текст, не JSDoc.
+
+## Tailwind CSS 4 / Vue UI
+
+- Проект на **Tailwind CSS 4** (`app/assets/styles.css`).
+- **Новые** Vue-компоненты — **без** `<style>` / `<style scoped>`.
+- Стили только через классы Tailwind в template.
+
+### Spacing-система (fluid)
+
+Размеры и отступы — через **fluid-утилиты** проекта и переменную **`--spacing`** (`app/assets/styles.css`):
+
+| Утилита | Назначение |
+|---------|------------|
+| `text-*` | font-size |
+| `gap-*` | gap |
+| `rounded-*`, `rounded-t-*`, … | border-radius |
+| `border-*` | border-width |
+| `backdrop-blur-*`, `blur-*` | blur |
+| `columns-w-*` | column-width |
+| `w-min-content`, `w-max-content` | min/max ширина контента |
+
+Число в суффиксе — множитель `--spacing` (например `text-16`, `gap-4`).
+
+### Интерактив и группы
+
+- Состояния — **variants Tailwind** в `class`: `hover:`, `focus:`, `disabled:`, `group-hover:`, `peer-*`, `:class` и т.п.
+- **Не** дублировать их селекторами в `<style>`.
+
+## Прочее (shared)
+
+- Без однобуквенных переменных, кроме счётчиков циклов.
+- Минимальный diff — не рефакторить несвязанное.
