@@ -18,18 +18,26 @@ alwaysApply: false
   → POST /api/party/state { gameId, state, playerId }
   → view = adaptPartyView(response)
 ```
-**Сервер:** save/load state, `view(state, playerId)` — проекция видимости (self/team/enemy). Для gameStart без `_enteredHooks` view один раз прогоняет lifecycle на клоне (`normalizeForView`).
-**Клиент:** `shared/gameEngine.js` → core для `gameStart`, legacy для turn/combat.
+**Сервер:** save/load state, `view(state, playerId)` — проекция видимости (self/team/enemy), карты боя и
+черновик перемещения — пер-рольные. Для gameStart без `_enteredHooks` view один раз прогоняет lifecycle на клоне (`normalizeForView`).
+**Клиент:** `shared/gameEngine.js` → core для `gameStart`, `turnStart`, `turn`, `turnEnd`; legacy остался только
+для `gameEnd` и не мигрированных действий (`RESIGN`). Интерфейс хода: `runUi` (hint, подсветки, playable-карты,
+кнопка) + `PICK`/`UI_OK`.
 ---
 ## 2. Lifecycle (state.hook)
 Порядок из `shared/constants/hooks.js` → `lifecycle[]`:
 | order | hook       | Тип        | Статус        |
 |-------|------------|------------|---------------|
 | 1     | gameStart  | interactive| **новый core**|
-| 2     | turnStart  | transit    | legacy onPhase + auto-advance |
-| 3     | turn       | interactive| legacy actions |
-| 4     | turnEnd    | transit    | legacy + CHECK_HAND_LIMIT |
-| 5     | gameEnd    | terminal   | legacy |
+| 2     | turnStart  | transit    | **новый core**|
+| 3     | turn       | interactive| **новый core** (фазы choose…waiting) |
+| 4     | turnEnd    | transit    | **новый core**, пропускной: лимит руки + передача |
+| 5     | gameEnd    | terminal   | **новый core** (фаза `finished` — экран итогов) |
+
+**gameEnd:** терминальный хук. `enter` снимает моменты, обнуляет действия и активные фазы игроков;
+`body` всегда true; фаза `finished` (активна для всех, ходов нет) отдаёт подсказку «Партия завершена:
+победа — <имя>» и `ui.results` (победитель, раунд, ход, состояние бойцов). Партия с `hook === 'gameEnd'`
+не хранится в памяти (`server/party.js`). Ничьей нет: победитель всегда есть.
 **runLifecycle(state):**
 1. Взять `currentHook` по `state.hook` из `lifecycle/registry.js`.
 2. `enter(state)` — один раз при входе (`_enteredHooks` + `runPhase` для каждого игрока).
@@ -84,32 +92,47 @@ Legacy-хуки (turnStart, turn, turnEnd, gameEnd): `gameEngine.advanceHooks` +
 - `ui` — `runUi(snapshot, playerId)`; snapshot через `normalizeForView` если enter ещё не был.
 - Подсказки — `ui.hint`, не поле в state.
 ---
-## 4. turnStart → turn → turnEnd (legacy)
-**turnStart enter:** `onPhase` → cards.dispatch.
-**stepHook turnStart:** → `turn`, reset AP, clear pending fields.
-**turn body:** MOVE, ATTACK, PLAY_CARD, END_TURN, …
-**assertTurn:** только `turn.playerId`, кроме DEFEND/DISCARD/RESOLVE_EFFECT pending.
-**END_TURN:** AP>0 → STANDSTILL; AP=0 → enterTurnEnd.
-**turnEnd:** CHECK_HAND_LIMIT, onPhase, → next turnStart или gameEnd.
+## 4. turnStart → turn → turnEnd (core)
+Подробная модель хода — блок-комментарий в конце `shared/lifecycle/turn.js`.
+**turnStart enter:** `nextAlivePlayerId` (мёртвых пропускаем) → `finishedSides` (≤1 живых сторон → gameEnd) →
+`turn.index += 1`, AP = `rules.actionsPerTurn`, бонусы сброшены, `actedRound` (+ `round++` на полном круге).
+**turn phases (приоритет):** `handLimit` → `choose` → `movement` → `attack` → `defense` → `waiting`.
+**Действие объявляется кликом** (`PICK`): колода — перемещение (добор 1 или истощение), карта attack|hybrid — бой,
+карта effect — эффект (движок карт ещё не мигрирован). Клиент шлёт только `PICK` и `UI_OK`; смысл клика решают фазы.
+**Моменты состояния:** `movement` (черновик перемещения), `combat` (стадии attacker → target → defense → reveal →
+resolve → close), `targeting` (выбор цели), `lastCombat`/`lastBonus` (итоги; снимаются объявлением нового действия).
+**Права:** активная фаза игрока = его allow-list; чужие клики core отклоняет, отдельных assertTurn/assertPending нет.
+**turnEnd:** пропускной — снимает моменты, проверяет лимит руки и уходит в `turnStart` через `next: 'turnStart'`.
 ---
 ## 5. Actions и moves
 ### Новые (actions-new)
 | type           | Файл           | Назначение |
 |----------------|----------------|------------|
-| UI_OK          | moves.js       | active phase → `ok.onPress` |
+| UI_OK          | moves.js       | active phase → `ok.onPress` (кнопка «Закончить действие»/«ОК») |
 | UI_BACK        | moves.js       | active phase → `back.onPress` (если есть) |
-| PLACE_FIGHTER  | placeFighter.js| `{ fighterId, cellId?, zone, preview? }` |
-### Legacy (shared/actions)
-MOVE, ATTACK, DEFEND, PLAY_CARD, DISCARD_CARDS, RESOLVE_EFFECT, END_TURN, RESIGN — до полной миграции.
-**RESIGN:** legacy `enterGameEnd`; TODO — через `runLifecycle`.
+| PLACE_FIGHTER  | placeFighter.js| `{ fighterId, cellId?, zone, preview? }` — расстановка |
+| SET_FIGHTER_CELL | fighter.js   | `{ fighterId, cellId, start? }` — позиция бойца |
+| SET_ACTIONS    | base.js        | `{ playerId, delta }` — действия хода |
+| SET_CARDS      | cards.js       | `{ playerId, op: draw\|discard\|move\|put, … }` |
+| SET_HEALTH     | health.js      | `{ fighterId \| fighterIds, delta }` — урон/лечение |
+| SET_MOVEMENT   | movement.js    | `{ op: open\|step\|bonus\|close }` |
+| SET_COMBAT     | combat.js      | `{ op: open\|attacker\|target\|defense\|reveal\|resolve\|close }` |
+| SET_TARGETING  | targeting.js   | `{ op: open\|pick\|close }` |
+| PICK           | phase.moves    | `{ kind: deck\|card\|fighter\|cell, id?, fighterId? }` — клик клиента |
+### Legacy (shared/actions) — ход удалён, остался мост к движку карт
+`shared/actions/index.js` + `resolveEffect.js`: `onPhase`/`onGameEnd`/`resolveEffect` для `@nast791/cards`,
+`shared/events/*` и `shared/facts/*` — ждут миграции эффектов на беспромптовую модель.
+**RESIGN:** `commonMoves.RESIGN` (общий move в любой фазе) → `SET_RESIGNED` + `endGameIfFinished`.
 ---
 ## 6. UI
 **runUi(state, playerId, clientContext?)** — не пишет в state:
 ```js
-{ phase, hint, ...phase.ui() }  // modals, highlightedCellIds, controls
+{ phase, hint, ...phase.ui() }  // deck, highlightedCellIds, highlightedFighterIds,
+                                // framedFighterIds, playableCardIds, disabledCardIds, controls, modals
 ```
-**controls** — из `phase.ui()` → `resolveOkBackControls` или override (place waiting).
-**Клиент:** `useGameSession` — `placementHint` из `runUi`; turn/combat hints — локальный `hint.ref`.
+**controls** — из `phase.ui()` → `resolveOkBackControls` (label из `phase.ok.label`).
+**Клиент:** `useGameSession` — всё (hint, подсветки, playable-карты, кнопка) берёт из `runUi`; шлёт только
+`PICK` (колода, карта, боец, клетка) и `UI_OK`/`UI_BACK`. Своих правил в UI нет.
 ---
 ## 7. Исключения и ошибки
 | Ситуация | Поведение |
@@ -117,21 +140,22 @@ MOVE, ATTACK, DEFEND, PLAY_CARD, DISCARD_CARDS, RESOLVE_EFFECT, END_TURN, RESIGN
 | `hook === gameEnd` | gameEngine runAction throw «партия завершена» |
 | move вне allow-list phase | core throw «move недоступен» |
 | `action.playerId` не в партии | core throw |
-| PLACE_FIGHTER locked hero | throw |
-| PLACE_FIGHTER после `placementReady` | throw «расстановка уже подтверждена» |
-| PLACE_FIGHTER чужой цвет / вне area | throw «клетки области расстановки» |
+| клик не в свою фазу (чужой ход, ждёт защиту) | active-фазы нет → core throw «move недоступен» |
+| PLACE_FIGHTER locked hero / после `placementReady` / вне area | throw |
 | UI_OK без preview (pickNumHero) | throw |
-| UI_BACK без `back.onPress` (place) | throw «UI_BACK: нет активной фазы» |
-| pickNumHero exit без commit | throw |
-| Не тот turn.playerId (turn hook) | legacy assertTurn |
+| PICK в фазе, где такой kind не поддержан | throw с текстом причины (`PICK: …`) |
+| `SET_*` с неверным op/контекстом | throw с текстом причины |
+| клик по недоступной клетке/бойцу/карте | throw с причиной («занята», «вне радиуса», «не достаёт», «не атакует») |
 ---
 ## 8. Hotseat
-На gameStart каждый игрок расставляет сам; viewer переключается на игрока без `placementReady`.
-После confirm всех → `runLifecycle` → turnStart.
+Viewer переключается на того, кто действует: защитник в бою → владелец выбора цели → активный игрок
+(`syncHotseat` в `useGameSession`); на gameStart — на игрока без `placementReady`.
 ---
 ## 9. Отложено (TODO)
-- Team mode: attack allies, move teammates, facts opponent, CHECK_WINNER teams.
-- RESIGN через core/runLifecycle.
-- stateFields: movement, handDiscard, effectPrompt, lastCombat.
-- Полная миграция turn/turnEnd в lifecycle modules.
-- Удалить legacy `shared/actions/place.js`.
+- Эффекты карт и способности героев на беспромптовой модели (`targeting` + окна `reveal`/`resolve` в SET_COMBAT);
+  тогда же переподключаются `shared/actions/index.js` + `shared/events/*` (сейчас это мост без вызовов).
+- Итоги партии: логгер и статистика, эффекты «в конце партии», реванш/рестарт с экрана `finished`.
+- Team mode: attack allies, move teammates, facts opponent, победа по командам.
+- Анимация перемещения бойцов после кнопки «закончить действие».
+- Логгер хода и боя.
+- `gameStart` всё ещё импортирует `runPhase` из core (цикл модулей) — вынести запуск фаз из core.

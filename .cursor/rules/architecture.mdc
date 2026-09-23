@@ -39,7 +39,7 @@ alwaysApply: true
 - **`runPhase(state, playerId)`** — enter активной phase игрока
 - **`runUi(state, playerId, clientContext?)`** — `phase` + `hint` + spread **`phase.ui()`**; **не пишется в state**
 Вспомогательные **resolve** (не run): `nextInLifecycle` — в core. Active phase — внутри `runPhase` / `runUi` / `runAction` по `hook.phases`.
-**Контракт lifecycle-модуля:** `name`, **`phases[]`**, `enter`, `body`, `exit` — стрелочные функции; переменная **`currentHook`**, не `def`/`s`.
+**Контракт lifecycle-модуля:** `name`, **`phases[]`**, **`next?`** (следующий хук, если порядок `lifecycle[]` не подходит: `turnEnd.next = 'turnStart'`), `enter`, `body`, `exit` — стрелочные функции; переменная **`currentHook`**, не `def`/`s`. **`enter` может увести партию в другой хук** (например, `turnStart` → `gameEnd`): цикл это уважает и продолжает с нового хука.
 **Контракт phase:** `name`, **`active`**, **`hints`** (`{ key: { active, text } }`), **`enter?`**, **`body?`**, **`exit?`**, **`ui`**, **`ok`**, **`back`**, **`moves`** (allow-list CAPS moves клиента).
 **Точка входа клиента:** `gameEngine.runAction` — если `isCoreHook(hook)` → `core.runAction`, иначе legacy.
 ## State
@@ -84,13 +84,26 @@ alwaysApply: true
 ```
 shared/
   core.js                 # runLifecycle, runAction, runPhase, runUi
-  actions-new/index.js     # PLACE_FIGHTER, …
+  actions-new/base.js      # SET_ACTIONS
+  actions-new/cards.js     # SET_CARDS (draw | discard | move | put)
+  actions-new/health.js    # SET_HEALTH
+  actions-new/fighter.js   # SET_FIGHTER_CELL (расстановка и шаг)
+  actions-new/movement.js  # SET_MOVEMENT (open | step | bonus | close)
+  actions-new/combat.js    # SET_COMBAT (open | attacker | target | defense | reveal | resolve | close)
+  actions-new/targeting.js # SET_TARGETING (open | pick | close)
   actions-new/moves.js     # commonMoves: UI_OK, UI_BACK
+  facts-new/*              # PLAYERS, NEXT_PLAYER, ALIVE_SIDES, ACTIVE_PLAYER, AP, IN_PROGRESS,
+                           # TARGETING, HAND, HAND_OVER_LIMIT, FIGHTERS
   lifecycle/registry.js   # единственный список мигрированных hooks
-  lifecycle/gameStart.js
-  helpers/base.js
-  helpers/placement.js
+  lifecycle/gameStart.js, turnStart.js, turn.js, turnEnd.js, gameEnd.js
+  helpers/base.js, board.js, cards.js, combat.js, turn.js, placement.js
   phases/registry.js       # phases by name (exit lookup)
-  phases/pickNumHero.js, place.js
-  gameEngine.js           # runAction, legacy, isCoreHook → core
+  phases/pickNumHero.js, place.js,
+  phases/handLimit.js, choose.js, movement.js, attack.js, defense.js, waiting.js, finished.js
+  gameEngine.js           # тонкий мост клиента к core + api для движка карт (createPartyApi)
+  actions/index.js        # мост к движку карт: onPhase/onGameEnd/resolveEffect (ход мигрирован)
+  actions/resolveEffect.js
+  events/*, facts/*, helpers.js, cardEffects.js  # стек движка карт: ждёт миграции эффектов
 ```
+Модель хода подробно описана блок-комментарием в конце `lifecycle/turn.js`; клиент хода —
+`runUi` (что видно и кликается) + `PICK`/`UI_OK` (что шлёт клиент).

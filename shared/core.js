@@ -104,12 +104,15 @@ export const runLifecycle = partyState => {
 
     state = currentHook.enter?.(state) ?? state;
 
+    /** enter может увести партию в другой хук (например, в gameEnd) — идём туда. */
+    if (state.hook !== hookName) continue;
+
     const hookBodyComplete = currentHook.body?.(state) ?? false;
     if (!hookBodyComplete) break;
 
     state = currentHook.exit?.(state) ?? state;
 
-    const nextHookName = nextInLifecycle(hookName);
+    const nextHookName = currentHook.next ?? nextInLifecycle(hookName);
     if (!nextHookName) break;
 
     state = { ...state, hook: nextHookName };

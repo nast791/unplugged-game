@@ -3,6 +3,7 @@ export const rules = {
   actionsPerTurn: 2,
   openingHand: 5,
   maxHandSize: 7,
+  exhaustionDamage: 2,
   canPassThroughTeammates: true,
   canPassThroughEnemies: false,
   maxPlayers: 4,

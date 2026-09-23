@@ -1,33 +1,37 @@
-import { aliveSideCount } from '#shared/facts-new/players.js';
 import { rules } from '#shared/constants/rules.js';
-import { runFact } from '#shared/core.js';
+import {
+  finishedSides,
+  nextAlivePlayerId,
+  queryPlayers,
+} from '#shared/facts-new/players.js';
 
 export default {
   name: 'turnStart',
   phases: [],
 
   enter: partyState => {
-    let state = partyState;
+    let state = {
+      ...partyState,
+      _enteredHooks: { ...(partyState._enteredHooks ?? {}), turn: false },
+    };
 
-    const next = runFact(state, 'NEXT_PLAYER', {});
-    if (!next.ok || next.value == null) {
+    const nextPlayerId = nextAlivePlayerId(state);
+    if (nextPlayerId == null) {
       return { ...state, hook: 'gameEnd', winner: state.winner ?? null };
     }
 
-    const playerId = String(next.value);
+    const playerId = String(nextPlayerId);
     state.turn = { ...state.turn, playerId };
 
-    const alivePlayers = runFact(state, 'PLAYERS', { alive: true });
-    if (aliveSideCount(state) <= 1) {
-      return {
-        ...state,
-        hook: 'gameEnd',
-        winner: alivePlayers.value[0]?.playerId ?? null,
-        turn: { ...state.turn, actionsLeft: 0 },
-      };
+    const alivePlayers = queryPlayers(state, { alive: true }, {});
+    const { finished, winner } = finishedSides(state);
+    if (finished) {
+      return { ...state, hook: 'gameEnd', winner };
     }
 
-    const aliveIds = new Set(alivePlayers.value.map(entry => String(entry.playerId)));
+    const aliveIds = new Set(
+      alivePlayers.map(entry => String(entry.playerId)),
+    );
     const actedRound = [
       ...new Set([
         ...(state.turn?.actedRound ?? []).filter(id => aliveIds.has(String(id))),
@@ -44,7 +48,7 @@ export default {
       actedRound,
     };
 
-    if (actedRound.length >= alivePlayers.value.length) {
+    if (actedRound.length >= alivePlayers.length) {
       state.round = (state.round ?? 1) + 1;
       state.turn.actedRound = [playerId];
     }
@@ -52,7 +56,7 @@ export default {
     return state;
   },
 
-  body: partyState => partyState.hook !== 'gameEnd',
+  body: () => true,
 
   exit: partyState => partyState,
 };

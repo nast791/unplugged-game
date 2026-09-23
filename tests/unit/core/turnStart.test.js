@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { advanceHooks } from '#shared/gameEngine.js';
 import { runLifecycle } from '#shared/core.js';
 import { ap, createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
 const enterTurnStart = state =>
-  advanceHooks({ ...state, hook: PHASES.turnEnd }, () => state);
+  runLifecycle({ ...state, hook: PHASES.turnEnd });
 
 describe('core: turnStart', () => {
   it('первый turnStart: index=1, AP=2, bonus сброшен, первый игрок по order', () => {
@@ -51,7 +50,7 @@ describe('core: turnStart', () => {
     expect(next.turn.actedRound).toEqual(['1']);
   });
 
-  it('advanceHooks: turnEnd → turnStart (core) → turn', () => {
+  it('turnEnd → turnStart (core) → turn', () => {
     const state = createState({
       phase: PHASES.turnEnd,
       turn: { index: 1, playerId: '0', actedRound: ['0'] },

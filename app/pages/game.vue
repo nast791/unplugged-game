@@ -14,16 +14,15 @@
     </header>
 
     <p
-      v-if="placementHint"
+      v-if="hint"
       class="border border-primary/20 bg-primary/5 px-4 py-3 text-16"
     >
-      {{ placementHint }}
+      {{ hint }}
     </p>
 
     <section class="grid gap-2 border border-primary/15 p-3 text-14 sm:grid-cols-3">
       <p>
-        phase:
-        <strong>{{ phase ?? '—' }}</strong>
+        phase: <strong>{{ phase ?? '—' }}</strong>
         <span v-if="isPlacement" class="opacity-60"> · расстановка</span>
       </p>
       <p>turn: <strong>{{ turn }}</strong></p>
@@ -34,38 +33,31 @@
         isMyTurn:
         <strong :class="isMyTurn ? 'text-green-700' : 'opacity-50'">{{ isMyTurn }}</strong>
       </p>
-      <p v-if="effectPrompt" class="sm:col-span-3 text-emerald-900">
-        {{ effectPrompt.name }}
-        <template v-if="effectPrompt.kind === 'PROMPT'">
-          · {{ effectPrompt.message }}
-        </template>
-        <template v-else-if="effectPrompt.kind === 'HIGHLIGHT_TARGETS'">
-          · выберите цель ({{ effectPrompt.candidates?.length || 0 }})
-        </template>
-      </p>
-      <p v-if="handDiscard" class="sm:col-span-3 text-violet-800">
-        сброс руки: нужно сбросить ещё {{ handDiscard.mustDiscard }} (лимит
-        {{ handDiscard.max }})
+      <p v-if="targeting" class="sm:col-span-3 text-emerald-900">
+        выбор цели: {{ targeting.candidates?.length ?? 0 }} кандидат(ов)
       </p>
       <p v-if="movement" class="sm:col-span-3 text-sky-800">
         перемещение открыто
-        <template v-if="movement.bonus">
-          · усиление +{{ movement.bonus }}
+        <template v-if="movement.bonus"> · усиление +{{ movement.bonus }}</template>
+      </p>
+      <p v-if="combat" class="sm:col-span-3 text-amber-800">
+        бой: {{ combat.stage }}
+        <template v-if="combat.targetFighterId">
+          · цель {{ combat.targetFighterId }}
         </template>
-        · origins {{ JSON.stringify(movement.origins || {}) }}
+        <template v-if="combat.defenderPlayerId">
+          · защищается {{ combat.defenderPlayerId }}
+        </template>
       </p>
       <p v-if="lastCombat" class="sm:col-span-3 text-emerald-800">
-        бой: {{ lastCombat.attackValue }} vs {{ lastCombat.defenseValue }} →
+        прошлый бой: {{ lastCombat.attackValue }} vs {{ lastCombat.defenseValue }} →
         урон {{ lastCombat.combatDamage }} · победил
         {{ lastCombat.winner === 'attacker' ? 'атакующий' : 'защитник' }}
         ({{ lastCombat.winnerPlayerId }})
       </p>
-      <p v-if="combat" class="sm:col-span-3 text-amber-800">
-        combat: atk {{ combat.attackValue }} → {{ combat.targetFighterId }} · ждёт
-        DEFEND ({{ combat.defenderPlayerId }})
-      </p>
       <p v-if="isGameOver" class="sm:col-span-3">
-        gameEnd · winner: <strong>{{ winner === null ? 'ничья' : winner }}</strong>
+        gameEnd · победа:
+        <strong>{{ results?.winnerName ?? winner ?? '—' }}</strong>
       </p>
     </section>
 
@@ -97,35 +89,60 @@
           </button>
         </section>
 
+        <section
+          v-if="!isGameOver"
+          class="flex flex-col gap-2 border border-primary/15 p-3"
+        >
+          <p class="text-14 font-medium">Действия</p>
+          <button
+            type="button"
+            class="border border-primary/20 px-3 py-2 text-left text-14 disabled:opacity-40"
+            :disabled="pending || isGameOver || !deckClickable"
+            @click="onDeckClick"
+          >
+            Колода ({{ deckCount }})
+          </button>
+          <button
+            v-if="okControl.visible"
+            type="button"
+            class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
+            :disabled="pending || isGameOver || !okControl.enabled"
+            @click="onFinishAction"
+          >
+            <template v-if="isPlacement && !okControl.enabled">Ожидание…</template>
+            <template v-else>{{ okControl.label || 'ОК' }}</template>
+          </button>
+          <button
+            v-if="backControl.visible"
+            type="button"
+            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
+            :disabled="pending || isGameOver || !backControl.enabled"
+            @click="onUiBack"
+          >
+            {{ backControl.label || 'Назад' }}
+          </button>
+          <button
+            v-if="!isGameOver"
+            type="button"
+            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
+            :disabled="pending"
+            @click="onResign"
+          >
+            Сдаться
+          </button>
+          <p class="text-12 opacity-60">
+            действие объявляется кликом: колода — перемещение, карта атаки — бой.
+          </p>
+        </section>
+
         <section class="flex flex-col gap-2 border border-primary/15 p-3">
           <p class="text-14 font-medium">Бойцы</p>
-          <p class="text-12 opacity-60">
-            <template v-if="isPlacement && placementPhase === 'place'">
-              Расставьте всех бойцов в своей зоне. Главный герой на номерной
-              клетке не двигается.
-            </template>
-            <template v-else-if="isPlacement && placementPhase === 'pickNumHero'">
-              Выберите героя для номерной клетки (кнопка ОК).
-            </template>
-            <template v-else-if="handDiscard && iMustDiscard">
-              Рука &gt; {{ handDiscard.max }}: выберите карту и «Сбросить».
-            </template>
-            <template v-else-if="effectPrompt && iMustEffect">
-              <template v-if="effectPrompt.kind === 'PROMPT'">
-                {{ effectPrompt.message || effectPrompt.name }}
-              </template>
-              <template v-else>
-                {{ effectPrompt.name }}: кликните подсвеченного врага.
-              </template>
-            </template>
-            <template v-else-if="combat"> DEFEND: карта defense|hybrid или пас. </template>
-            <template v-else-if="movement">
-              Шаги в радиусе move(+усиление) бесплатны. Карта → «Усилить» (1
-              раз). «Завершить» = 1 AP + добор.
+          <p v-if="isPlacement" class="text-12 opacity-60">
+            <template v-if="placementPhase === 'pickNumHero'">
+              Выберите героя для номерной клетки.
             </template>
             <template v-else>
-              MOVE (завершить = 1 AP) · усиление сбросом карты · ATTACK /
-              PLAY_CARD (1 AP). AP: {{ actionsLeft }}.
+              Расставьте всех бойцов в своей зоне, затем нажмите «ОК».
             </template>
           </p>
           <ul v-if="isPlacement" class="flex flex-col gap-1 text-12 opacity-70">
@@ -134,10 +151,6 @@
               {{ player.placementReady ? 'подтвердил' : 'расставляет…' }}
             </li>
           </ul>
-          <p class="text-12">
-            боец: <strong>{{ selectedLabel }}</strong>
-            · карта: <strong>{{ selectedCardLabel }}</strong>
-          </p>
           <button
             v-for="fighter in myFighters"
             :key="fighter.id"
@@ -148,25 +161,61 @@
                 ? 'bg-primary text-white'
                 : 'bg-white'
             "
-            @click="selectFighter(fighter.id)"
+            @click="onFighterClick({ fighterId: fighter.id })"
           >
             {{ fighter.name || fighter.id }}
             <span class="opacity-70">
               · {{ fighter.type }}
-              · hp {{ fighter.currentHp }}/{{ fighter.hp }}
+              · hp {{ fighter.currentHp }}/{{ fighter.startHp }}
               ·
               {{
                 fighter.currentPosition == null ? 'не на доске' : `кл. ${fighter.currentPosition}`
               }}
-              <template v-if="isPlacement && fighter.type === 'hero' && fighter.currentPosition != null">
-                · номерная
-              </template>
             </span>
           </button>
         </section>
 
         <section
-          v-if="!isPlacement"
+          v-if="isGameOver"
+          class="flex flex-col gap-2 border border-primary/15 p-3"
+        >
+          <p class="text-14 font-medium">Итоги партии</p>
+          <p class="text-16">
+            Победа: <strong>{{ results?.winnerName ?? '—' }}</strong>
+          </p>
+          <p class="text-12 opacity-70">
+            раундов: {{ results?.round ?? '—' }} · ходов: {{ results?.turn ?? '—' }}
+          </p>
+          <ul class="flex flex-col gap-1 text-12">
+            <li v-for="entry in results?.players ?? []" :key="`res-${entry.id}`">
+              <strong>{{ entry.name }}</strong>
+              <span v-if="entry.resigned" class="opacity-70"> · сдался</span>
+              <span class="opacity-80">
+                ·
+                {{
+                  entry.fighters.length
+                    ? entry.fighters
+                        .map(
+                          fighter =>
+                            `${fighter.name} ${fighter.hp}${fighter.maxHp ? '/' + fighter.maxHp : ''}`,
+                        )
+                        .join(', ')
+                    : 'бойцов не осталось'
+                }}
+              </span>
+            </li>
+          </ul>
+          <button
+            type="button"
+            class="bg-primary px-3 py-2 text-14 text-white"
+            @click="onBackToMenu"
+          >
+            В меню
+          </button>
+        </section>
+
+        <section
+          v-if="!isPlacement && !isGameOver"
           class="flex flex-col gap-2 border border-primary/15 p-3"
         >
           <p class="text-14 font-medium">Hand ({{ myHand.length }})</p>
@@ -174,13 +223,10 @@
             v-for="card in myHand"
             :key="card.instanceId || card.id"
             type="button"
-            class="border border-primary/20 px-2 py-1.5 text-left text-12"
-            :class="
-              String(selectedCardId) === String(card.instanceId || card.id)
-                ? 'bg-primary text-white'
-                : 'bg-white'
-            "
-            @click="selectCard(card)"
+            class="border border-primary/20 px-2 py-1.5 text-left text-12 disabled:opacity-40"
+            :class="isCardPlayable(card) ? 'bg-white' : 'bg-zinc-100'"
+            :disabled="pending || isGameOver || !isCardPlayable(card)"
+            @click="onCardClick(card)"
           >
             <span class="font-medium">{{ card.title || card.id }}</span>
             <span class="opacity-70">
@@ -196,126 +242,7 @@
           <p v-if="!myHand.length" class="text-12 opacity-50">пусто</p>
         </section>
 
-        <section class="flex flex-wrap gap-2">
-          <button
-            v-if="handDiscard && iMustDiscard"
-            type="button"
-            class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
-            :disabled="pending || !selectedCardId || isGameOver"
-            @click="onDiscard"
-          >
-            Сбросить (ещё {{ handDiscard.mustDiscard }})
-          </button>
-          <template v-if="effectPrompt && iMustEffect && effectPrompt.kind === 'PROMPT'">
-            <button
-              v-for="ans in effectPrompt.answers || []"
-              :key="ans.value"
-              type="button"
-              class="px-3 py-2 text-14 disabled:opacity-40"
-              :class="
-                String(ans.value) === 'yes' || String(ans.value) === 'apply'
-                  ? 'bg-primary text-white'
-                  : 'border border-primary'
-              "
-              :disabled="pending || isGameOver"
-              @click="onSkillAnswer(ans.value)"
-            >
-              {{ ans.text || ans.value }}
-            </button>
-          </template>
-          <button
-            v-if="canBonusMove"
-            type="button"
-            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
-            :disabled="pending || isGameOver"
-            @click="onBonusMove"
-          >
-            Усилить перемещение
-            <template v-if="selectedCardId"> (бон.)</template>
-          </button>
-          <button
-            v-if="movement && isMyTurn && !handDiscard && !effectPrompt"
-            type="button"
-            class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
-            :disabled="pending || isGameOver"
-            @click="onConfirmMove"
-          >
-            Завершить перемещение
-          </button>
-          <button
-            type="button"
-            class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
-            :disabled="pending || isGameOver || !okEnabled"
-            @click="onUiOk"
-          >
-            <template v-if="isPlacement && iAmReady">Ожидание…</template>
-            <template v-else>ОК</template>
-          </button>
-          <button
-            v-if="backVisible"
-            type="button"
-            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
-            :disabled="pending || isGameOver || !backEnabled"
-            @click="onUiBack"
-          >
-            Назад
-          </button>
-          <template v-if="combat && iAmDefender">
-            <button
-              type="button"
-              class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
-              :disabled="pending || !selectedDefenseCard"
-              @click="onDefend(true)"
-            >
-              DEFEND картой
-            </button>
-            <button
-              type="button"
-              class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
-              :disabled="pending"
-              @click="onDefend(false)"
-            >
-              Пас (полный урон)
-            </button>
-          </template>
-          <button
-            v-if="!isPlacement && !combat && !handDiscard && !effectPrompt"
-            type="button"
-            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
-            :disabled="pending || !isMyTurn || !selectedEffectCard || movement || combat || isGameOver"
-            @click="onPlayCard"
-          >
-            PLAY_CARD
-          </button>
-          <button
-            type="button"
-            class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
-            :disabled="
-              pending ||
-              isPlacement ||
-              combat ||
-              movement ||
-              handDiscard ||
-              effectPrompt ||
-              !isMyTurn ||
-              isGameOver
-            "
-            @click="onEndTurn"
-          >
-            END_TURN
-          </button>
-          <button
-            type="button"
-            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
-            :disabled="pending || isGameOver"
-            @click="onResign"
-          >
-            RESIGN
-          </button>
-        </section>
-
         <p v-if="error" class="text-14 text-red-600">{{ error }}</p>
-        <p v-if="hint" class="text-14 opacity-70">{{ hint }}</p>
       </aside>
 
       <GameBoard
@@ -324,9 +251,11 @@
         :players="players"
         :selected-fighter-id="selectedFighterId"
         :highlighted-cell-ids="highlightedCellIds"
+        :highlighted-fighter-ids="highlightedFighterIds"
+        :framed-fighter-ids="framedFighterIds"
         :interactive="boardInteractive"
-        @select-node="onSelectNode"
-        @select-fighter="onSelectFighterFromBoard"
+        @select-node="onCellClick"
+        @select-fighter="onFighterClick"
       />
     </div>
 
@@ -393,54 +322,39 @@ const {
   pending,
   error,
   hint,
-  selectedFighterId,
-  selectedCardId,
   isPlacement,
   combat,
   movement,
-  handDiscard,
-  effectPrompt,
+  targeting,
   lastCombat,
-  iAmReady,
-  iAmDefender,
-  iMustDiscard,
-  iMustEffect,
   myFighters,
   myHand,
-  placementHint,
-  ui,
-  placementPhase,
-  showPickNumHero,
   myHeroes,
-  selectedNumHeroId,
-  okEnabled,
-  backVisible,
-  backEnabled,
-  selectedCardLabel,
-  selectedLabel,
-  selectedDefenseCard,
-  selectedEffectCard,
-  canBonusMove,
+  deckCount,
+  results,
+  deckClickable,
+  okControl,
+  backControl,
   boardInteractive,
+  showPickNumHero,
+  selectedFighterId,
+  selectedNumHeroId,
   highlightedCellIds,
+  highlightedFighterIds,
+  framedFighterIds,
   mapSummary,
   viewJson,
+  isCardPlayable,
   cardFighterLabel,
-  selectFighter,
-  selectCard,
   onSwitchPlayer,
-  onDiscard,
-  onEndTurn,
-  onConfirmMove,
-  onBonusMove,
-  onUiOk,
+  onDeckClick,
+  onCardClick,
+  onFinishAction,
   onUiBack,
-  onPickNumHero,
   onResign,
-  onPlayCard,
-  onDefend,
-  onSkillAnswer,
-  onSelectFighterFromBoard,
-  onSelectNode,
+  onBackToMenu,
+  onPickNumHero,
+  onFighterClick,
+  onCellClick,
 } = useGameSession();
 </script>

@@ -9,6 +9,10 @@ export const stateFields = {
   map: ['self', 'team', 'enemy'],
   settings: ['self', 'team', 'enemy'],
   combat: ['self', 'team', 'enemy'],
+  movement: ['self', 'team', 'enemy'],
+  targeting: ['self', 'team', 'enemy'],
+  lastCombat: ['self', 'team', 'enemy'],
+  lastBonus: ['self', 'team', 'enemy'],
   log: ['self', 'team', 'enemy'],
 };
 

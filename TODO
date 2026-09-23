@@ -2,8 +2,30 @@
 
 ## Core + lifecycle + phases (расстановка)
 
-- [ ] Миграция turn/turnEnd с legacy stepHook в lifecycle modules.
-- [ ] Удалить старый `shared/actions/place.js` после полной миграции.
+- [x] Миграция turn/turnEnd с legacy stepHook в lifecycle modules.
+- [x] Удалить legacy хода: `shared/actions/{move,attack,defend,playCard,place,resign}.js`, `hostActions`/`stepHook`,
+      `advanceHooks`/`assertTurn`/`assertPending` из `gameEngine.js`, тесты `tests/unit/actions/*` и
+      сценарии `move-bonus` / `placement-to-combat`.
+- [ ] `shared/actions/{index,resolveEffect}.js` и `shared/events/*` — мост к движку карт: переподключить
+      (или удалить) при миграции эффектов на беспромптовую модель.
+- [ ] `gameStart` импортирует `runPhase` из core — убрать связку (прямой импорт хука падает из-за цикла).
+
+## Ход (turn) — сделано, осталось
+
+- [x] Каркас хука, реестр, комментарий-план.
+- [x] Универсальные экшены (SET_ACTIONS/CARDS/HEALTH/FIGHTER_CELL/MOVEMENT/COMBAT/TARGETING), facts, проекция.
+- [x] `choose` + `movement` (добор, истощение, усиление перемещения, кнопка).
+- [x] `attack` + `defense` (объявление, вскрытие, числа, урон, закрытие боя).
+- [x] `targeting` (подсветка кандидатов + клик), `handLimit`, пропускной `turnEnd`.
+- [x] Регистрация `turn`/`turnEnd` в реестре и перевод клиента на `runUi` + `PICK`.
+- [x] RESIGN: общий move (`commonMoves.RESIGN` → `SET_RESIGNED`), доступен в любой фазе; кнопка «Сдаться».
+- [x] `gameEnd`: терминальный хук (нормализация финала) + фаза `finished` (итоги, `ui.results`, «В меню»);
+      `party.js` считает партию завершённой по `hook === 'gameEnd'`.
+- [ ] Итоги партии: логгер и статистика (урон, доборы, время), эффекты «в конце партии», реванш/рестарт.
+- [ ] Эффекты карт на беспромптовой модели (окна `reveal`/`resolve` в SET_COMBAT помечены).
+- [ ] Способности героев на беспромптовой модели (первый потребитель `targeting`).
+- [ ] Анимация перемещения бойцов после кнопки «закончить действие».
+- [ ] Логгер хода и боя.
 
 ## Team mode (shared) — позже
 
@@ -15,7 +37,7 @@
 ## В конце всей логики игры
 
 - [ ] RESIGN проработать логику на каждом хуке игры, т.к. можно сдаться в любой момент.
-- [ ] `stateFields` / `playerFields`: movement, handDiscard, effectPrompt, lastCombat — по мере появления полей.
+- [ ] `stateFields` / `playerFields`: handDiscard, effectPrompt — legacy-поля, уходят вместе с legacy-ходом.
 - [ ] скиллы героев
 - [ ] общий логгер
 - [ ] логгер боя

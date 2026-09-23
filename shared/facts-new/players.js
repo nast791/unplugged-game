@@ -38,16 +38,10 @@ export const PLAYERS = (ctx, params = {}) => {
   return { ok: list.length >= min, value: list };
 };
 
-/**
- * NEXT_PLAYER — следующий живой игрок по order (цикл).
- * turn.playerId == null — первый по order; иначе следующий, мёртвых пропускаем.
- */
-export const NEXT_PLAYER = (ctx, _params = {}) => {
-  const state = ctx.state;
+/** Следующий живой игрок по order (цикл); null, если живых нет. */
+export const nextAlivePlayerId = state => {
   const allPlayers = sortedPlayers(state);
-  if (allPlayers.length === 0) {
-    return { ok: false, value: null };
-  }
+  if (allPlayers.length === 0) return null;
 
   const currentId = state.turn?.playerId;
   const startIndex =
@@ -57,12 +51,19 @@ export const NEXT_PLAYER = (ctx, _params = {}) => {
 
   for (let step = 1; step <= allPlayers.length; step += 1) {
     const player = allPlayers[(startIndex + step) % allPlayers.length];
-    if (isPlayerAlive(state, player)) {
-      return { ok: true, value: String(player.id) };
-    }
+    if (isPlayerAlive(state, player)) return String(player.id);
   }
 
-  return { ok: false, value: null };
+  return null;
+};
+
+/**
+ * NEXT_PLAYER — следующий живой игрок по order (цикл).
+ * turn.playerId == null — первый по order; иначе следующий, мёртвых пропускаем.
+ */
+export const NEXT_PLAYER = (ctx, _params = {}) => {
+  const playerId = nextAlivePlayerId(ctx.state);
+  return { ok: playerId != null, value: playerId };
 };
 
 /** Число живых команд (для teams_2v2) или игроков (FFA). */
@@ -70,4 +71,17 @@ export const aliveSideCount = state => {
   const alive = queryPlayers(state, { alive: true }, {});
   if (!isTeamFormat(state)) return alive.length;
   return new Set(alive.map(entry => entry.team)).size;
+};
+
+/** Итог партии по живым сторонам: finished, если осталась одна сторона (или ни одной). */
+export const finishedSides = state => {
+  if (aliveSideCount(state) > 1) return { finished: false, winner: null };
+  const alive = queryPlayers(state, { alive: true }, {});
+  return { finished: true, winner: alive[0]?.playerId ?? null };
+};
+
+/** ALIVE_SIDES — сколько сторон ещё живо; params: { max } → ok = value <= max. */
+export const ALIVE_SIDES = (ctx, params = {}) => {
+  const count = aliveSideCount(ctx.state);
+  return { ok: params.max == null || count <= params.max, value: count };
 };

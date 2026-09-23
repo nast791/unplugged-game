@@ -5,7 +5,8 @@ import { runLifecycle } from '#shared/gameEngine.js';
 const MAX_PARTIES = 32;
 const parties = new Map();
 
-const isFinished = state => state?.winner != null;
+/** Партия закончена: экран итогов (gameEnd). Итоговое состояние не храним. */
+const isFinished = state => state?.hook === 'gameEnd';
 
 const trimParties = () => {
   while (parties.size > MAX_PARTIES) {
@@ -63,14 +64,60 @@ const canSee = (visibility, rel) => {
   return roles.includes(rel);
 };
 
-const projectState = (state, rel) => {
+/** Карты боя пер-рольные: своя карта видна владельцу, после вскрытия — всем. */
+const projectCombat = (combat, playerId) => {
+  if (!combat) return null;
+
+  const { attackCard, defenseCard, attackValue, defenseValue, ...rest } = combat;
+  const revealed = ['reveal', 'resolve', 'close'].includes(combat.stage);
+  const isAttacker = String(combat.attackerPlayerId) === String(playerId);
+  const isDefender = String(combat.defenderPlayerId) === String(playerId);
+
+  const out = { ...rest };
+  if ((revealed || isAttacker) && attackCard !== undefined) {
+    out.attackCard = attackCard;
+  }
+  if ((revealed || isDefender) && defenseCard !== undefined) {
+    out.defenseCard = defenseCard;
+  }
+  if (revealed || isAttacker) out.attackValue = attackValue;
+  if (revealed || isDefender) out.defenseValue = defenseValue;
+  return out;
+};
+
+/** Черновик перемещения видит только владелец, пока действие не закрыто кнопкой. */
+const projectMovement = (movement, you) => {
+  if (!movement) return null;
+  if (String(movement.playerId) === String(you.id)) {
+    return structuredClone(movement);
+  }
+  return null;
+};
+
+/** Выбор цели: чужим видно только, что выбор идёт. */
+const projectTargeting = (targeting, you) => {
+  if (!targeting) return null;
+
+  const playerId = String(targeting.playerId);
+  const base = {
+    playerId,
+    source: targeting.source ?? null,
+    required: targeting.required === true,
+  };
+  if (playerId !== String(you.id)) return base;
+  return { ...base, candidates: structuredClone(targeting.candidates ?? []) };
+};
+
+const projectState = (state, you) => {
   const out = {};
   for (const [key, visibility] of Object.entries(stateFields)) {
-    if (!canSee(visibility, rel)) continue;
+    if (!canSee(visibility, 'self')) continue;
     if (key === 'combat') {
-      out.combat = state.combat
-        ? (({ attackCard, defenseCard, ...rest }) => rest)(state.combat)
-        : null;
+      out.combat = projectCombat(state.combat, you.id);
+    } else if (key === 'movement') {
+      out.movement = projectMovement(state.movement, you);
+    } else if (key === 'targeting') {
+      out.targeting = projectTargeting(state.targeting, you);
     } else if (key === 'settings') {
       const settings = structuredClone(state.settings ?? {});
       delete settings.seed;
@@ -95,6 +142,10 @@ const projectZone = (name, zone, rel) => {
 const projectPlayer = (player, state, you) => {
   const rel = role(you, player);
   const hidePos = state.hook === 'gameStart' && rel !== 'self';
+  const movementOwnerId =
+    state.movement?.playerId == null ? null : String(state.movement.playerId);
+  const hideMoved =
+    movementOwnerId != null && movementOwnerId !== String(you.id);
   const out = {};
 
   for (const [key, visibility] of Object.entries(playerFields)) {
@@ -105,11 +156,19 @@ const projectPlayer = (player, state, you) => {
     if (!canSee(visibility, rel)) continue;
 
     if (key === 'fighters') {
-      out.fighters = (player.fighters ?? []).map(f =>
-        hidePos
-          ? { ...f, currentPosition: null, startPosition: null }
-          : { ...f },
-      );
+      out.fighters = (player.fighters ?? []).map(fighter => {
+        if (hidePos) {
+          return { ...fighter, currentPosition: null, startPosition: null };
+        }
+        if (hideMoved && String(player.id) === movementOwnerId) {
+          const origin = state.movement.origins?.[String(fighter.id)];
+          return {
+            ...fighter,
+            currentPosition: origin ?? fighter.currentPosition,
+          };
+        }
+        return { ...fighter };
+      });
     } else if (key === 'items') {
       out.items = structuredClone(player.items ?? []);
     } else {
@@ -132,7 +191,7 @@ export const view = (state, playerId) => {
   const snapshot = normalizeForView(state);
   const you = findYou(snapshot, playerId);
   return {
-    ...projectState(snapshot, 'self'),
+    ...projectState(snapshot, you),
     you: String(playerId),
     ui: runUi(snapshot, playerId),
     players: (snapshot.players ?? []).map(p => projectPlayer(p, snapshot, you)),

@@ -45,6 +45,8 @@ const props = defineProps({
   players: { type: Array, default: () => [] },
   selectedFighterId: { type: [String, Number], default: null },
   highlightedCellIds: { type: Array, default: () => [] },
+  highlightedFighterIds: { type: Array, default: () => [] },
+  framedFighterIds: { type: Array, default: () => [] },
   interactive: { type: Boolean, default: true },
 });
 
@@ -187,13 +189,30 @@ const nodeLabelConfig = node => ({
   listening: false,
 });
 
-const fighterHaloConfig = token => ({
-  radius: nodeSize.value / 3 + 6,
-  fill:
-    String(props.selectedFighterId) === String(token.fighter.id) ? token.color : 'transparent',
-  opacity: 0.35,
-  listening: false,
-});
+const highlightedFighterSet = computed(
+  () => new Set((props.highlightedFighterIds || []).map(id => String(id))),
+);
+
+const framedFighterSet = computed(
+  () => new Set((props.framedFighterIds || []).map(id => String(id))),
+);
+
+/** Рамка выбранного бойца — красная, подсветка кандидата — синяя. */
+const fighterHaloConfig = token => {
+  const id = String(token.fighter.id);
+  const framed = framedFighterSet.value.has(id);
+  const highlighted = highlightedFighterSet.value.has(id);
+  const selected = String(props.selectedFighterId) === id;
+
+  return {
+    radius: nodeSize.value / 3 + 6,
+    fill: selected && !framed && !highlighted ? token.color : 'transparent',
+    opacity: framed || highlighted ? 1 : 0.35,
+    stroke: framed ? '#dc2626' : highlighted ? '#0284c7' : 'transparent',
+    strokeWidth: framed ? 4 : highlighted ? 3 : 0,
+    listening: false,
+  };
+};
 
 const fighterBodyConfig = token => ({
   radius: nodeSize.value / 3,

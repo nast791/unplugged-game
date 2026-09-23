@@ -7,12 +7,14 @@ export const lifecycle = [
   { name: 'gameEnd', order: 5 },
 ];
 
-/** Хуки хода (lifecycle.turn). */
+/** Фазы (брики) хука turn; order — приоритет в hook.phases. */
 export const turn = [
-  { name: 'movement', order: 1 },
-  { name: 'attack', order: 2 },
-  { name: 'effect', order: 3 },
+  { name: 'handLimit', order: 0 },
+  { name: 'choose', order: 1 },
+  { name: 'movement', order: 2 },
+  { name: 'attack', order: 3 },
   { name: 'defense', order: 4 },
+  { name: 'waiting', order: 5 },
 ];
 
 /**
