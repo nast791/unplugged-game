@@ -23,8 +23,9 @@ alwaysApply: true
 | Сущность | Где живёт конкретика | Как core обращается |
 |----------|----------------------|---------------------|
 | **Lifecycle hook** | `shared/lifecycle/*.js` + **`lifecycle/registry.js`** | `runLifecycle` → `currentHook.enter/body/exit`, порядок из `hooks.js` |
-| **Phase** | `shared/phases/*.js` + **`phases/registry.js`** | `runPhase`, `runUi` — в core |
+| **Phase** | `shared/phases/*.js`; хук объявляет свой **`phases[]`** | `phases/run.js` (`runPhase`, `activePhaseOf`) ← вызов из core и из хука |
 | **Action** | `shared/actions-new/*` | вызов из фаз (`enter`, …) и из `phase.moves` |
+| **Skill** | контент героя (`skill.rules`) + `shared/skills/run.js` | `runSkillMoment(state, playerId, moment)`: правило `moment` + `when` (AND) + `any` (OR-ветки) → `then` (экшены); моменты — `constants/moments.js` |
 | **Move** | `actions-new/moves.js` (`commonMoves`), `phase.moves[type]` | `runAction` → `commonMoves` или `phase.moves` |
 | **Legacy (не мигрировано)** | `shared/gameEngine.js` | **не в core** |
 **Запрещено в `core.js`:**
@@ -52,20 +53,20 @@ alwaysApply: true
 12. Условия phase — только в модуле phase (`phase.active`), не в core.
 ## Расстановка (gameStart — пример, не в core)
 21. При create: **все `currentPosition` / `startPosition` = null** (нет autoStartCell в builders).
-22. **pickNumHero** — active, если героев > 1 и `!numberedHeroCommitted`; preview через **`PLACE_FIGHTER`** (`zone: numbered`); commit — **`UI_OK`**.
-23. **place** — active до **`allPlayersPlacementReady`** (расстановка + ожидание остальных); **`PLACE_FIGHTER`** (`zone: area` — клетки того же цвета, что номерная).
+22. **pickNumHero** — active, если героев > 1 и `!numberedHeroCommitted`; выбор кликом: **`PICK`** `{ kind: 'fighter' }` ставит героя на numbered cell как preview; commit — **`UI_OK`**.
+23. **place** — active до **`allPlayersPlacementReady`** (расстановка + ожидание остальных); **`PICK`** `{ kind: 'cell', fighterId, id }` — клетки того же цвета, что номерная.
 24. **Numbered cell** — `heroStart: true` в стартовой зоне (`seatIndex` / `order`).
 25. **Главный герой** — кто на numbered cell; **`mainHeroId` не храним**.
 26. **1 гerой:** в `place.enter` — молча ставим на numbered cell.
-27. **pickNumHero:** radio → **`PLACE_FIGHTER`** preview; **`UI_OK`** commit; **`UI_BACK`** откат preview; hints по **`active`**.
+27. **pickNumHero:** клик по герою (**`PICK`**) → preview; **`UI_OK`** commit; **`UI_BACK`** откат preview; hints по **`active`**.
 28. **place:** **`UI_BACK`** невидима и недоступна. После **`UI_OK`** (`placementReady`) — hint «Ожидание расстановки всех игроков», пока не **`allPlayersPlacementReady`**.
-29. **RESIGN** — отложен; в конце через `runLifecycle`.
+29. **Расстановка и ход используют один кирпич позиции** — **`SET_FIGHTER_CELL`**; условия (номерная клетка, область, зафиксированный герой, занятость) — `numberPickRejection` / `placementRejection` в `helpers/placement.js`.
 ## Actions и moves
 30. Старая логика **`shared/actions/`** не развивается; новое — **`shared/actions-new/`**.
-31. **Actions** — универсальные CAPS-функции, map **`actions-new/index.js`** (`PLACE_FIGHTER`, …); вызываются из фаз напрямую и через **`phase.moves`**.
-32. **Moves** — всё, что клиент шлёт через **`runAction`**: **`commonMoves`** (`UI_OK`, `UI_BACK` в `moves.js`) + **`phase.moves`** (allow-list CAPS с параметрами фазы).
+31. **Actions** — универсальные CAPS-функции, map **`actions-new/index.js`** (`SET_FIGHTER_CELL`, `SET_ACTIONS`, …); вызываются из фаз напрямую и через **`phase.moves`**.
+32. **Moves** — всё, что клиент шлёт через **`runAction`**: **`commonMoves`** (`UI_OK`, `UI_BACK`, `RESIGN` в `moves.js`) + **`phase.moves`** (allow-list CAPS с параметрами фазы).
 33. **Helpers** — не CAPS; **`helpers/placement.js`**, **`helpers/base.js`** (`resolvePhaseHint`).
-34. **`PLACE_FIGHTER`**: `{ fighterId, cellId?, zone: 'numbered'|'area'|'any', preview? }`.
+34. **Клиент шлёт клики**: **`PICK`** `{ kind: 'deck'|'card'|'fighter'|'cell', id?, fighterId? }` — смысл клика решает активная фаза.
 ## UI
 35. **Подсказки** — текст **сверху экрана**, не log.
 36. **`hints`**: `{ key: { active, text } }`; **`resolvePhaseHint`** в core; **`phase.ui()`** — modals, highlights, controls; **описание потока** — block-comment в **конце** файла phase, **обычным русским языком** (не технический шорткод).
@@ -91,13 +92,16 @@ shared/
   actions-new/movement.js  # SET_MOVEMENT (open | step | bonus | close)
   actions-new/combat.js    # SET_COMBAT (open | attacker | target | defense | reveal | resolve | close)
   actions-new/targeting.js # SET_TARGETING (open | pick | close)
-  actions-new/moves.js     # commonMoves: UI_OK, UI_BACK
+  actions-new/moves.js     # commonMoves: UI_OK, UI_BACK, RESIGN
   facts-new/*              # PLAYERS, NEXT_PLAYER, ALIVE_SIDES, ACTIVE_PLAYER, AP, IN_PROGRESS,
-                           # TARGETING, HAND, HAND_OVER_LIMIT, FIGHTERS
+                           # TARGETING, PICKED, HAND, HAND_OVER_LIMIT, FIGHTERS
+  facts-new/run.js         # buildFactContext, runFact, runFacts (core только реэкспортирует)
+  constants/moments.js     # список моментов для правил способностей и карт
+  skills/run.js            # runSkillMoment: правила способности в моменте (when → then)
   lifecycle/registry.js   # единственный список мигрированных hooks
   lifecycle/gameStart.js, turnStart.js, turn.js, turnEnd.js, gameEnd.js
   helpers/base.js, board.js, cards.js, combat.js, turn.js, placement.js
-  phases/registry.js       # phases by name (exit lookup)
+  phases/run.js            # activePhaseOf + runPhase: фазы берём у хука, реестра фаз нет
   phases/pickNumHero.js, place.js,
   phases/handLimit.js, choose.js, movement.js, attack.js, defense.js, waiting.js, finished.js
   gameEngine.js           # тонкий мост клиента к core + api для движка карт (createPartyApi)

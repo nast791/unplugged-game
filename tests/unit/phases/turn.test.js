@@ -44,17 +44,24 @@ describe('phase choose', () => {
     expect(choose.active(state, '1')).toBe(false);
   });
 
-  it('не активна при открытом моменте или переполненной руке', () => {
+  it('не активна при открытом моменте и когда действий не осталось', () => {
     const withMoment = turnState();
     withMoment.movement = { playerId: '0', origins: {}, bonus: 0 };
     expect(choose.active(withMoment, '0')).toBe(false);
 
+    const noActions = turnState();
+    noActions.turn = { ...noActions.turn, actionsLeft: 0 };
+    expect(choose.active(noActions, '0')).toBe(false);
+  });
+
+  it('переполненная рука не мешает объявить действие: сброс ждёт конца хода', () => {
     const overLimit = turnState();
     player(overLimit, '0').hand.cards = Array.from(
       { length: rules.maxHandSize + 1 },
       (_, index) => ({ id: `x${index}`, instanceId: `x${index}_0` }),
     );
-    expect(choose.active(overLimit, '0')).toBe(false);
+
+    expect(choose.active(overLimit, '0')).toBe(true);
   });
 
   it('клик по колоде: −1 действие, черновик перемещения, добор 1 карты', () => {
@@ -113,7 +120,7 @@ describe('phase choose', () => {
     expect(resolvePhaseHint(choose.hints, state, '0')).toMatch(/возьмите карту/);
   });
 
-  it('выбор цели: подсветка кандидатов, подсказка и клик по бойцу', () => {
+  it('выбор цели: подсветка кандидатов, подсказка и закрытие окна после отметки', () => {
     const state = turnState();
     state.targeting = {
       playerId: '0',
@@ -129,8 +136,12 @@ describe('phase choose', () => {
       'Выберите цель среди подсвеченных бойцов',
     );
 
+    expect(() =>
+      choose.moves.PICK(state, { kind: 'fighter', id: 'alpha', playerId: '0' }),
+    ).toThrow(/не среди кандидатов/);
+
     choose.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '0' });
-    expect(state.targeting.picked).toBe('beta');
+    expect(state.targeting).toBeNull();
   });
 
   it('выбор цели не мешает объявить действие, но держит ход открытым', () => {

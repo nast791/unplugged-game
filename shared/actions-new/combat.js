@@ -15,6 +15,7 @@ import {
   attackCandidates,
   attackTargets,
   combatOutcome,
+  isCombatParticipant,
 } from '#shared/helpers/combat.js';
 
 const playerIdOf = (partyState, action) =>
@@ -213,10 +214,8 @@ const resolveCombat = partyState => {
   return partyState;
 };
 
-/** Закрытие боя: разыгранные карты уходят в сброс владельцев, бой снимается. */
-const closeCombat = partyState => {
-  const combat = combatAt(partyState, 'close');
-
+/** Разыгранные карты боя уходят в сброс владельцев. */
+const discardCombatCards = (partyState, combat) => {
   if (combat.attackCard) {
     SET_CARDS(partyState, {
       playerId: combat.attackerPlayerId,
@@ -233,14 +232,38 @@ const closeCombat = partyState => {
       cards: [combat.defenseCard],
     });
   }
+};
 
+/** Закрытие боя: разыгранные карты уходят в сброс владельцев, бой снимается. */
+const closeCombat = partyState => {
+  const combat = combatAt(partyState, 'close');
+
+  discardCombatCards(partyState, combat);
+  partyState.combat = null;
+  return partyState;
+};
+
+/**
+ * Отмена боя на любой стадии: например, участник сдался. Карты просто уходят в сброс,
+ * числа и урон не считаются, lastCombat не трогаем — бой не состоялся.
+ */
+const cancelCombat = (partyState, action) => {
+  const combat = partyState.combat;
+  if (!combat) return partyState;
+
+  const playerId = playerIdOf(partyState, action);
+  if (playerId != null && !isCombatParticipant(partyState, playerId)) {
+    throw new Error('SET_COMBAT: отменить бой может только его участник');
+  }
+
+  discardCombatCards(partyState, combat);
   partyState.combat = null;
   return partyState;
 };
 
 /**
  * SET_COMBAT — бой: объявление (open → attacker → target), защита (defense), вскрытие (reveal),
- * числа и урон (resolve), закрытие боя (close).
+ * числа и урон (resolve), закрытие боя (close) и отмена (cancel).
  * params: { op, playerId?, cardId?, fighterId? }
  */
 export const SET_COMBAT = (partyState, action = {}) => {
@@ -252,8 +275,9 @@ export const SET_COMBAT = (partyState, action = {}) => {
   if (op === 'reveal') return revealCombat(partyState);
   if (op === 'resolve') return resolveCombat(partyState);
   if (op === 'close') return closeCombat(partyState);
+  if (op === 'cancel') return cancelCombat(partyState, action);
   throw new Error(
-    `SET_COMBAT: op "${op}" (нужны open | attacker | target | defense | reveal | resolve | close)`,
+    `SET_COMBAT: op "${op}" (нужны open | attacker | target | defense | reveal | resolve | close | cancel)`,
   );
 };
 

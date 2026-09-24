@@ -1,58 +1,21 @@
 /**
  * Универсальный движок игры.
- * Конкретика: lifecycle/registry.js, phases/registry.js, actions-new/*.
+ * Конкретика: lifecycle/registry.js, phases/*, actions-new/*.
  *
  * Публичный API: runLifecycle, runAction, runPhase, runUi, runFact, runFacts.
  */
 import { lifecycle } from '#shared/constants/hooks.js';
 import { commonMoves } from '#shared/actions-new/moves.js';
-import { facts } from '#shared/facts-new/registry.js';
+import { runFact, runFacts } from '#shared/facts-new/run.js';
 import { findPlayer, resolvePhaseHint } from '#shared/helpers/base.js';
 import { lifecycleHooks } from '#shared/lifecycle/registry.js';
-import { phases } from '#shared/phases/registry.js';
+import {
+  activePhaseOf,
+  runPhase as runHookPhase,
+} from '#shared/phases/run.js';
 
 export { isCoreHook } from '#shared/lifecycle/registry.js';
-
-const buildFactContext = (partyState, context = {}) => {
-  const playerId =
-    context.playerId ?? context.player?.id ?? partyState.turn?.playerId;
-  const player =
-    context.player ??
-    (playerId != null ? findPlayer(partyState, playerId) : null);
-
-  return {
-    ...context,
-    state: partyState,
-    phase: partyState.hook,
-    player,
-    vars: { ...(context.vars ?? {}) },
-  };
-};
-
-/** Один fact из реестра facts-new/registry.js. */
-export const runFact = (partyState, factName, params = {}, context = {}) => {
-  const fn = facts[factName];
-  if (typeof fn !== 'function') {
-    throw new Error(`fact "${factName}" не найден`);
-  }
-  return fn(buildFactContext(partyState, context), params);
-};
-
-/** Цепочка facts (AND); trigger.var пишет value в vars. */
-export const runFacts = (partyState, triggers, context = {}) => {
-  const vars = { ...(context.vars ?? {}) };
-  for (const trigger of triggers ?? []) {
-    const { ok, value } = runFact(
-      partyState,
-      trigger.fact,
-      trigger.params ?? {},
-      { ...context, vars },
-    );
-    if (!ok) return { ok: false, vars };
-    if (trigger.var) vars[trigger.var] = value;
-  }
-  return { ok: true, vars };
-};
+export { runFact, runFacts };
 
 const sortedLifecycle = [...lifecycle].sort(
   (left, right) => left.order - right.order,
@@ -64,43 +27,24 @@ export const nextInLifecycle = currentHookName => {
   return sortedLifecycle[index + 1].name;
 };
 
-export const runPhase = (partyState, playerId) => {
-  const player = findPlayer(partyState, playerId);
-  if (!player) return partyState;
+/** enter/exit активной фазы игрока; фазы объявляет сам хук (lifecycleHooks[hook].phases). */
+export const runPhase = (partyState, playerId) =>
+  runHookPhase(
+    partyState,
+    lifecycleHooks[partyState.hook]?.phases ?? [],
+    playerId,
+  );
 
-  const hookPhases = lifecycleHooks[partyState.hook]?.phases ?? [];
-  const phase =
-    hookPhases.find(entry => entry.active?.(partyState, playerId)) ?? null;
-
-  const prevName = player._activePhase ?? null;
-  const nextName = phase?.name ?? null;
-  let state = partyState;
-
-  if (prevName !== nextName) {
-    if (prevName) {
-      const prevPhase = phases[prevName];
-      state = prevPhase?.exit?.(state, playerId) ?? state;
-    }
-    player._activePhase = nextName;
-    if (nextName && phase.enter) {
-      state = phase.enter(state, playerId) ?? state;
-    }
-  }
-
-  if (nextName && phase.body) {
-    state = phase.body(state, playerId) ?? state;
-  }
-
-  return state;
-};
+/** Запас шагов: из-за перенаправлений enter цепочка может идти дольше самой длины lifecycle. */
+const MAX_LIFECYCLE_STEPS = sortedLifecycle.length * 2;
 
 export const runLifecycle = partyState => {
   let state = partyState;
 
-  for (let step = 0; step < sortedLifecycle.length; step += 1) {
+  for (let step = 0; step < MAX_LIFECYCLE_STEPS; step += 1) {
     const hookName = state.hook;
     const currentHook = lifecycleHooks[hookName];
-    if (!currentHook) break;
+    if (!currentHook) return state;
 
     state = currentHook.enter?.(state) ?? state;
 
@@ -108,24 +52,25 @@ export const runLifecycle = partyState => {
     if (state.hook !== hookName) continue;
 
     const hookBodyComplete = currentHook.body?.(state) ?? false;
-    if (!hookBodyComplete) break;
+    if (!hookBodyComplete) return state;
 
     state = currentHook.exit?.(state) ?? state;
 
     const nextHookName = currentHook.next ?? nextInLifecycle(hookName);
-    if (!nextHookName) break;
+    if (!nextHookName) return state;
 
     state = { ...state, hook: nextHookName };
   }
 
-  return state;
+  throw new Error(
+    `runLifecycle: цепочка хуков не завершилась за ${MAX_LIFECYCLE_STEPS} шагов`,
+  );
 };
 
 /** UI-проекция: не пишется в state. Конкретика — в phase.ui(). */
 export const runUi = (partyState, playerId, clientContext = {}) => {
   const hookPhases = lifecycleHooks[partyState.hook]?.phases ?? [];
-  const phase =
-    hookPhases.find(entry => entry.active?.(partyState, playerId)) ?? null;
+  const phase = activePhaseOf(hookPhases, partyState, playerId);
   const phaseUi =
     phase?.ui?.(partyState, playerId, clientContext, phase) ?? {};
 
@@ -153,8 +98,7 @@ export const runAction = (partyState, action) => {
   }
 
   const hookPhases = lifecycleHooks[partyState.hook]?.phases ?? [];
-  const phase =
-    hookPhases.find(entry => entry.active?.(partyState, action.playerId)) ?? null;
+  const phase = activePhaseOf(hookPhases, partyState, action.playerId);
 
   const commonMove = commonMoves[action.type];
   const phaseMove = phase?.moves?.[action.type];

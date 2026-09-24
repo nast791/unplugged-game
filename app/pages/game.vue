@@ -86,6 +86,7 @@
             <span v-if="String(currentPlayerId) === String(player.id)" class="opacity-70">
               · ход
             </span>
+            <span v-if="player.resigned" class="opacity-70"> · сдался</span>
           </button>
         </section>
 

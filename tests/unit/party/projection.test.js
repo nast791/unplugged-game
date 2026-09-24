@@ -83,4 +83,13 @@ describe('party.view: приватность хода', () => {
     expect(otherView.targeting.playerId).toBe('0');
     expect(otherView.targeting.candidates).toBeUndefined();
   });
+
+  it('сдавшийся игрок виден всем', () => {
+    const state = createState();
+    player(state, '1').resigned = true;
+
+    const enemyView = view(state, '0');
+    expect(enemyView.players.find(entry => entry.id === '1').resigned).toBe(true);
+    expect(enemyView.players.find(entry => entry.id === '0').resigned).toBeFalsy();
+  });
 });

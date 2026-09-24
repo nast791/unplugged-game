@@ -9,7 +9,8 @@ const targetIds = action => {
 /**
  * SET_HEALTH — здоровье бойцов: урон (delta < 0) и лечение (delta > 0).
  * params: { fighterId | fighterIds, delta }
- * Боец с 0 HP убирается с поля. Проверка победы — отдельно (fact ALIVE_SIDES).
+ * Боец с 0 HP убирается с поля. Ушедшего с поля бойца пропускаем без ошибки: к моменту расчёта
+ * эффекта или сдачи игрока его может уже не быть. Проверка победы — отдельно (fact ALIVE_SIDES).
  */
 export const SET_HEALTH = (partyState, action = {}) => {
   const ids = targetIds(action);
@@ -24,9 +25,7 @@ export const SET_HEALTH = (partyState, action = {}) => {
 
   for (const fighterId of ids) {
     const { player, fighter, index } = findFighter(partyState, fighterId);
-    if (!fighter) {
-      throw new Error(`SET_HEALTH: боец "${fighterId}" не найден`);
-    }
+    if (!fighter) continue;
 
     const maxHp = Number(fighter.startHp);
     const limit = Number.isFinite(maxHp) ? maxHp : Infinity;

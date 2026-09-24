@@ -6,6 +6,7 @@ import {
   HAND,
   HAND_OVER_LIMIT,
   IN_PROGRESS,
+  PICKED,
   TARGETING,
 } from './turn.js';
 
@@ -18,6 +19,7 @@ export const facts = {
   AP,
   IN_PROGRESS,
   TARGETING,
+  PICKED,
   HAND,
   HAND_OVER_LIMIT,
   FIGHTERS,

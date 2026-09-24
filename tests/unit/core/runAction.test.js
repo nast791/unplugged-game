@@ -64,21 +64,23 @@ describe('core.runAction guards', () => {
     ).toThrow(/недоступен/);
   });
 
-  it('отклоняет PLACE_FIGHTER после подтверждения расстановки', () => {
+  it('отклоняет PICK после подтверждения расстановки', () => {
     let state = runLifecycle(placementState());
     state = runAction(state, {
-      type: 'PLACE_FIGHTER',
+      type: 'PICK',
+      kind: 'cell',
       playerId: '0',
       fighterId: '0-pawn',
-      cellId: 1,
+      id: 1,
     });
     state = runAction(state, { type: 'UI_OK', playerId: '0' });
     expect(() =>
       runAction(state, {
-        type: 'PLACE_FIGHTER',
+        type: 'PICK',
+        kind: 'cell',
         playerId: '0',
         fighterId: '0-pawn',
-        cellId: 1,
+        id: 1,
       }),
     ).toThrow(/подтверждена/);
   });

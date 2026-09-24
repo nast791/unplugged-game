@@ -40,49 +40,34 @@ export default {
     heroId: 'medusa',
     name: 'Взгляд Медузы',
     text: 'Начало хода: вы можете нанести 1 урон вражескому бойцу в одной области с Медузой.',
-    effects: [
+    rules: [
+      // Начало хода: есть вражеский боец в области Медузы — предлагаем выбрать одного из них.
+      // Если Медузы нет на поле, у areaOf нет ориентира и правило не сработает.
       {
-        id: 'gaze',
-        triggers: [
-          { fact: 'PHASE', params: { id: 'turnStart' } },
+        moment: 'turnStart',
+        when: [
           {
             fact: 'FIGHTERS',
             params: { side: 'opponent', areaOf: 'medusa' },
             min: 1,
-            var: 'candidates',
+            var: 'targets',
           },
         ],
-        events: [
+        then: [
           {
-            type: 'PROMPT',
-            message: 'Применить «Взгляд Медузы»?',
-            answers: [
-              { value: 'yes', text: 'Да' },
-              { value: 'no', text: 'Нет' },
-            ],
-          },
-        ],
-      },
-      {
-        id: 'gaze_yes',
-        triggers: [{ fact: 'ANSWER', params: { value: 'yes' } }],
-        events: [
-          {
-            type: 'HIGHLIGHT_TARGETS',
-            params: { target: '$candidates' },
+            action: 'SET_TARGETING',
+            op: 'open',
+            candidates: '$targets',
             count: 1,
           },
-          {
-            type: 'DEAL_DAMAGE',
-            damage: 1,
-            target: 1,
-          },
         ],
       },
+      // Цель отмечена (факт PICKED отдаёт отмеченных бойцов) — 1 урон каждому отмеченному;
+      // окно после этого закрывает движок.
       {
-        id: 'gaze_no',
-        triggers: [{ fact: 'ANSWER', params: { value: 'no' } }],
-        events: [],
+        moment: 'picked',
+        when: [{ fact: 'PICKED', var: 'picked' }],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$picked', delta: -1 }],
       },
     ],
   },

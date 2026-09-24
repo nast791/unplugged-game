@@ -39,12 +39,14 @@ alwaysApply: false
 победа — <имя>» и `ui.results` (победитель, раунд, ход, состояние бойцов). Партия с `hook === 'gameEnd'`
 не хранится в памяти (`server/party.js`). Ничьей нет: победитель всегда есть.
 **runLifecycle(state):**
-1. Взять `currentHook` по `state.hook` из `lifecycle/registry.js`.
+1. Взять `currentHook` по `state.hook` из `lifecycle/registry.js`; нет в реестре — выходим (терминальный хук).
 2. `enter(state)` — один раз при входе (`_enteredHooks` + `runPhase` для каждого игрока).
-3. `body(state)` — **true**, если hook завершён → иначе **stop**.
-4. `exit(state)`.
-5. `hook = nextInLifecycle` → повтор (guard ≤ длина lifecycle).
-Legacy-хуки (turnStart, turn, turnEnd, gameEnd): `gameEngine.advanceHooks` + `stepHook`.
+3. Если `enter` сменил `hook` (например, turnStart → gameEnd) — продолжаем с нового хука.
+4. `body(state)` — **true**, если hook завершён → иначе **stop** (ждём действий игрока).
+5. `exit(state)`.
+6. `hook = currentHook.next ?? nextInLifecycle(hookName)` → повтор; запас шагов — 2× длина `lifecycle`
+   (иначе цепочка молча обрывалась бы, теперь бросается ошибка).
+Legacy больше не участвует: `gameEngine` только делегирует в core (и держит api для движка карт).
 ---
 ## 3. gameStart — расстановка
 ### 3.1 Lifecycle gameStart
@@ -62,27 +64,30 @@ Legacy-хуки (turnStart, turn, turnEnd, gameEnd): `gameEngine.advanceHooks` +
 - `confirmHero` — preview есть, ждём ОК или Назад
 **enter:** `numberedHeroCommitted = false`.
 **exit:** throw, если multi-hero и `!numberedHeroCommitted`.
-**moves:** `PLACE_FIGHTER` `{ zone: 'numbered', preview: true }` — герой на numbered cell без commit.
+**moves:** `PICK` `{ kind: 'fighter', id }` — герой ставится на numbered cell как preview (без commit).
 **UI_OK:** `numberedHeroCommitted = true` → active place.
 **UI_BACK:** visible при preview → снять героя с numbered, `_activePhase = null`.
 #### place
 **active:** до `allPlayersPlacementReady`:
 - расстановка: `!placementReady` (+ multi: `numberedHeroCommitted` и герой на numbered);
 - ожидание: `placementReady && !allPlayersPlacementReady`.
-**enter (1 герой):** `PLACE_FIGHTER` `zone: 'numbered'` + `numberedHeroCommitted = true`.
+**enter (1 герой):** ставит героя на numbered cell (`SET_FIGHTER_CELL` `start: true`) + `numberedHeroCommitted = true`;
+если номерной клетки на карте нет — ничего не делает.
 **hints:**
 - `placeFighters` — пока `!placementReady`
 - `waitingForAllPlayers` — после `UI_OK`, пока не все готовы
-**moves:** `PLACE_FIGHTER` `{ zone: 'area' }` — клетки **того же цвета** (`areas[0]`), что номерная клетка.
+**moves:** `PICK` `{ kind: 'cell', fighterId, id }` — клетки **того же цвета** (`areas[0]`), что номерная клетка.
 **Locked:** главный герой на numbered cell — `isLockedHero`, throw при move.
 **UI_OK:** все fighters на клетках → `placementReady = true`.
 **UI_BACK:** **невидима** (`back` без `onPress` → throw).
 **ui (ожидание):** без подсветки, controls скрыты.
-### 3.3 Геометрия (`helpers/placement.js`, `helpers/base.js`)
+### 3.3 Геометрия и условия (`helpers/placement.js`, `helpers/base.js`)
 - `seatIndex` — `player.order - 1` или index в `players[]`.
 - `numberedCellId` — node с `heroStart` в зоне `position === seatIndex + 1`.
 - `startAreaCellIds` / `isPlacementAreaCell` — все nodes с тем же `nodeAreaId`, что номерная клетка.
 - `hasHeroOnNumberedCell`, `isLockedHero`, `hasPickPreview`.
+- `numberPickRejection` / `placementRejection` — причины отказа (текстом) для фаз `pickNumHero` и `place`;
+  позицию пишет общий кирпич `SET_FIGHTER_CELL`, отдельного действия расстановки нет.
 ### 3.4 Create (builders + create.post)
 - Все fighters: `currentPosition: null`, `startPosition: null`.
 - После сборки: **`runLifecycle(state)`** перед `save` — enter gameStart, auto-numbered для 1 героя.
@@ -103,26 +108,53 @@ Legacy-хуки (turnStart, turn, turnEnd, gameEnd): `gameEngine.advanceHooks` +
 resolve → close), `targeting` (выбор цели), `lastCombat`/`lastBonus` (итоги; снимаются объявлением нового действия).
 **Права:** активная фаза игрока = его allow-list; чужие клики core отклоняет, отдельных assertTurn/assertPending нет.
 **turnEnd:** пропускной — снимает моменты, проверяет лимит руки и уходит в `turnStart` через `next: 'turnStart'`.
+**Лимит руки** проверяется только в конце хода (фаза `handLimit` при AP 0): во время хода рука может быть
+больше `rules.maxHandSize` (добор за действие), иначе игрок с семью картами после добора не смог бы ходить.
 ---
+## 4a. Способности героев (skills)
+Способность — данные в контенте героя (`player.skill`), механика — `shared/skills/run.js`.
+**Правило:** `{ moment, when: [...], any: [[...]], then: [{ action, ...params }] }`.
+- `moment` — из списка `shared/constants/moments.js` (`turnStart`, `picked`); неизвестный момент = ошибка.
+- `when` — цепочка фактов AND (`runFacts`), `var` кладёт значение в переменную; `min` можно писать
+  на уровне триггера (как в legacy-контенте) или внутри `params`.
+- `any` — «или»: список веток, каждая ветка — своя цепочка AND; срабатывает **первая подошедшая**
+  (её переменные доступны в `then`), поэтому ветки упорядочивают по приоритету. Нет `any` — работает только `when`.
+- `then` — вызовы универсальных экшенов по имени (`actions` из `actions-new/index.js`), `$var` подставляются;
+  в каждое действие движок добавляет `playerId` (чей ход/чья способность) и `source` (id способности).
+- **Переменные появляются только из `var`** в условиях правила — снаружи ничего не подставляется.
+  Данные момента правило берёт фактом: на `picked` это `PICKED` (список отмеченных id), поэтому и действие
+  читает их списком (`fighterIds: '$picked'`) — при мультивыборе правило менять не придётся.
+- Правила независимы: срабатывают все, чьи условия сошлись; развилки делают взаимоисключающими условиями
+  (два пересекающихся правила с одинаковым `then` выполнят его дважды).
+- Выбор цели всегда про одну цель: `SET_TARGETING open` принимает `count` (по умолчанию 1), другие значения
+  отклоняются, пока нет мультивыбора.
+Точки вызова: `lifecycle/turn.js → enter` (момент `turnStart`) и `phases/choose.js → moves.PICK` (момент
+`picked`). После отметки цели окно закрывает движок; объявление любого действия закрывает окно способности
+(правило `turnStart` больше не сработает — вход в хук был один). В конце прогона — `endGameIfFinished`.
+Пример: «Взгляд Медузы» в `server/content/heroes/medusa/index.js` — правило `turnStart` открывает выбор цели
+(`SET_TARGETING open`, кандидаты из факта `FIGHTERS` с `areaOf: 'medusa'`), правило `picked` наносит 1 урон.
+
 ## 5. Actions и moves
 ### Новые (actions-new)
 | type           | Файл           | Назначение |
 |----------------|----------------|------------|
 | UI_OK          | moves.js       | active phase → `ok.onPress` (кнопка «Закончить действие»/«ОК») |
 | UI_BACK        | moves.js       | active phase → `back.onPress` (если есть) |
-| PLACE_FIGHTER  | placeFighter.js| `{ fighterId, cellId?, zone, preview? }` — расстановка |
-| SET_FIGHTER_CELL | fighter.js   | `{ fighterId, cellId, start? }` — позиция бойца |
+| SET_FIGHTER_CELL | fighter.js   | `{ fighterId, cellId, start? }` — позиция бойца: расстановка и шаг |
 | SET_ACTIONS    | base.js        | `{ playerId, delta }` — действия хода |
 | SET_CARDS      | cards.js       | `{ playerId, op: draw\|discard\|move\|put, … }` |
 | SET_HEALTH     | health.js      | `{ fighterId \| fighterIds, delta }` — урон/лечение |
 | SET_MOVEMENT   | movement.js    | `{ op: open\|step\|bonus\|close }` |
-| SET_COMBAT     | combat.js      | `{ op: open\|attacker\|target\|defense\|reveal\|resolve\|close }` |
+| SET_COMBAT     | combat.js      | `{ op: open\|attacker\|target\|defense\|reveal\|resolve\|close\|cancel }` |
 | SET_TARGETING  | targeting.js   | `{ op: open\|pick\|close }` |
 | PICK           | phase.moves    | `{ kind: deck\|card\|fighter\|cell, id?, fighterId? }` — клик клиента |
 ### Legacy (shared/actions) — ход удалён, остался мост к движку карт
 `shared/actions/index.js` + `resolveEffect.js`: `onPhase`/`onGameEnd`/`resolveEffect` для `@nast791/cards`,
 `shared/events/*` и `shared/facts/*` — ждут миграции эффектов на беспромптовую модель.
-**RESIGN:** `commonMoves.RESIGN` (общий move в любой фазе) → `SET_RESIGNED` + `endGameIfFinished`.
+**RESIGN:** `commonMoves.RESIGN` (общий move в любой фазе) → `SET_RESIGNED` + `endGameIfFinished`;
+свои незакрытые моменты сдача закрывает сама: бой отменяется (`SET_COMBAT cancel` — карты в сброс, урона нет),
+перемещение и выбор цели снимаются, а активный игрок сразу передаёт ход.
+**SET_HEALTH:** ушедшего с поля бойца пропускает без ошибки (к моменту эффекта его может уже не быть).
 ---
 ## 6. UI
 **runUi(state, playerId, clientContext?)** — не пишет в state:
@@ -141,8 +173,8 @@ resolve → close), `targeting` (выбор цели), `lastCombat`/`lastBonus` 
 | move вне allow-list phase | core throw «move недоступен» |
 | `action.playerId` не в партии | core throw |
 | клик не в свою фазу (чужой ход, ждёт защиту) | active-фазы нет → core throw «move недоступен» |
-| PLACE_FIGHTER locked hero / после `placementReady` / вне area | throw |
-| UI_OK без preview (pickNumHero) | throw |
+| PICK с неверным kind для фазы (расстановка/бой/сброс) | throw |
+| клик не по своей клетке/бойцу (locked hero, вне area, занято) | throw с причиной |
 | PICK в фазе, где такой kind не поддержан | throw с текстом причины (`PICK: …`) |
 | `SET_*` с неверным op/контекстом | throw с текстом причины |
 | клик по недоступной клетке/бойцу/карте | throw с причиной («занята», «вне радиуса», «не достаёт», «не атакует») |
@@ -158,4 +190,5 @@ Viewer переключается на того, кто действует: за
 - Team mode: attack allies, move teammates, facts opponent, победа по командам.
 - Анимация перемещения бойцов после кнопки «закончить действие».
 - Логгер хода и боя.
+- Пункт про серверный расчёт хода (настоящая тайна данных) — см. `TODO`.
 - `gameStart` всё ещё импортирует `runPhase` из core (цикл модулей) — вынести запуск фаз из core.

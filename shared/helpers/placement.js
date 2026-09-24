@@ -1,4 +1,10 @@
-import { findPlayer, occupiedOwnCellIds, playerHeroes, seatIndex } from '#shared/helpers/base.js';
+import {
+  findOwnedFighter,
+  findPlayer,
+  occupiedOwnCellIds,
+  playerHeroes,
+  seatIndex,
+} from '#shared/helpers/base.js';
 
 export const findNode = (partyState, cellId) => {
   const nodes = partyState.map?.nodes;
@@ -90,13 +96,49 @@ export const startAreaCellIds = (partyState, playerId) => {
     .map(node => node.id);
 };
 
-export const setFighterCell = (player, fighterIndex, cellId) => {
-  const fighter = player.fighters[fighterIndex];
-  player.fighters[fighterIndex] = {
-    ...fighter,
-    currentPosition: cellId,
-    startPosition: cellId,
-  };
+/** Почему героя нельзя поставить на номерную клетку (фаза pickNumHero); null — можно. */
+export const numberPickRejection = (partyState, playerId, fighterId) => {
+  const player = findPlayer(partyState, playerId);
+  if (!player) return `игрок ${playerId} не найден`;
+  if (player.placementReady) return 'расстановка уже подтверждена';
+
+  const { fighter } = findOwnedFighter(partyState, playerId, fighterId);
+  if (!fighter) return `боец ${fighterId} не ваш`;
+  if (fighter.type !== 'hero') return 'на номерную клетку ставят только героя';
+  if (numberedCellId(partyState, playerId) == null) {
+    return 'у игрока нет номерной клетки';
+  }
+
+  return null;
+};
+
+/** Почему бойца нельзя поставить в область расстановки (фаза place); null — можно. */
+export const placementRejection = (partyState, playerId, fighterId, cellId) => {
+  const player = findPlayer(partyState, playerId);
+  if (!player) return `игрок ${playerId} не найден`;
+  if (player.placementReady) return 'расстановка уже подтверждена';
+  if (cellId == null) return 'нужна клетка';
+
+  const node = findNode(partyState, cellId);
+  if (!node) return `клетка ${cellId} не найдена на карте`;
+
+  const { fighter } = findOwnedFighter(partyState, playerId, fighterId);
+  if (!fighter) return `боец ${fighterId} не ваш`;
+  if (isLockedHero(fighter, partyState, playerId)) {
+    return 'главного героя на номерной клетке двигать нельзя';
+  }
+  if (!isPlacementAreaCell(partyState, playerId, node)) {
+    const allowed = startAreaCellIds(partyState, playerId).join(', ') || '—';
+    return `клетки области расстановки: ${allowed}`;
+  }
+  if (String(fighter.currentPosition) === String(node.id)) {
+    return 'боец уже на этой клетке';
+  }
+  if (occupiedOwnCellIds(player, fighterId).has(String(node.id))) {
+    return `клетка ${node.id} уже занята вашим бойцом`;
+  }
+
+  return null;
 };
 
 export const clearHeroOnNumberedCell = (partyState, playerId) => {

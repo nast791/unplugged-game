@@ -1,8 +1,9 @@
-import { PLACE_FIGHTER } from '#shared/actions-new/placeFighter.js';
+import { SET_FIGHTER_CELL } from '#shared/actions-new/fighter.js';
 import { findPlayer, playerHeroes, resolveOkBackControls } from '#shared/helpers/base.js';
 import {
   clearHeroOnNumberedCell,
   hasPickPreview,
+  numberPickRejection,
   numberedCellId,
 } from '#shared/helpers/placement.js';
 
@@ -79,13 +80,27 @@ export default {
   },
 
   moves: {
-    PLACE_FIGHTER: (partyState, action) =>
-      PLACE_FIGHTER(partyState, {
-        playerId: action.playerId,
-        fighterId: action.fighterId,
-        zone: 'numbered',
-        preview: true,
-      }),
+    PICK: (partyState, action) => {
+      if (action.kind !== 'fighter') {
+        throw new Error(
+          `PICK: в выборе героя доступен клик по своему герою (пришло "${action.kind}")`,
+        );
+      }
+
+      const reason = numberPickRejection(
+        partyState,
+        action.playerId,
+        action.id,
+      );
+      if (reason) throw new Error(`PICK: ${reason}`);
+
+      const state = clearHeroOnNumberedCell(partyState, action.playerId);
+      return SET_FIGHTER_CELL(state, {
+        fighterId: action.id,
+        cellId: numberedCellId(state, action.playerId),
+        start: true,
+      });
+    },
   },
 };
 
@@ -100,4 +115,6 @@ export default {
  5. «Назад» удаляет героя с номерной клетки — снова пункты 2-4.
  6. «ОК» подтверждает выбор героя для расстановки на номерной клетке — игрок переходит к следующей фазе.
  7. Выйти из фазы без подтверждения выбора героя для расстановки на номерной клетке - нельзя.
+ 8. Позицию пишет общий кирпич SET_FIGHTER_CELL (start: true), а условия (свой герой, есть номерная
+    клетка, расстановка не подтверждена) — numberPickRejection в helpers/placement.js.
  */

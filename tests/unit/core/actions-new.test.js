@@ -138,11 +138,16 @@ describe('SET_HEALTH', () => {
     expect(player(state, '0').fighters.map(f => f.currentHp)).toEqual([13, 2]);
   });
 
-  it('отклоняет неизвестного бойца, нулевой delta и пустой список', () => {
+  it('ушедшего с поля бойца пропускает без ошибки', () => {
     const state = createState();
-    expect(() => SET_HEALTH(state, { fighterId: 'nope', delta: -1 })).toThrow(
-      /не найден/,
-    );
+    expect(() =>
+      SET_HEALTH(state, { fighterId: 'nope', delta: -1 }),
+    ).not.toThrow();
+    expect(player(state, '0').fighters.map(f => f.id)).toEqual(['alpha', 'pawn']);
+  });
+
+  it('отклоняет нулевой delta и пустой список целей', () => {
+    const state = createState();
     expect(() => SET_HEALTH(state, { fighterId: 'alpha', delta: 0 })).toThrow(
       /delta/,
     );
@@ -560,6 +565,42 @@ describe('SET_COMBAT: защита и расчёт', () => {
       'atk_0',
     ]);
   });
+
+  it('cancel снимает бой на любой стадии, карты — в сброс, урона нет', () => {
+    const state = battle();
+    SET_COMBAT(state, { op: 'cancel', playerId: '0' });
+
+    expect(state.combat).toBeNull();
+    expect(state.lastCombat).toBeNull();
+    expect(player(state, '1').fighters[0].currentHp).toBe(13);
+    expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual([
+      'atk_0',
+    ]);
+
+    const withDefense = battle();
+    SET_COMBAT(withDefense, {
+      op: 'defense',
+      playerId: '1',
+      cardId: 'bdef_0',
+    });
+    SET_COMBAT(withDefense, { op: 'cancel', playerId: '1' });
+
+    expect(withDefense.combat).toBeNull();
+    expect(
+      discard(player(withDefense, '1')).map(card => card.instanceId),
+    ).toEqual(['bdef_0']);
+    expect(player(withDefense, '1').fighters[0].currentHp).toBe(13);
+  });
+
+  it('cancel без боя ничего не делает, чужому игроку отказывает', () => {
+    const empty = createState();
+    expect(SET_COMBAT(empty, { op: 'cancel', playerId: '0' }).combat).toBeNull();
+
+    const state = battle();
+    expect(() =>
+      SET_COMBAT(state, { op: 'cancel', playerId: 'nope' }),
+    ).toThrow(/только его участник/);
+  });
 });
 
 describe('SET_TARGETING', () => {
@@ -579,11 +620,31 @@ describe('SET_TARGETING', () => {
       playerId: '0',
       source: 'skill',
       required: false,
+      count: 1,
       candidates: [
         { fighterId: 'beta', playerId: '1', name: 'Beta', position: 10 },
       ],
       picked: null,
     });
+  });
+
+  it('выбор всегда про одну цель: count по умолчанию 1, другое значение отклоняется', () => {
+    const one = SET_TARGETING(createState(), {
+      op: 'open',
+      playerId: '0',
+      candidates: ['beta'],
+      count: 1,
+    });
+    expect(one.targeting.count).toBe(1);
+
+    expect(() =>
+      SET_TARGETING(createState(), {
+        op: 'open',
+        playerId: '0',
+        candidates: ['beta'],
+        count: 2,
+      }),
+    ).toThrow(/ровно одна цель/);
   });
 
   it('open принимает и просто id бойцов', () => {

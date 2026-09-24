@@ -47,29 +47,36 @@ const placementState = () =>
     map: arenaMap,
   });
 
+/** Клик по клетке расстановки: тот же PICK, что и в ходу. */
+const pickCell = (playerId, fighterId, cellId) => ({
+  type: 'PICK',
+  kind: 'cell',
+  playerId,
+  fighterId,
+  id: cellId,
+});
+
+const pickFighter = (playerId, fighterId) => ({
+  type: 'PICK',
+  kind: 'fighter',
+  playerId,
+  id: fighterId,
+});
+
 describe('core: gameStart placement', () => {
   it('runLifecycle ставит одного героя на номерную клетку в place', () => {
     const state = runLifecycle(placementState());
     const hero = state.players[0].fighters.find(f => f.type === 'hero');
     expect(hero.currentPosition).toBe(6);
+    expect(hero.startPosition).toBe(6);
     expect(runUi(state, '0').hint).toContain('Разместите');
   });
 
-  it('PLACE_FIGHTER + UI_OK → turnStart когда оба игрока готовы', () => {
+  it('PICK клетки + UI_OK → turnStart когда оба игрока готовы', () => {
     let state = runLifecycle(placementState());
-    state = runAction(state, {
-      type: 'PLACE_FIGHTER',
-      playerId: '0',
-      fighterId: '0-pawn',
-      cellId: 1,
-    });
+    state = runAction(state, pickCell('0', '0-pawn', 1));
     state = runAction(state, { type: 'UI_OK', playerId: '0' });
-    state = runAction(state, {
-      type: 'PLACE_FIGHTER',
-      playerId: '1',
-      fighterId: '1-pawn',
-      cellId: 5,
-    });
+    state = runAction(state, pickCell('1', '1-pawn', 5));
     state = runAction(state, { type: 'UI_OK', playerId: '1' });
     expect(state.hook).toBe(PHASES.turn);
   });
@@ -93,16 +100,13 @@ describe('core: gameStart placement', () => {
     expect(runUi(started, '0').hint).toContain('Выберите');
     expect(runUi(started, '0').modals?.pickNumHero).toBe(true);
 
-    let preview = runAction(started, {
-      type: 'PLACE_FIGHTER',
-      playerId: '0',
-      fighterId: 'h2',
-    });
+    const preview = runAction(started, pickFighter('0', 'h2'));
     expect(runUi(preview, '0').hint).toContain('Подтвердите');
     expect(runUi(preview, '0').modals?.pickNumHero).toBe(false);
     expect(runUi(preview, '0').controls.ok.enabled).toBe(true);
     const onCell = preview.players[0].fighters.find(f => f.id === 'h2');
     expect(onCell.currentPosition).toBe(6);
+    expect(onCell.startPosition).toBe(6);
     expect(preview.players[0].numberedHeroCommitted).toBe(false);
 
     const committed = runAction(preview, { type: 'UI_OK', playerId: '0' });
@@ -125,11 +129,7 @@ describe('core: gameStart placement', () => {
       map: arenaMap,
     });
     const started = runLifecycle(state);
-    const preview = runAction(started, {
-      type: 'PLACE_FIGHTER',
-      playerId: '0',
-      fighterId: 'h2',
-    });
+    const preview = runAction(started, pickFighter('0', 'h2'));
     const reverted = runAction(preview, { type: 'UI_BACK', playerId: '0' });
     expect(runUi(reverted, '0').hint).toContain('Выберите');
     expect(
@@ -152,12 +152,15 @@ describe('core: gameStart placement', () => {
       map: arenaMap,
     });
     const started = runLifecycle(state);
-    const preview = runAction(started, {
-      type: 'PLACE_FIGHTER',
-      playerId: '0',
-      fighterId: 'h2',
-    });
+    const preview = runAction(started, pickFighter('0', 'h2'));
     expect(() => pickNumHero.exit(preview, '0')).toThrow(/подтверждения/);
+  });
+
+  it('отклоняет не тот клик в фазах расстановки', () => {
+    const state = runLifecycle(placementState());
+    expect(() =>
+      runAction(state, { type: 'PICK', kind: 'deck', playerId: '0' }),
+    ).toThrow(/клик по клетке/);
   });
 });
 
@@ -169,7 +172,7 @@ describe('runUi: placement highlights', () => {
     expect(ui.highlightedCellIds).not.toContain('6');
   });
 
-  it('PLACE_FIGHTER: клетка другого цвета запрещена', () => {
+  it('PICK: клетка другого цвета запрещена', () => {
     const state = runLifecycle(
       createState({
         phase: PHASES.gameStart,
@@ -184,24 +187,14 @@ describe('runUi: placement highlights', () => {
         },
       }),
     );
-    expect(() =>
-      runAction(state, {
-        type: 'PLACE_FIGHTER',
-        playerId: '0',
-        fighterId: '0-pawn',
-        cellId: 7,
-      }),
-    ).toThrow(/области расстановки/);
+    expect(() => runAction(state, pickCell('0', '0-pawn', 7))).toThrow(
+      /области расстановки/,
+    );
   });
 
   it('place: после UI_OK подсказка ожидания, пока второй игрок не готов', () => {
     let state = runLifecycle(placementState());
-    state = runAction(state, {
-      type: 'PLACE_FIGHTER',
-      playerId: '0',
-      fighterId: '0-pawn',
-      cellId: 1,
-    });
+    state = runAction(state, pickCell('0', '0-pawn', 1));
     state = runAction(state, { type: 'UI_OK', playerId: '0' });
     const ui = runUi(state, '0');
     expect(ui.phase).toBe('place');

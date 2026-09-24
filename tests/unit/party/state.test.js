@@ -13,7 +13,7 @@ const vsAiBody = {
 };
 
 describe('party state', () => {
-  it('save сохраняет next state после PLACE_FIGHTER', () => {
+  it('save сохраняет next state после расстановки кликом', () => {
     createGame(vsAiBody, { testId: 'state_place', testSeed: 3 });
     const current = load('state_place');
     const medusa = current.players.find(player => player.id === 'medusa');
@@ -26,10 +26,11 @@ describe('party state', () => {
     )?.id;
 
     const next = runAction(current, {
-      type: 'PLACE_FIGHTER',
+      type: 'PICK',
+      kind: 'cell',
       playerId: 'medusa',
       fighterId: assistant.id,
-      cellId,
+      id: cellId,
     });
     save(structuredClone(next));
 

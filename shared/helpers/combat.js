@@ -84,6 +84,15 @@ export const attackTargets = (partyState, playerId, attackerFighterId) => {
     }));
 };
 
+/** Участвует ли игрок в текущем бою (атакующий или защитник). */
+export const isCombatParticipant = (partyState, playerId) => {
+  const combat = partyState?.combat;
+  if (!combat || playerId == null) return false;
+  return [combat.attackerPlayerId, combat.defenderPlayerId].some(
+    id => id != null && String(id) === String(playerId),
+  );
+};
+
 /** Итог боя по числам карт: урон = атака − защита, победитель по урону. */
 export const combatOutcome = ({ attackValue = 0, defenseValue = 0 } = {}) => {
   const attack = Math.max(0, Number(attackValue) || 0);

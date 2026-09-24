@@ -84,7 +84,9 @@ export const bonusCardIds = (partyState, playerId) =>
     .filter(card => cardBonus(card) > 0)
     .map(cardKey);
 
+/** Лимит руки касается только тех, кто ещё в партии: у сдавшегося руки как бы нет. */
 export const isHandOverLimit = (partyState, playerId) =>
+  !findPlayer(partyState, playerId)?.resigned &&
   handCards(partyState, playerId).length > rules.maxHandSize;
 
 export const mustDiscardCount = (partyState, playerId) =>

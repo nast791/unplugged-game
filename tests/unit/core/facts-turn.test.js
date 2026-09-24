@@ -76,6 +76,27 @@ describe('facts хода (facts-new)', () => {
     ).toHaveLength(1);
   });
 
+  it('PICKED: отмеченные бойцы открытого окна', () => {
+    const state = createState();
+    expect(runFact(state, 'PICKED', {}).ok).toBe(false);
+
+    state.targeting = {
+      playerId: '0',
+      source: 'medusa_skill',
+      required: false,
+      count: 1,
+      candidates: [{ fighterId: 'beta', playerId: '1', position: 10 }],
+      picked: 'beta',
+    };
+    expect(runFact(state, 'PICKED', {}).value).toEqual(['beta']);
+
+    state.targeting.picked = ['beta', 'pawn'];
+    expect(runFact(state, 'PICKED', { min: 2 }).value).toEqual([
+      'beta',
+      'pawn',
+    ]);
+  });
+
   it('HAND: карты руки по типу', () => {
     const state = createState();
     const attacks = runFact(state, 'HAND', { type: 'attack' }, { playerId: '0' });

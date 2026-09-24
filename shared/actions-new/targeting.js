@@ -36,6 +36,14 @@ const openTargeting = (partyState, action) => {
     throw new Error(`SET_TARGETING: игрок ${playerId} не найден`);
   }
 
+  /** Сколько бойцов нужно отметить. Пока поддержана ровно одна цель — окно закрывается по клику. */
+  const count = Number(action.count ?? 1);
+  if (count !== 1) {
+    throw new Error(
+      `SET_TARGETING: пока поддерживается ровно одна цель (count: ${action.count})`,
+    );
+  }
+
   const candidates = normalizeCandidates(action.candidates);
   if (candidates.length === 0) {
     throw new Error('SET_TARGETING: нужны candidates (хотя бы один)');
@@ -45,6 +53,7 @@ const openTargeting = (partyState, action) => {
     playerId: String(playerId),
     source: action.source ?? null,
     required: action.required === true,
+    count,
     candidates,
     picked: null,
   };
@@ -91,8 +100,9 @@ const closeTargeting = (partyState, action) => {
 
 /**
  * SET_TARGETING — выбор цели: подсветка кандидатов и клик по одному из них.
+ * Движок открывает окно (`open` с кандидатами и `count`), отмечает клик (`pick`) и закрывает окно (`close`).
  * Эффект применяет тот, кто открыл выбор, а не сам выбор.
- * params: { op: 'open' | 'pick' | 'close', playerId?, source?, candidates?, required?, fighterId? }
+ * params: { op: 'open' | 'pick' | 'close', playerId?, source?, candidates?, count?, required?, fighterId? }
  */
 export const SET_TARGETING = (partyState, action = {}) => {
   const op = action.op ?? 'open';

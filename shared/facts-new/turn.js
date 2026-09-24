@@ -95,3 +95,15 @@ export const HAND_OVER_LIMIT = (ctx, params = {}) => {
     value: { size, max, mustDiscard: mustDiscardCount(ctx.state, playerId) },
   };
 };
+
+/**
+ * PICKED — бойцы, отмеченные в открытом окне выбора (момент picked, окно ещё не закрыто).
+ * value — список id, поэтому правило читает отметку так же, как любое другое значение: `var: 'picked'` → `$picked`.
+ */
+export const PICKED = (ctx, params = {}) => {
+  const picked = ctx.state?.targeting?.picked ?? null;
+  const ids =
+    picked == null ? [] : (Array.isArray(picked) ? picked : [picked]).map(String);
+  const min = params.min ?? 1;
+  return { ok: ids.length >= min, value: ids };
+};

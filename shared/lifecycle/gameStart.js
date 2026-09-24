@@ -1,11 +1,14 @@
 import pickNumHero from '../phases/pickNumHero.js';
 import place from '../phases/place.js';
 import { allPlayersPlacementReady } from '#shared/helpers/placement.js';
-import { runPhase } from '#shared/core.js';
+import { runPhase } from '#shared/phases/run.js';
+
+/** Фазы расстановки: тот же список передаём в runPhase, отдельный реестр фаз не нужен. */
+const gameStartPhases = [pickNumHero, place];
 
 export default {
   name: 'gameStart',
-  phases: [pickNumHero, place],
+  phases: gameStartPhases,
 
   enter: partyState => {
     if (partyState._enteredHooks?.gameStart) return partyState;
@@ -14,7 +17,7 @@ export default {
       _enteredHooks: { ...(partyState._enteredHooks ?? {}), gameStart: true },
     };
     for (const player of state.players ?? []) {
-      state = runPhase(state, player.id);
+      state = runPhase(state, gameStartPhases, player.id);
     }
     return state;
   },

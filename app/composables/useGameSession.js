@@ -3,8 +3,8 @@ import { cardKey } from '#shared/helpers/cards.js';
 
 /**
  * UI-сессия партии: что видно и что кликается, считает runUi(state, viewerId).
- * Клиент не считает правила — он шлёт PICK (колода, карта, боец, клетка) и UI_OK (кнопка),
- * а расстановка по-прежнему уходит в PLACE_FIGHTER / UI_OK / UI_BACK.
+ * Клиент не считает правила — он шлёт PICK (колода, карта, боец, клетка) и UI_OK/UI_BACK/RESIGN,
+ * одинаково и для расстановки, и для хода.
  */
 export const useGameSession = () => {
   const { view, hostState, gameId, playerId, sendAction, refresh } = useGameView();
@@ -211,15 +211,11 @@ export const useGameSession = () => {
   /** Экран итогов: вернуться в лобби (состояние партии очистит onUnmounted). */
   const onBackToMenu = () => navigateTo('/');
 
-  const onPickNumHero = fighterId =>
-    run(async () => {
-      await sendAction({
-        type: 'PLACE_FIGHTER',
-        fighterId: String(fighterId),
-      });
-      selectedNumHeroId.value = String(fighterId);
-      await syncHotseat();
-    });
+  /** Выбор героя для номерной клетки — тот же клик: PICK по своему герою. */
+  const onPickNumHero = fighterId => {
+    selectedNumHeroId.value = String(fighterId);
+    return pick({ kind: 'fighter', id: fighterId });
+  };
 
   const selectFighter = fighterId => {
     selectedFighterId.value = String(fighterId);
@@ -240,21 +236,15 @@ export const useGameSession = () => {
     return undefined;
   };
 
+  /** Клик по клетке: в расстановке — поставить бойца, в ходу — шаг по подсвеченной клетке. */
   const onCellClick = cellId => {
-    if (isPlacement.value) {
-      if (selectedFighterId.value == null) {
-        message.value = 'Сначала выберите своего бойца';
-        return undefined;
-      }
-      return send({
-        type: 'PLACE_FIGHTER',
-        fighterId: selectedFighterId.value,
-        cellId,
-      });
+    if (selectedFighterId.value == null) {
+      message.value = 'Сначала выберите своего бойца';
+      return undefined;
     }
 
     if (
-      selectedFighterId.value != null &&
+      isPlacement.value ||
       highlightedCellIds.value.includes(String(cellId))
     ) {
       return pick({

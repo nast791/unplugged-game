@@ -5,6 +5,7 @@ import defense from '#shared/phases/defense.js';
 import handLimit from '#shared/phases/handLimit.js';
 import movement from '#shared/phases/movement.js';
 import waiting from '#shared/phases/waiting.js';
+import { runSkillMoment } from '#shared/skills/run.js';
 
 export default {
   name: 'turn',
@@ -12,13 +13,16 @@ export default {
 
   enter: partyState => {
     if (partyState._enteredHooks?.turn) return partyState;
-    return {
+    const state = {
       ...partyState,
       movement: null,
       combat: null,
       targeting: null,
       _enteredHooks: { ...(partyState._enteredHooks ?? {}), turn: true },
     };
+
+    /** Начало хода: у способности героя может быть правило на момент turnStart. */
+    return runSkillMoment(state, state.turn?.playerId, 'turnStart');
   },
 
   body: partyState =>
