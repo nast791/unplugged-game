@@ -54,7 +54,9 @@ export default {
 
   active: (partyState, playerId) =>
     isMomentMine(partyState, playerId, 'combat') &&
-    String(partyState.combat?.attackerPlayerId) === String(playerId),
+    String(partyState.combat?.attackerPlayerId) === String(playerId) &&
+    // выбор эффекта боя (например, усиление) отвечает фаза defense — она и владеет паузой
+    !partyState.combat?.choice,
 
   ui(partyState, playerId) {
     const { highlighted, framed } = stageFighters(

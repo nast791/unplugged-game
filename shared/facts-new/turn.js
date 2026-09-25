@@ -74,11 +74,19 @@ export const TARGETING = (ctx, params = {}) => {
   return { ok: true, value: targeting };
 };
 
-/** HAND — карты руки; params: { type, min }. */
+/**
+ * HAND — карты руки; params: { of, type, min, bonusMin }.
+ * `of` — чья рука (id игрока), по умолчанию своя: эффекты вроде «враг сбрасывает карту» смотрят чужую руку.
+ * bonusMin отсекает карты со слишком маленьким бонусом (например, «есть чем усилить атаку»).
+ */
 export const HAND = (ctx, params = {}) => {
-  const cards = handCards(ctx.state, contextPlayerId(ctx)).filter(
-    card => params.type == null || card?.type === params.type,
-  );
+  const ownerPlayerId = params.of ?? contextPlayerId(ctx);
+  const cards = handCards(ctx.state, ownerPlayerId)
+    .filter(card => params.type == null || card?.type === params.type)
+    .filter(
+      card =>
+        params.bonusMin == null || (Number(card?.bonus) || 0) >= Number(params.bonusMin),
+    );
   return {
     ok: params.min == null || cards.length >= params.min,
     value: cards.map(cardView),

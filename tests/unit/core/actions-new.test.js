@@ -195,6 +195,11 @@ describe('SET_MOVEMENT', () => {
       origins: {},
       bonus: 0,
       bonusUsed: false,
+      budget: null,
+      fighters: null,
+      optional: false,
+      moves: [],
+      source: null,
     });
     expect(() => SET_MOVEMENT(state, { op: 'open', playerId: '0' })).toThrow(
       /уже открыто/,

@@ -84,6 +84,48 @@ describe('party.view: приватность хода', () => {
     expect(otherView.targeting.candidates).toBeUndefined();
   });
 
+  it('окно эффекта боя: карты для усиления видит только владелец окна', () => {
+    const state = createState();
+    state.combat = {
+      stage: 'reveal',
+      attackerPlayerId: '0',
+      defenderPlayerId: '1',
+      attackCard: { id: 'atk', instanceId: 'atk_0' },
+      defenseCard: { id: 'def', instanceId: 'def_0' },
+      attackValue: 4,
+      defenseValue: 2,
+      effects: [
+        {
+          order: 1,
+          moment: 'duringCombat',
+          side: 'attacker',
+          cardId: 'atk_0',
+          playerId: '0',
+          status: 'waiting',
+        },
+      ],
+      choice: {
+        playerId: '0',
+        source: 'atk_0',
+        side: 'attack',
+        optional: true,
+        candidates: [{ cardId: 'quiet_0', bonus: 2 }],
+        picked: null,
+      },
+    };
+
+    const ownerView = view(state, '0');
+    expect(ownerView.combat.choice.candidates).toEqual([
+      { cardId: 'quiet_0', bonus: 2 },
+    ]);
+    expect(ownerView.combat.effects[0].status).toBe('waiting');
+
+    // противник видит, что эффект ждёт решения, но не видит чужих карт для усиления
+    const otherView = view(state, '1');
+    expect(otherView.combat.choice).toBeUndefined();
+    expect(otherView.combat.effects[0].status).toBe('waiting');
+  });
+
   it('сдавшийся игрок виден всем', () => {
     const state = createState();
     player(state, '1').resigned = true;

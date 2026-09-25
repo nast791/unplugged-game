@@ -78,6 +78,14 @@ describe('способность Медузы (Взгляд Медузы)', () =
     }
   });
 
+  it('скилл описан по контракту: type, fighter, title, text, rules', () => {
+    expect(medusa.skill.type).toBe('skill');
+    expect(medusa.skill.fighter).toBe('medusa');
+    expect(medusa.skill.title).toBe('Взгляд Медузы');
+    expect(medusa.skill.text).toContain('1 урон');
+    expect(Array.isArray(medusa.skill.rules)).toBe(true);
+  });
+
   it('в начале хода предлагает врагов только в области Медузы', () => {
     const state = runLifecycle(skillState());
 

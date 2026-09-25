@@ -76,6 +76,11 @@ describe('phase choose', () => {
       origins: {},
       bonus: 0,
       bonusUsed: false,
+      budget: null,
+      fighters: null,
+      optional: false,
+      moves: [],
+      source: null,
     });
     expect(hand(player(state, '0'))).toHaveLength(before + 1);
     expect(deck(player(state, '0'))).toHaveLength(1);

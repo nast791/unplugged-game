@@ -26,6 +26,7 @@ alwaysApply: true
 | **Phase** | `shared/phases/*.js`; хук объявляет свой **`phases[]`** | `phases/run.js` (`runPhase`, `activePhaseOf`) ← вызов из core и из хука |
 | **Action** | `shared/actions-new/*` | вызов из фаз (`enter`, …) и из `phase.moves` |
 | **Skill** | контент героя (`skill.rules`) + `shared/skills/run.js` | `runSkillMoment(state, playerId, moment)`: правило `moment` + `when` (AND) + `any` (OR-ветки) → `then` (экшены); моменты — `constants/moments.js` |
+| **Card effect** | контент карты (`card.rules`) + `shared/cards/run.js` | `runCombatCardMoment(state, moment)`: сначала карта защитника, потом атакующего; исполнитель правил общий — `shared/rules/run.js` |
 | **Move** | `actions-new/moves.js` (`commonMoves`), `phase.moves[type]` | `runAction` → `commonMoves` или `phase.moves` |
 | **Legacy (не мигрировано)** | `shared/gameEngine.js` | **не в core** |
 **Запрещено в `core.js`:**
@@ -89,15 +90,20 @@ shared/
   actions-new/cards.js     # SET_CARDS (draw | discard | move | put)
   actions-new/health.js    # SET_HEALTH
   actions-new/fighter.js   # SET_FIGHTER_CELL (расстановка и шаг)
-  actions-new/movement.js  # SET_MOVEMENT (open | step | bonus | close)
-  actions-new/combat.js    # SET_COMBAT (open | attacker | target | defense | reveal | resolve | close)
+  actions-new/movement.js  # SET_MOVEMENT (open | step | bonus | close), бюджет и список бойцов от эффекта
+  actions-new/combat.js    # SET_COMBAT (open | attacker | target | defense | reveal | value | choice | pick | skip | resolve | close | cancel)
   actions-new/targeting.js # SET_TARGETING (open | pick | close)
   actions-new/moves.js     # commonMoves: UI_OK, UI_BACK, RESIGN
   facts-new/*              # PLAYERS, NEXT_PLAYER, ALIVE_SIDES, ACTIVE_PLAYER, AP, IN_PROGRESS,
-                           # TARGETING, PICKED, HAND, HAND_OVER_LIMIT, FIGHTERS
+                           # TARGETING, PICKED, HAND, HAND_OVER_LIMIT, FIGHTERS, COMBAT
+                           # FIGHTERS: side, type, group (помощники одного вида), areaOf, reachableTo
   facts-new/run.js         # buildFactContext, runFact, runFacts (core только реэкспортирует)
-  constants/moments.js     # список моментов для правил способностей и карт
+                           # + подстановка $переменных в params условий (helpers/vars.js)
+  facts-new/combat.js      # COMBAT: итог боя (winner / select → список id бойцов)
+  constants/moments.js     # список моментов правил: turnStart, picked, immediately, duringCombat, afterCombat
+  rules/run.js             # runRules: исполнитель правил (момент + when/any → then), общий для способностей и карт
   skills/run.js            # runSkillMoment: правила способности в моменте (when → then)
+  cards/run.js             # advanceCombat: очередь эффектов боя (защитник → атакующий) и пауза на выборе эффекта
   lifecycle/registry.js   # единственный список мигрированных hooks
   lifecycle/gameStart.js, turnStart.js, turn.js, turnEnd.js, gameEnd.js
   helpers/base.js, board.js, cards.js, combat.js, turn.js, placement.js

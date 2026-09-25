@@ -30,7 +30,9 @@ export default {
   items: [],
   skill: {
     id: 'alpha_skill',
-    name: 'Стойкость',
+    type: 'skill',
+    fighter: 'alpha',
+    title: 'Стойкость',
     text: 'Схематичный скилл. Позже: правила хоста.',
   },
 }

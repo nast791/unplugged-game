@@ -1,5 +1,6 @@
 import { SET_CARDS } from '#shared/actions-new/cards.js';
 import { SET_FIGHTER_CELL } from '#shared/actions-new/fighter.js';
+import { openMovementChoice, finishMovementChoice } from '#shared/actions-new/combat.js';
 import {
   findCardInHand,
   findOwnedFighter,
@@ -9,6 +10,31 @@ import {
 const playerIdOf = (partyState, action) =>
   action.playerId ?? partyState.turn?.playerId;
 
+/** Список бойцов из правила (объекты FIGHTERS, id или строка привязки) → список id. */
+const fighterIdList = fighters => {
+  if (fighters == null) return null;
+
+  const list = Array.isArray(fighters) ? fighters : [fighters];
+  return list
+    .map(entry => {
+      if (entry == null) return null;
+      if (typeof entry === 'object') {
+        const id = entry.fighterId ?? entry.id;
+        return id == null ? null : String(id);
+      }
+      return String(entry);
+    })
+    .filter(Boolean);
+};
+
+/**
+ * Открыть черновик перемещения.
+ * Обычное перемещение (клик по колоде) — бюджет у каждого бойца свой (`fighter.move`).
+ * Перемещение от эффекта карты задаёт правило: `budget` (сколько клеток каждому бойцу),
+ * `fighters` (кого вообще можно двигать) и `optional` (можно не двигать никого).
+ * Внутри боя такое перемещение ещё и ставит бой на паузу — эффект ждёт, пока игрок подвигал.
+ * params: { op: 'open', playerId?, budget?, fighters?, optional?, source? }
+ */
 const openMovement = (partyState, action) => {
   if (partyState.movement) {
     throw new Error('SET_MOVEMENT: перемещение уже открыто');
@@ -20,12 +46,32 @@ const openMovement = (partyState, action) => {
     throw new Error(`SET_MOVEMENT: игрок ${playerId} не найден`);
   }
 
+  const fighters = fighterIdList(action.fighters);
+  const budget =
+    action.budget == null ? null : Math.max(0, Number(action.budget) || 0);
+
   partyState.movement = {
     playerId: String(playerId),
     origins: {},
     bonus: 0,
     bonusUsed: false,
+    budget,
+    fighters,
+    optional: action.optional === true,
+    moves: [],
+    source: action.source == null ? null : String(action.source),
   };
+
+  if (action.source != null) {
+    openMovementChoice(partyState, {
+      playerId,
+      source: action.source,
+      optional: action.optional === true,
+      budget,
+      fighters,
+    });
+  }
+
   return partyState;
 };
 
@@ -50,14 +96,22 @@ const stepMovement = (partyState, action) => {
   }
 
   const fighterId = String(action.fighterId);
+  if (movement.fighters != null && !movement.fighters.includes(fighterId)) {
+    throw new Error(
+      `SET_MOVEMENT: этим эффектом двигают только бойцов из списка (${fighterId} не подходит)`,
+    );
+  }
   if (movement.origins[fighterId] == null) {
     movement.origins[fighterId] = fighter.currentPosition;
   }
 
-  return SET_FIGHTER_CELL(partyState, {
+  const from = fighter.currentPosition;
+  const state = SET_FIGHTER_CELL(partyState, {
     fighterId: action.fighterId,
     cellId: action.cellId,
   });
+  movement.moves.push({ fighterId, from, to: action.cellId });
+  return state;
 };
 
 /** Усиление перемещения: карта из руки в сброс, её bonus — всему действию, один раз. */
@@ -105,13 +159,19 @@ const closeMovement = (partyState, action) => {
     throw new Error('SET_MOVEMENT: это чужое перемещение');
   }
 
+  /** Перемещение от эффекта карты: ходы забирает пауза боя, её и закрывает фаза. */
+  if (movement?.source != null) {
+    finishMovementChoice(partyState, movement.moves ?? []);
+  }
+
   partyState.movement = null;
   return partyState;
 };
 
 /**
  * SET_MOVEMENT — черновик перемещения: открыть, шагнуть бойцом, усилить, закрыть.
- * params: { op: 'open' | 'step' | 'bonus' | 'close', playerId?, fighterId?, cellId?, cardId? }
+ * params: { op: 'open' | 'step' | 'bonus' | 'close', playerId?, fighterId?, cellId?, cardId?,
+ *           budget?, fighters?, optional? }
  */
 export const SET_MOVEMENT = (partyState, action = {}) => {
   const op = action.op ?? 'open';

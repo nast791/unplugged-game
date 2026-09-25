@@ -40,7 +40,9 @@ export default {
   ],
   skill: {
     id: 'beta_skill',
-    name: 'Дистанция',
+    type: 'skill',
+    fighter: 'beta',
+    title: 'Дистанция',
     text: 'Схематичный скилл. 2 маркера: inactive → active по правилам хоста.',
   },
 }

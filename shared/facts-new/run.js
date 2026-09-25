@@ -1,5 +1,6 @@
 import { facts } from '#shared/facts-new/registry.js';
 import { findPlayer } from '#shared/helpers/base.js';
+import { resolveVars } from '#shared/helpers/vars.js';
 
 /** Контекст факта: state, hook как phase, игрок и vars. Модуль не знает ни одного имени хука/фазы. */
 const buildFactContext = (partyState, context = {}) => {
@@ -30,11 +31,13 @@ export const runFact = (partyState, factName, params = {}, context = {}) => {
 /**
  * Цепочка facts (AND); trigger.var пишет value в vars.
  * `min` можно писать и на уровне триггера (как в legacy-контенте), и внутри params — факт читает его из params.
+ * В params подставляются $переменные от предыдущих условий: так читается «рука того самого врага»
+ * (`HAND { of: '$enemy' }`), где переменная появилась в условии выше.
  */
 export const runFacts = (partyState, triggers, context = {}) => {
   const vars = { ...(context.vars ?? {}) };
   for (const trigger of triggers ?? []) {
-    const params = { ...(trigger.params ?? {}) };
+    const params = resolveVars({ ...(trigger.params ?? {}) }, vars);
     if (trigger.min != null && params.min == null) params.min = trigger.min;
 
     const { ok, value } = runFact(partyState, trigger.fact, params, {

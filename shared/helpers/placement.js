@@ -19,6 +19,26 @@ export const nodeAreaId = node => {
   return String(areas[0]);
 };
 
+/** Все области клетки: многоцветная клетка считается сразу во всех своих зонах. */
+export const nodeAreaIds = node => {
+  const areas = node?.areas;
+  if (!Array.isArray(areas)) return [];
+  return areas.map(String);
+};
+
+export const cellAreaIds = (partyState, cellId) => {
+  if (cellId == null) return [];
+  return nodeAreaIds(findNode(partyState, cellId));
+};
+
+/** Общая область у двух клеток: многоцветная клетка совпадает по любой своей зоне. */
+export const sharesArea = (partyState, leftCellId, rightCellId) => {
+  const left = cellAreaIds(partyState, leftCellId);
+  if (left.length === 0) return false;
+  const right = cellAreaIds(partyState, rightCellId);
+  return left.some(area => right.includes(area));
+};
+
 export const areaIdAtCell = (partyState, cellId) => {
   if (cellId == null) return null;
   return nodeAreaId(findNode(partyState, cellId));

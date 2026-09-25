@@ -21,8 +21,15 @@ export const isActivePlayer = (partyState, playerId) =>
 export const hasActions = partyState =>
   (Number(partyState.turn?.actionsLeft) || 0) > 0;
 
-/** Партия завершена (живых сторон не больше одной): hook = gameEnd и winner; остальное — в gameEnd.enter. */
+/**
+ * Партия завершена (живых сторон не больше одной): hook = gameEnd и winner; остальное — в gameEnd.enter.
+ * Пока бой не закрыт, победа не объявляется: действие доигрывается до конца, эффекты обеих карт
+ * успевают сработать, и только потом проверяется условие победы. Если в одном бою погибли все герои,
+ * побеждает активный игрок (это решает finishedSides).
+ */
 export const endGameIfFinished = partyState => {
+  if (partyState.combat) return partyState;
+
   const { finished, winner } = finishedSides(partyState);
   if (!finished) return partyState;
 
@@ -57,9 +64,15 @@ export const targetingCandidates = (partyState, playerId) =>
       )
     : [];
 
+/** выбор эффекта боя, если оно открыто и ждёт решения этого игрока. */
+export const combatChoiceOf = (partyState, playerId) => {
+  const choice = partyState?.combat?.choice;
+  if (!choice || playerId == null) return null;
+  return String(choice.playerId) === String(playerId) ? choice : null;
+};
+
 /** Момент открыт и принадлежит игроку (у боя владельцев двое). */
-export const isMomentMine = (partyState, playerId, name) => {
-  const moment = momentOf(partyState, name);
+export const isMomentMine = (partyState, playerId, name) => {  const moment = momentOf(partyState, name);
   if (!moment) return false;
 
   const owners =
@@ -98,9 +111,32 @@ export const heroFighterIds = player =>
     .filter(fighter => Number(fighter.currentHp) > 0)
     .map(fighter => String(fighter.id));
 
-/** Радиус перемещения бойца: move + усиление текущего перемещения. */
+/**
+ * Радиус перемещения бойца: move + усиление текущего перемещения.
+ * У перемещения от эффекта карты свой бюджет (`movement.budget`), он важнее move бойца.
+ */
 export const movementBudget = (fighter, movement = null) =>
-  Number(fighter?.move || 0) + Number(movement?.bonus || 0);
+  Number(movement?.budget ?? fighter?.move ?? 0) + Number(movement?.bonus || 0);
+
+/** Бойцы, которых можно двигать в этом перемещении: список из эффекта либо все свои. */
+export const movableFighterIds = (partyState, playerId) => {
+  const movement = partyState?.movement;
+  if (!movement || String(movement.playerId) !== String(playerId)) return [];
+  if (movement.fighters == null) return [];
+
+  const player = findPlayer(partyState, playerId);
+  return (player?.fighters ?? [])
+    .filter(fighter => fighter.currentPosition != null)
+    .map(fighter => String(fighter.id))
+    .filter(fighterId => movement.fighters.includes(fighterId));
+};
+
+/** Можно ли двигать этого бойца в текущем перемещении. */
+export const canMoveFighter = (partyState, playerId, fighterId) => {
+  const movement = partyState?.movement;
+  if (!movement || movement.fighters == null) return true;
+  return movement.fighters.includes(String(fighterId));
+};
 
 /** Занятые клетки; exceptFighterId исключается. */
 export const occupiedCellIds = (partyState, exceptFighterId = null) => {
@@ -167,6 +203,8 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
 
   const { fighter } = findOwnedFighter(partyState, playerId, fighterId);
   if (!fighter || fighter.currentPosition == null) return [];
+  // эффект карты двигает только своих бойцов из списка — чужим клетки не подсвечиваем
+  if (!canMoveFighter(partyState, playerId, fighterId)) return [];
 
   const budget = movementBudget(fighter, movement);
   if (budget <= 0) return [];
@@ -206,6 +244,9 @@ export const movementRejection = (partyState, playerId, fighterId, cellId) => {
   const { fighter } = findOwnedFighter(partyState, playerId, fighterId);
   if (!fighter) return `боец ${fighterId} не ваш`;
   if (fighter.currentPosition == null) return 'боец не расставлен';
+  if (!canMoveFighter(partyState, playerId, fighterId)) {
+    return `этим эффектом двигают только своих бойцов из списка (${fighterId} не подходит)`;
+  }
   if (String(fighter.currentPosition) === String(cellId)) {
     return 'боец уже на этой клетке';
   }

@@ -43,6 +43,11 @@ describe('scenario: ход через gameEngine.runAction', () => {
       origins: {},
       bonus: 0,
       bonusUsed: false,
+      budget: null,
+      fighters: null,
+      optional: false,
+      moves: [],
+      source: null,
     });
     expect(hand(player(state, '0'))).toHaveLength(4);
     expect(runUi(state, '0').phase).toBe('movement');

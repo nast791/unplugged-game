@@ -73,11 +73,17 @@ export const aliveSideCount = state => {
   return new Set(alive.map(entry => entry.team)).size;
 };
 
-/** Итог партии по живым сторонам: finished, если осталась одна сторона (или ни одной). */
+/**
+ * Итог партии по живым сторонам: finished, если осталась одна сторона (или ни одной).
+ * Если живых не осталось (оба героя погибли в одном бою), побеждает активный игрок — тот, чей ход.
+ */
 export const finishedSides = state => {
   if (aliveSideCount(state) > 1) return { finished: false, winner: null };
   const alive = queryPlayers(state, { alive: true }, {});
-  return { finished: true, winner: alive[0]?.playerId ?? null };
+  return {
+    finished: true,
+    winner: alive[0]?.playerId ?? state.turn?.playerId ?? null,
+  };
 };
 
 /** ALIVE_SIDES — сколько сторон ещё живо; params: { max } → ok = value <= max. */

@@ -5,9 +5,20 @@ import {
   isTeamFormat,
 } from '#shared/helpers/base.js';
 import { bfsDistance } from '#shared/helpers/board.js';
-import { isAttackCard } from '#shared/helpers/cards.js';
+import {
+  cardFighterId,
+  cardKey,
+  fighterMatchesCard,
+  hasFighterForCard,
+  isAttackCard,
+} from '#shared/helpers/cards.js';
+import { sharesArea } from '#shared/helpers/placement.js';
+import { combatMoments } from '#shared/constants/moments.js';
 
 const attackRangeOf = fighter => Number(fighter?.attackRange ?? 1);
+
+/** Боец дальнего боя (attackType: 'ranged') бьёт по зонам, а не по расстоянию. */
+const isRangedFighter = fighter => String(fighter?.attackType ?? '') === 'ranged';
 
 /** Боец, который может действовать: жив и стоит на клетке. */
 const isReady = fighter =>
@@ -32,17 +43,34 @@ const enemiesOf = (partyState, playerId) => {
   return out;
 };
 
-const canReach = (partyState, attacker, fighter) =>
-  bfsDistance(
-    partyState.map?.nodes ?? [],
-    attacker.currentPosition,
-    fighter.currentPosition,
-    attackRangeOf(attacker),
-  ) <= attackRangeOf(attacker);
+/**
+ * Достаёт ли атакующий цель.
+ * Ближний — по attackRange: соседние клетки (BFS-расстояние не больше дальности).
+ * Дальний — по зоне: любая цель в одной области с ним, расстояние внутри зоны не ограничено
+ * (многоцветная клетка считается сразу во всех своих зонах). Ближний предел при этом сохраняется.
+ */
+const canReach = (partyState, attacker, fighter) => {
+  if (
+    isRangedFighter(attacker) &&
+    sharesArea(partyState, attacker.currentPosition, fighter.currentPosition)
+  ) {
+    return true;
+  }
+
+  const range = attackRangeOf(attacker);
+  return (
+    bfsDistance(
+      partyState.map?.nodes ?? [],
+      attacker.currentPosition,
+      fighter.currentPosition,
+      range,
+    ) <= range
+  );
+};
 
 /**
  * Бойцы игрока, которые могут атаковать этой картой.
- * Привязка card.fighter сужает выбор до одного бойца.
+ * Привязка `card.fighter` сужает выбор до одного бойца ('any' — без привязки).
  */
 export const attackCandidates = (partyState, playerId, card) => {
   if (!isAttackCard(card)) return [];
@@ -50,12 +78,12 @@ export const attackCandidates = (partyState, playerId, card) => {
   const player = findPlayer(partyState, playerId);
   if (!player) return [];
 
-  const bound = card?.fighter != null ? String(card.fighter) : null;
+  const bound = cardFighterId(card);
   const enemies = enemiesOf(partyState, playerId);
 
   return (player.fighters ?? [])
     .filter(isReady)
-    .filter(fighter => bound == null || String(fighter.id) === bound)
+    .filter(fighter => bound == null || fighterMatchesCard(fighter, card))
     .filter(fighter =>
       enemies.some(entry => canReach(partyState, fighter, entry.fighter)),
     )
@@ -82,6 +110,40 @@ export const attackTargets = (partyState, playerId, attackerFighterId) => {
       playerId: String(entry.player.id),
       name: entry.fighter.name || entry.fighter.id,
     }));
+};
+
+/** Стороны боя в порядке разыгрывания эффектов: сначала защитник, потом атакующий. */
+export const combatSides = [
+  { side: 'defender', playerKey: 'defenderPlayerId', cardKey: 'defenseCard' },
+  { side: 'attacker', playerKey: 'attackerPlayerId', cardKey: 'attackCard' },
+];
+
+/**
+ * Очередь эффектов боя: по моментам боя (immediately → duringCombat → afterCombat) и по сторонам
+ * (защитник → атакующий). В очередь попадают только карты, у которых в этом моменте есть правило, —
+ * остальные в бою ничего не делают. Статус шага: pending → applied | skipped | waiting | declined.
+ */
+export const buildCombatEffects = combat => {
+  const effects = [];
+
+  for (const moment of combatMoments) {
+    for (const entry of combatSides) {
+      const card = combat?.[entry.cardKey];
+      if (!card?.rules?.some(rule => rule.moment === moment)) continue;
+
+      const playerId = combat[entry.playerKey];
+      effects.push({
+        order: effects.length + 1,
+        moment,
+        side: entry.side,
+        cardId: cardKey(card),
+        playerId: playerId == null ? null : String(playerId),
+        status: 'pending',
+      });
+    }
+  }
+
+  return effects;
 };
 
 /** Участвует ли игрок в текущем бою (атакующий или защитник). */
@@ -116,6 +178,9 @@ export const attackRejection = (partyState, playerId, cardId) => {
   const card = findCardInZone(player.hand, cardId);
   if (!card) return `карты ${cardId} нет в руке`;
   if (!isAttackCard(card)) return `карта ${cardId} не атакует`;
+  if (!hasFighterForCard(partyState, playerId, card)) {
+    return `карта ${cardId} привязана к бойцу, которого нет на поле`;
+  }
   if (attackCandidates(partyState, playerId, card).length === 0) {
     return 'никто из бойцов не достаёт врага этой картой';
   }

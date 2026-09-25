@@ -61,6 +61,27 @@ describe('runFact / runFacts', () => {
     expect(vars.alive).toHaveLength(1);
   });
 
+  it('runFacts: $переменная из прошлого условия подставляется в params', () => {
+    const state = createState({
+      turn: { index: 1, playerId: '0', actedRound: ['0'] },
+    });
+    const { ok, vars } = runFacts(state, [
+      { fact: 'NEXT_PLAYER', params: {}, var: 'enemy' },
+      { fact: 'HAND', params: { of: '$enemy', min: 1 }, var: 'enemyCards' },
+    ]);
+
+    expect(vars.enemy).toBe('1');
+    expect(ok).toBe(true);
+    expect(vars.enemyCards.map(card => card.cardId)).toEqual(['bdef_0']);
+  });
+
+  it('runFacts: неизвестная $переменная — ошибка, а не пустая подстановка', () => {
+    const state = createState();
+    expect(() =>
+      runFacts(state, [{ fact: 'HAND', params: { of: '$nobody' } }]),
+    ).toThrow(/не задана/);
+  });
+
   it('NEXT_PLAYER пропускает мёртвого', () => {
     const state = createState({
       phase: 'turnStart',

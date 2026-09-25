@@ -64,11 +64,18 @@ const canSee = (visibility, rel) => {
   return roles.includes(rel);
 };
 
-/** Карты боя пер-рольные: своя карта видна владельцу, после вскрытия — всем. */
+/** Карты боя пер-рольные: своя карта видна владельцу, после вскрытия — всем. Выбор эффекта — только владельцу. */
 const projectCombat = (combat, playerId) => {
   if (!combat) return null;
 
-  const { attackCard, defenseCard, attackValue, defenseValue, ...rest } = combat;
+  const {
+    attackCard,
+    defenseCard,
+    attackValue,
+    defenseValue,
+    choice: combatChoice,
+    ...rest
+  } = combat;
   const revealed = ['reveal', 'resolve', 'close'].includes(combat.stage);
   const isAttacker = String(combat.attackerPlayerId) === String(playerId);
   const isDefender = String(combat.defenderPlayerId) === String(playerId);
@@ -82,6 +89,9 @@ const projectCombat = (combat, playerId) => {
   }
   if (revealed || isAttacker) out.attackValue = attackValue;
   if (revealed || isDefender) out.defenseValue = defenseValue;
+  if (combatChoice && String(combatChoice.playerId) === String(playerId)) {
+    out.choice = structuredClone(combatChoice);
+  }
   return out;
 };
 

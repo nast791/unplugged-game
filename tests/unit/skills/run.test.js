@@ -6,7 +6,7 @@ import { ap, createState, fighter, hand, PHASES, player } from '../../fixtures/s
 /** Состояние с синтетической способностью игрока 0 (правила задаём прямо в тесте). */
 const stateWith = (rules, patch = {}) => {
   const state = createState({ phase: PHASES.turn, ...patch });
-  player(state, '0').skill = { id: 'test_skill', rules };
+  player(state, '0').skill = { id: 'test_skill', type: 'skill', rules };
   return state;
 };
 
@@ -233,10 +233,26 @@ describe('skills: runSkillMoment', () => {
     expect(next.winner).toBe('0');
   });
 
+  it('объект в player.skill без type: skill — ошибка', () => {
+    const state = createState({ phase: PHASES.turn });
+    player(state, '0').skill = { id: 'x', rules: [] };
+
+    expect(() => runSkillMoment(state, '0', 'turnStart')).toThrow(/type/);
+  });
+
   it('список моментов — единственный источник имён', () => {
-    expect(moments.map(entry => entry.name)).toEqual(['turnStart', 'picked']);
+    expect(moments.map(entry => entry.name)).toEqual([
+      'turnStart',
+      'picked',
+      'immediately',
+      'duringCombat',
+      'afterCombat',
+    ]);
     expect(isMoment('turnStart')).toBe(true);
     expect(isMoment('picked')).toBe(true);
+    expect(isMoment('immediately')).toBe(true);
+    expect(isMoment('duringCombat')).toBe(true);
+    expect(isMoment('afterCombat')).toBe(true);
     expect(isMoment('skipped')).toBe(false);
   });
 });

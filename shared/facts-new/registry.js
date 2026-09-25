@@ -1,3 +1,4 @@
+import { COMBAT } from './combat.js';
 import { FIGHTERS } from './fighters.js';
 import { ALIVE_SIDES, NEXT_PLAYER, PLAYERS } from './players.js';
 import {
@@ -23,4 +24,5 @@ export const facts = {
   HAND,
   HAND_OVER_LIMIT,
   FIGHTERS,
+  COMBAT,
 };

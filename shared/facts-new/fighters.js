@@ -1,6 +1,6 @@
 import { bfsDistance } from '#shared/helpers/board.js';
 import { findFighter, findPlayer, isTeamFormat } from '#shared/helpers/base.js';
-import { areaIdAtCell } from '#shared/helpers/placement.js';
+import { cellAreaIds, sharesArea } from '#shared/helpers/placement.js';
 
 const sortedPlayers = state =>
   [...(state.players ?? [])].sort(
@@ -28,8 +28,11 @@ const sideMatches = (state, side, ownerId, player) => {
 
 /**
  * Бойцы на поле по фильтру.
- * params: { side, type, alive, placed, areaOf, reachableTo }
- * areaOf — в одной области с указанным бойцом; reachableTo — кто дотягивается до него своей attackRange.
+ * params: { side, type, group, fighterIds, alive, placed, areaOf, reachableTo }
+ * group — помощники одного вида (у трёх Гарпий id `harpies_1..3`, группа `harpies`);
+ * fighterIds — конкретные бойцы (например, «мой боец из этого боя ещё на поле»);
+ * areaOf — в одной области с указанным бойцом (многоцветная клетка считается во всех своих зонах);
+ * reachableTo — кто дотягивается до него своей attackRange.
  */
 export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
   const ownerId = ownerPlayerId == null ? null : String(ownerPlayerId);
@@ -38,12 +41,12 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
   const placedOnly = params.placed !== false;
   const nodes = state.map?.nodes ?? [];
 
-  let areaId = null;
+  let areaCellId = null;
   if (params.areaOf != null) {
     const { fighter } = findFighter(state, params.areaOf);
     if (!fighter || fighter.currentPosition == null) return [];
-    areaId = areaIdAtCell(state, fighter.currentPosition);
-    if (areaId == null) return [];
+    areaCellId = fighter.currentPosition;
+    if (cellAreaIds(state, areaCellId).length === 0) return [];
   }
 
   let reference = null;
@@ -61,8 +64,22 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
       if (aliveOnly && Number(fighter.currentHp) <= 0) continue;
       if (params.type != null && fighter.type !== params.type) continue;
       if (
-        areaId != null &&
-        areaIdAtCell(state, fighter.currentPosition) !== areaId
+        params.group != null &&
+        String(fighter.group ?? '') !== String(params.group)
+      ) {
+        continue;
+      }
+      if (
+        params.fighterIds != null &&
+        !(Array.isArray(params.fighterIds) ? params.fighterIds : [params.fighterIds])
+          .map(String)
+          .includes(String(fighter.id))
+      ) {
+        continue;
+      }
+      if (
+        areaCellId != null &&
+        !sharesArea(state, areaCellId, fighter.currentPosition)
       ) {
         continue;
       }

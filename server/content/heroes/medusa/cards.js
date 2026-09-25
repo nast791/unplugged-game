@@ -8,22 +8,17 @@ export default [
     bonus: 4,
     quantity: 3,
     fighter: 'medusa',
-    text: 'ПОСЛЕ БИТВЫ: В случае вашей победы враг, которого вы атаковали, получает 8 урона.',
-    hook: 'after_combat',
-    effects: [
+    text: 'ПОСЛЕ БИТВЫ: В случае вашей победы нанесите 8 урона атакованному бойцу.',
+    rules: [
       {
-        id: 'death_gaze',
-        triggers: [
-          { fact: 'PHASE', params: { id: 'after_combat' } },
-          {
-            fact: 'COMBAT',
-            params: { winner: 'self', select: 'defender' },
-            var: 'defender',
-          },
+        moment: 'afterCombat',
+        when: [
+          // победителем боя объявлен атакующий (эту карту играет только атакующий)
+          { fact: 'COMBAT', params: { winner: 'attacker' } },
+          // атакованный боец — тот, кого выбрали целью атаки (герой или помощник)
+          { fact: 'COMBAT', params: { select: 'target' }, var: 'victims' },
         ],
-        events: [
-          { type: 'DEAL_DAMAGE', targets: '$defender', damage: 8 },
-        ],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$victims', delta: -8 }],
       },
     ],
   },
@@ -35,8 +30,27 @@ export default [
     "bonus": 3,
     "quantity": 3,
     "fighter": "medusa",
-    "text": "ВО ВРЕМЯ БИТВЫ: Можете прибавить бонусное значение другой карты к силе этой атаки.",
-    "hook": "during_combat"
+    "text": "ВО ВРЕМЯ БИТВЫ: Можете сбросить 1 карту с руки, чтобы прибавить ее бонусное значение к значению атаки этой карты.",
+    "rules": [
+      {
+        moment: "duringCombat",
+        // усиливать нечем, если в руке нет другой карты с бонусом: тогда эффект не срабатывает
+        when: [
+          { fact: "HAND", params: { bonusMin: 1 }, min: 1, var: "cards" },
+        ],
+        then: [
+          {
+            action: "SET_COMBAT",
+            op: "choice",
+            effect: "bonus",
+            side: "attack",
+            max: 1,
+            candidates: "$cards",
+            optional: true,
+          },
+        ],
+      },
+    ]
   },
   {
     "id": "medusa_03",
@@ -46,8 +60,29 @@ export default [
     "bonus": 3,
     "quantity": 3,
     "fighter": "medusa",
-    "text": "ПОСЛЕ БИТВЫ: Ваш враг, участвовавший в битве, должен сбросить 1 карту.",
-    "hook": "after_combat"
+    "text": "ПОСЛЕ БИТВЫ: Оппонент, чей боец участвовал в этой битве, должен сбросить 1 карту.",
+    "rules": [
+      {
+        moment: "afterCombat",
+        when: [
+          // кто враг в этом бою: id игрока (не список), чтобы подставить его и в руку, и в окно
+          { fact: "COMBAT", params: { player: "opponent" }, var: "enemy" },
+          // без карт в руке сбрасывать нечего: эффект не срабатывает, штрафов никаких
+          { fact: "HAND", params: { of: "$enemy", min: 1 }, var: "enemyCards" },
+        ],
+        then: [
+          {
+            action: "SET_COMBAT",
+            op: "choice",
+            effect: "discard",
+            actor: "$enemy",
+            max: 1,
+            candidates: "$enemyCards",
+            optional: false,
+          },
+        ],
+      },
+    ]
   },
   {
     "id": "medusa_04",
@@ -58,7 +93,29 @@ export default [
     "quantity": 2,
     "fighter": "harpies",
     "text": "ПОСЛЕ БИТВЫ: Можете передвинуть каждую Гарпию на расстояние до 3 клеток.",
-    "hook": "after_combat"
+    "rules": [
+      {
+        moment: "afterCombat",
+        // живых Гарпий нет — двигать некого, эффект не срабатывает
+        when: [
+          {
+            fact: "FIGHTERS",
+            params: { side: "self", group: "harpies" },
+            min: 1,
+            var: "harpies",
+          },
+        ],
+        then: [
+          {
+            action: "SET_MOVEMENT",
+            op: "open",
+            budget: 3,
+            fighters: "$harpies",
+            optional: true,
+          },
+        ],
+      },
+    ]
   },
   {
     "id": "medusa_05",
@@ -68,8 +125,29 @@ export default [
     "bonus": 2,
     "quantity": 3,
     "fighter": "harpies",
-    "text": "ПОСЛЕ БИТВЫ: Ваш оппонент, участвовавший в битве, должен сбросить 1 карту.",
-    "hook": "after_combat"
+    "text": "ПОСЛЕ БИТВЫ: Оппонент, чей боец участвовал в этой битве, должен сбросить 1 карту.",
+    "rules": [
+      {
+        moment: "afterCombat",
+        when: [
+          // враг в этом бою — тот, кто играл против этой карты (карта hybrid: играет любая сторона)
+          { fact: "COMBAT", params: { player: "opponent" }, var: "enemy" },
+          // без карт в руке сбрасывать нечего: эффект не срабатывает, штрафов никаких
+          { fact: "HAND", params: { of: "$enemy", min: 1 }, var: "enemyCards" },
+        ],
+        then: [
+          {
+            action: "SET_COMBAT",
+            op: "choice",
+            effect: "discard",
+            actor: "$enemy",
+            max: 1,
+            candidates: "$enemyCards",
+            optional: false,
+          },
+        ],
+      },
+    ]
   },
   {
     "id": "medusa_06",
@@ -80,7 +158,31 @@ export default [
     "quantity": 3,
     "fighter": "any",
     "text": "ПОСЛЕ БИТВЫ: Можете передвинуть своего бойца, участвовавшего в этой битве, на расстояние до 3 клеток.",
-    "hook": "after_combat"
+    "rules": [
+      {
+        moment: "afterCombat",
+        when: [
+          // свой боец в этом бою: у атакующего — атакующий, у защитника — тот, кого били
+          { fact: "COMBAT", params: { select: "self" }, var: "battleFighters" },
+          // боец погиб в бою — двигать нечего, эффект сгорает
+          {
+            fact: "FIGHTERS",
+            params: { side: "self", fighterIds: "$battleFighters" },
+            min: 1,
+            var: "fighters",
+          },
+        ],
+        then: [
+          {
+            action: "SET_MOVEMENT",
+            op: "open",
+            budget: 3,
+            fighters: "$fighters",
+            optional: true,
+          },
+        ],
+      },
+    ]
   },
   {
     "id": "medusa_07",
