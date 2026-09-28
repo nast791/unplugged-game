@@ -9,10 +9,10 @@ import { ap, createState, fighter, PHASES, player } from '../../fixtures/state.j
 const areaMap = {
   id: 'areas',
   nodes: [
-    { id: 1, neighbors: [2], areas: ['#blue'] },
-    { id: 2, neighbors: [1, 3], areas: ['#blue'] },
-    { id: 3, neighbors: [2, 4], areas: ['#blue'] },
-    { id: 4, neighbors: [3], areas: ['#red'] },
+    { id: 1, neighbors: [2], terrain: 'arcane' },
+    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
+    { id: 3, neighbors: [2, 4], terrain: 'arcane' },
+    { id: 4, neighbors: [3], terrain: 'lava' },
   ],
 };
 
@@ -38,8 +38,8 @@ const slot = (id, name, order, fighters) => ({
   fighters,
 });
 
-/** Ход Медузы (игрок 0) с настоящим скиллом из контента. */
-const skillState = ({ enemyCell = 3, enemyHp = 10 } = {}) => {
+/** Ход Медузы (игрок 0) с настоящим скиллом из контента. `enemies` — враги: клетка и здоровье. */
+const skillState = ({ enemies = [{ id: 'beta', cell: 3, hp: 10 }] } = {}) => {
   const state = createState({
     phase: PHASES.turn,
     map: areaMap,
@@ -59,14 +59,24 @@ const skillState = ({ enemyCell = 3, enemyHp = 10 } = {}) => {
         ]),
         skill: medusa.skill,
       },
-      slot('1', 'Beta', 2, [hero('beta', enemyCell)]),
+      slot(
+        '1',
+        'Beta',
+        2,
+        enemies.map(enemy => ({ ...hero(enemy.id, enemy.cell), currentHp: enemy.hp })),
+      ),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'], actionsLeft: 2 },
   });
 
-  player(state, '1').fighters[0].currentHp = enemyHp;
   return state;
 };
+
+/** Два врага в области Медузы: выбор есть, значит окно открывается. */
+const twoEnemies = () => [
+  { id: 'beta', cell: 3, hp: 10 },
+  { id: 'gamma', cell: 2, hp: 10 },
+];
 
 const fighterOf = (state, playerId, fighterId) =>
   player(state, playerId).fighters.find(entry => entry.id === fighterId);
@@ -86,23 +96,37 @@ describe('способность Медузы (Взгляд Медузы)', () =
     expect(Array.isArray(medusa.skill.rules)).toBe(true);
   });
 
-  it('в начале хода предлагает врагов только в области Медузы', () => {
+  it('враг в области один — выбора нет, движок бьёт сам и окна не открывает', () => {
     const state = runLifecycle(skillState());
+
+    expect(state.targeting).toBeNull();
+    expect(fighterOf(state, '1', 'beta').currentHp).toBe(9);
+    expect(ap(state)).toBe(2);
+    expect(state.hook).toBe(PHASES.turn);
+    // подсказки способности нет: игроку нечего решать
+    expect(runUi(state, '0').hint).not.toBe(medusa.skill.text);
+  });
+
+  it('врагов в области несколько — окно с кандидатами и подсветкой', () => {
+    const state = runLifecycle(skillState({ enemies: twoEnemies() }));
 
     expect(state.targeting).toEqual({
       playerId: '0',
       source: 'medusa_skill',
       required: false,
+      auto: true,
+      kind: 'fighters',
       count: 1,
       candidates: [
         { fighterId: 'beta', playerId: '1', name: 'beta', position: 3 },
+        { fighterId: 'gamma', playerId: '1', name: 'gamma', position: 2 },
       ],
       picked: null,
     });
 
     const ui = runUi(state, '0');
     expect(ui.phase).toBe('choose');
-    expect(ui.highlightedFighterIds).toEqual(['beta']);
+    expect(ui.highlightedFighterIds).toEqual(['beta', 'gamma']);
     expect(ui.hint).toBe(medusa.skill.text);
 
     // чужому игроку кандидатов не видно
@@ -110,7 +134,7 @@ describe('способность Медузы (Взгляд Медузы)', () =
   });
 
   it('клик по подсвеченному бойцу наносит ровно 1 урон и закрывает окно', () => {
-    let state = runLifecycle(skillState());
+    let state = runLifecycle(skillState({ enemies: twoEnemies() }));
 
     state = runAction(state, {
       type: 'PICK',
@@ -120,6 +144,7 @@ describe('способность Медузы (Взгляд Медузы)', () =
     });
 
     expect(fighterOf(state, '1', 'beta').currentHp).toBe(9);
+    expect(fighterOf(state, '1', 'gamma').currentHp).toBe(10);
     expect(fighterOf(state, '0', 'harpies').currentHp).toBe(1);
     expect(state.targeting).toBeNull();
     expect(ap(state)).toBe(2);
@@ -127,7 +152,7 @@ describe('способность Медузы (Взгляд Медузы)', () =
   });
 
   it('клик по своему бойцу (не кандидату) отклоняется', () => {
-    const state = runLifecycle(skillState());
+    const state = runLifecycle(skillState({ enemies: twoEnemies() }));
 
     expect(() =>
       runAction(state, {
@@ -140,7 +165,7 @@ describe('способность Медузы (Взгляд Медузы)', () =
   });
 
   it('враг вне области Медузы — окно не открывается', () => {
-    const state = runLifecycle(skillState({ enemyCell: 4 }));
+    const state = runLifecycle(skillState({ enemies: [{ id: 'beta', cell: 4, hp: 10 }] }));
 
     expect(state.targeting).toBeNull();
     expect(runUi(state, '0').highlightedFighterIds).toEqual([]);
@@ -156,7 +181,7 @@ describe('способность Медузы (Взгляд Медузы)', () =
   });
 
   it('способность необязательна: объявление действия закрывает окно и не возвращает его', () => {
-    let state = runLifecycle(skillState());
+    let state = runLifecycle(skillState({ enemies: twoEnemies() }));
     expect(state.targeting).not.toBeNull();
 
     state = runAction(state, { type: 'PICK', kind: 'deck', playerId: '0' });
@@ -178,15 +203,28 @@ describe('способность Медузы (Взгляд Медузы)', () =
     ).toThrow(/некого/);
   });
 
-  it('добивающий урон способностью завершает партию', () => {
-    let state = runLifecycle(skillState({ enemyHp: 1 }));
+  it('общая кнопка пропускает способность, не выбирая цель', () => {
+    const state = runLifecycle(skillState({ enemies: twoEnemies() }));
+    const ui = runUi(state, '0');
 
-    state = runAction(state, {
-      type: 'PICK',
-      kind: 'fighter',
-      id: 'beta',
-      playerId: '0',
-    });
+    // от необязательного окна можно отказаться той же кнопкой, что и везде
+    expect(ui.controls.ok.visible).toBe(true);
+    expect(ui.controls.ok.enabled).toBe(true);
+    expect(ui.controls.ok.label).toBe('Пропустить');
+
+    const skipped = runAction(state, { type: 'UI_OK', playerId: '0' });
+
+    expect(skipped.targeting).toBeNull();
+    expect(fighterOf(skipped, '1', 'beta').currentHp).toBe(10);
+    expect(ap(skipped)).toBe(2);
+    // ход продолжается: окно не вернётся, можно объявлять действие
+    expect(runUi(skipped, '0').phase).toBe('choose');
+    expect(runUi(skipped, '0').controls.ok.visible).toBe(false);
+    expect(() => runAction(skipped, { type: 'PICK', kind: 'deck', playerId: '0' })).not.toThrow();
+  });
+
+  it('добивающий урон способностью завершает партию', () => {
+    const state = runLifecycle(skillState({ enemies: [{ id: 'beta', cell: 3, hp: 1 }] }));
 
     expect(state.hook).toBe(PHASES.gameEnd);
     expect(state.winner).toBe('0');

@@ -115,15 +115,42 @@ describe('party.view: приватность хода', () => {
     };
 
     const ownerView = view(state, '0');
-    expect(ownerView.combat.choice.candidates).toEqual([
-      { cardId: 'quiet_0', bonus: 2 },
-    ]);
+    expect(ownerView.combat.choice.candidates).toEqual([{ cardId: 'quiet_0', bonus: 2 }]);
     expect(ownerView.combat.effects[0].status).toBe('waiting');
 
-    // противник видит, что эффект ждёт решения, но не видит чужих карт для усиления
+    // противник видит, кто выбирает и что за эффект (по этому клиент передаёт ему управление),
+    // но чужих карт для усиления и отметок не видит
     const otherView = view(state, '1');
-    expect(otherView.combat.choice).toBeUndefined();
+    expect(otherView.combat.choice).toEqual({
+      playerId: '0',
+      effect: undefined,
+      optional: true,
+    });
+    expect(otherView.combat.choice.candidates).toBeUndefined();
+    expect(otherView.combat.choice.picked).toBeUndefined();
     expect(otherView.combat.effects[0].status).toBe('waiting');
+  });
+
+  it('раскрытые карты колоды видны всем: «Раскройте» значит «покажите всем»', () => {
+    const state = createState();
+    state.reveal = [
+      {
+        playerId: '1',
+        source: 'tesla_09',
+        cards: [{ cardId: 'beta_1', name: 'Точный выстрел', value: 4, bonus: 1 }],
+      },
+    ];
+
+    for (const viewer of ['0', '1']) {
+      const projected = view(state, viewer).reveal;
+      expect(projected).toEqual([
+        {
+          playerId: '1',
+          source: 'tesla_09',
+          cards: [{ cardId: 'beta_1', name: 'Точный выстрел', value: 4, bonus: 1 }],
+        },
+      ]);
+    }
   });
 
   it('сдавшийся игрок виден всем', () => {

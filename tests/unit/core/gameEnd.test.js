@@ -48,10 +48,7 @@ describe('lifecycle gameEnd', () => {
     expect(ui.deck.clickable).toBe(false);
     expect(ui.results.winner).toBe('0');
     expect(ui.results.winnerName).toBe('Alpha');
-    expect(ui.results.players.map(entry => entry.name)).toEqual([
-      'Alpha',
-      'Beta',
-    ]);
+    expect(ui.results.players.map(entry => entry.name)).toEqual(['Alpha', 'Beta']);
     expect(ui.results.players[0].fighters).toEqual([
       { id: 'alpha', name: 'Alpha', type: 'hero', hp: 15, maxHp: null },
       { id: 'pawn', name: 'Pawn', type: 'assistant', hp: 4, maxHp: null },

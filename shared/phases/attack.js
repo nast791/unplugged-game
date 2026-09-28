@@ -1,4 +1,4 @@
-import { SET_COMBAT } from '#shared/actions-new/combat.js';
+import { SET_COMBAT } from '#shared/actions/combat.js';
 import { findPlayer } from '#shared/helpers/base.js';
 import { attackCandidates, attackTargets } from '#shared/helpers/combat.js';
 import { handCardIds, isMomentMine } from '#shared/helpers/turn.js';
@@ -6,29 +6,30 @@ import { handCardIds, isMomentMine } from '#shared/helpers/turn.js';
 const playerName = (partyState, playerId) =>
   findPlayer(partyState, playerId)?.name ?? String(playerId ?? '—');
 
-/** Кого подсвечиваем и кого выделяем рамкой на текущей стадии боя. */
+/** Кого подсвечиваем (кликабельные кандидаты) и кого выделяем рамкой на текущей стадии боя. */
 const stageFighters = (partyState, playerId, combat) => {
   if (!combat) return { highlighted: [], framed: [] };
 
   if (combat.stage === 'attacker') {
-    const candidates = attackCandidates(
-      partyState,
-      playerId,
-      combat.attackCard,
-    ).map(entry => entry.fighterId);
+    const candidates = attackCandidates(partyState, playerId, combat.attackCard).map(
+      entry => entry.fighterId,
+    );
     return { highlighted: candidates, framed: candidates };
   }
 
-  const framed =
-    combat.attackerFighterId == null ? [] : [String(combat.attackerFighterId)];
+  // на защите кликать по бойцам уже нечего: рамкой отмечаем того, кого бьют
+  if (combat.stage === 'defense') {
+    return {
+      highlighted: [],
+      framed: combat.targetFighterId == null ? [] : [String(combat.targetFighterId)],
+    };
+  }
+
+  const framed = combat.attackerFighterId == null ? [] : [String(combat.attackerFighterId)];
   const highlighted =
     combat.stage === 'target'
-      ? attackTargets(partyState, playerId, combat.attackerFighterId).map(
-          entry => entry.fighterId,
-        )
-      : combat.targetFighterId == null
-        ? []
-        : [String(combat.targetFighterId)];
+      ? attackTargets(partyState, playerId, combat.attackerFighterId).map(entry => entry.fighterId)
+      : [];
 
   return { highlighted, framed };
 };
@@ -55,21 +56,22 @@ export default {
   active: (partyState, playerId) =>
     isMomentMine(partyState, playerId, 'combat') &&
     String(partyState.combat?.attackerPlayerId) === String(playerId) &&
-    // выбор эффекта боя (например, усиление) отвечает фаза defense — она и владеет паузой
-    !partyState.combat?.choice,
+    // паузы эффектов (выбор карты, варианта, цели, перемещение) ведут defense или movement
+    !partyState.combat?.choice &&
+    !partyState.targeting &&
+    !partyState.movement,
 
   ui(partyState, playerId) {
-    const { highlighted, framed } = stageFighters(
-      partyState,
-      playerId,
-      partyState.combat,
-    );
+    const { highlighted, framed } = stageFighters(partyState, playerId, partyState.combat);
+    const stage = partyState.combat?.stage;
 
     return {
       deck: { clickable: false },
       highlightedCellIds: [],
       highlightedFighterIds: highlighted,
       framedFighterIds: framed,
+      // клик по бойцу решает только до выбора цели: на защите он уже ничего не меняет
+      pickFighters: stage === 'attacker' || stage === 'target',
       playableCardIds: [],
       disabledCardIds: handCardIds(partyState, playerId),
       controls: {
@@ -82,9 +84,7 @@ export default {
   moves: {
     PICK: (partyState, action) => {
       if (action.kind !== 'fighter') {
-        throw new Error(
-          `PICK: в бою доступен клик по бойцу (пришло "${action.kind}")`,
-        );
+        throw new Error(`PICK: в бою доступен клик по бойцу (пришло "${action.kind}")`);
       }
 
       const stage = partyState.combat?.stage;
@@ -93,6 +93,10 @@ export default {
       }
       if (stage === 'target') {
         return SET_COMBAT(partyState, { op: 'target', fighterId: action.id });
+      }
+      // единственную цель движок выбирает сам: клик по ней уже после выбора — не ошибка
+      if (stage === 'defense' && String(partyState.combat?.targetFighterId) === String(action.id)) {
+        return partyState;
       }
 
       throw new Error(`PICK: сейчас выбирать некого (stage "${stage ?? '—'}")`);

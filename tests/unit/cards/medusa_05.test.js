@@ -9,8 +9,8 @@ const card = medusaCards.find(entry => entry.id === 'medusa_05');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], areas: ['#blue'] },
-    { id: 2, neighbors: [1], areas: ['#blue'] },
+    { id: 1, neighbors: [2], terrain: 'arcane' },
+    { id: 2, neighbors: [1], terrain: 'arcane' },
   ],
 };
 
@@ -68,17 +68,23 @@ const state = (enemyHand = []) =>
         ],
         [{ ...card, instanceId: 'medusa_05_1' }],
       ),
-      slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackType: 'ranged' })], [
-        {
-          id: 'beta_atk',
-          instanceId: 'beta_atk_1',
-          type: 'attack',
-          value: 3,
-          bonus: 1,
-          fighter: 'beta',
-        },
-        ...enemyHand,
-      ]),
+      slot(
+        '1',
+        'Бета',
+        2,
+        [unit('beta', 2, 13, { attackType: 'ranged' })],
+        [
+          {
+            id: 'beta_atk',
+            instanceId: 'beta_atk_1',
+            type: 'attack',
+            value: 3,
+            bonus: 1,
+            fighter: 'beta',
+          },
+          ...enemyHand,
+        ],
+      ),
     ],
     turn: { index: 1, playerId: '1', actedRound: ['1'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -94,7 +100,7 @@ const answerDefense = (enemyHand = []) => {
   battle = runAction(battle, {
     type: 'PICK',
     kind: 'fighter',
-    id: 'medusa',
+    id: 'harpies_1',
     playerId: '1',
   });
   return runAction(battle, {
@@ -121,6 +127,9 @@ describe('карта medusa_05 «Капкан»', () => {
     expect(paused.combat.effects[0].side).toBe('defender');
     expect(paused.combat.effects[0].status).toBe('waiting');
     expect(runUi(paused, '1').playableCardIds).toEqual(['spare_1', 'other_1']);
+    // карту выбирает владелец руки: Медуза видит, что решает оппонент, а не свои карты
+    expect(runUi(paused, '0').hint).toBe('Оппонент выбирает карту для эффекта: Бета');
+    expect(runUi(paused, '0').playableCardIds).toEqual([]);
 
     const after = runAction(paused, {
       type: 'PICK',
@@ -130,13 +139,8 @@ describe('карта medusa_05 «Капкан»', () => {
     });
 
     expect(after.combat).toBeNull();
-    expect(player(after, '1').discard.cards.map(entry => entry.id)).toEqual([
-      'other',
-      'beta_atk',
-    ]);
-    expect(player(after, '1').hand.cards.map(entry => entry.id)).toEqual([
-      'spare',
-    ]);
+    expect(player(after, '1').discard.cards.map(entry => entry.id)).toEqual(['other', 'beta_atk']);
+    expect(player(after, '1').hand.cards.map(entry => entry.id)).toEqual(['spare']);
   });
 
   it('пустая рука врага — эффект игнорируется, штрафов нет', () => {

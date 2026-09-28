@@ -2,19 +2,14 @@
 import { cardKey } from '#shared/helpers/cards.js';
 
 export const seatIndex = (partyState, playerId) => {
-  const player = partyState.players?.find(
-    entry => String(entry.id) === String(playerId),
-  );
+  const player = partyState.players?.find(entry => String(entry.id) === String(playerId));
   if (!player) return -1;
   if (Number.isInteger(player.order)) return player.order - 1;
-  return partyState.players.findIndex(
-    entry => String(entry.id) === String(playerId),
-  );
+  return partyState.players.findIndex(entry => String(entry.id) === String(playerId));
 };
 
 export const findPlayer = (partyState, playerId) =>
-  partyState.players?.find(entry => String(entry.id) === String(playerId)) ??
-  null;
+  partyState.players?.find(entry => String(entry.id) === String(playerId)) ?? null;
 
 /** Карты зоны — и массив, и { visibility, cards }. */
 export const zoneCards = zone => {
@@ -48,8 +43,7 @@ export const takeCardFromZone = (zone, cardId) => {
   return cards.splice(index, 1)[0];
 };
 
-export const findCardInHand = (player, cardId) =>
-  findCardInZone(player?.hand, cardId);
+export const findCardInHand = (player, cardId) => findCardInZone(player?.hand, cardId);
 
 /** Боец на поле у любого игрока. */
 export const findFighter = (partyState, fighterId) => {
@@ -70,9 +64,7 @@ export const findOwnedFighter = (partyState, playerId, fighterId) => {
   if (!player || !Array.isArray(player.fighters)) {
     return { player: null, fighter: null, index: -1 };
   }
-  const index = player.fighters.findIndex(
-    entry => String(entry.id) === String(fighterId),
-  );
+  const index = player.fighters.findIndex(entry => String(entry.id) === String(fighterId));
   if (index < 0) return { player, fighter: null, index: -1 };
   return { player, fighter: player.fighters[index], index };
 };
@@ -90,12 +82,10 @@ export const livingFighters = (player, { type } = {}) =>
 
 const teammates = (partyState, player) =>
   (partyState.players ?? []).filter(
-    entry =>
-      entry.team === player.team && String(entry.id) !== String(player.id),
+    entry => entry.team === player.team && String(entry.id) !== String(player.id),
   );
 
-export const isTeamFormat = partyState =>
-  partyState.settings?.format === 'teams_2v2';
+export const isTeamFormat = partyState => partyState.settings?.format === 'teams_2v2';
 
 /**
  * Игрок жив для хода / победы.
@@ -146,10 +136,7 @@ export const occupiedOwnCellIds = (player, exceptFighterId) => {
   const blocked = new Set();
   for (const fighter of player?.fighters ?? []) {
     if (fighter.currentPosition == null) continue;
-    if (
-      exceptFighterId != null &&
-      String(fighter.id) === String(exceptFighterId)
-    ) {
+    if (exceptFighterId != null && String(fighter.id) === String(exceptFighterId)) {
       continue;
     }
     blocked.add(String(fighter.currentPosition));

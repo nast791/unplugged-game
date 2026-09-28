@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SET_COMBAT } from '#shared/actions-new/combat.js';
+import { SET_COMBAT } from '#shared/actions/combat.js';
 import { advanceCombat } from '#shared/cards/run.js';
 import { runAction, runUi } from '#shared/gameEngine.js';
 import { buildCombatEffects } from '#shared/helpers/combat.js';
@@ -9,8 +9,8 @@ import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], areas: ['#blue'] },
-    { id: 2, neighbors: [1], areas: ['#blue'] },
+    { id: 1, neighbors: [2], terrain: 'arcane' },
+    { id: 2, neighbors: [1], terrain: 'arcane' },
   ],
 };
 
@@ -128,8 +128,7 @@ const playDefense = state => {
 };
 
 /** Защитник пасует: «закончить действие». */
-const playPass = state =>
-  runAction(openBattle(state), { type: 'UI_OK', playerId: '1' });
+const playPass = state => runAction(openBattle(state), { type: 'UI_OK', playerId: '1' });
 
 const handSize = (state, playerId) => player(state, playerId).hand.cards.length;
 
@@ -139,17 +138,13 @@ describe('окна эффектов боя', () => {
       attack: attackCard([
         {
           moment: 'duringCombat',
-          then: [
-            { action: 'SET_COMBAT', op: 'value', side: 'attack', delta: 6 },
-          ],
+          then: [{ action: 'SET_COMBAT', op: 'value', side: 'attack', delta: 6 }],
         },
       ]),
       defense: defenseCard([
         {
           moment: 'duringCombat',
-          then: [
-            { action: 'SET_COMBAT', op: 'value', side: 'defense', delta: 1 },
-          ],
+          then: [{ action: 'SET_COMBAT', op: 'value', side: 'defense', delta: 1 }],
         },
       ]),
     });
@@ -161,9 +156,7 @@ describe('окна эффектов боя', () => {
     expect(after.lastCombat.defenseValue).toBe(3);
     expect(after.lastCombat.combatDamage).toBe(5);
     expect(after.lastCombat.winner).toBe('attacker');
-    expect(
-      player(after, '1').fighters.find(entry => entry.id === 'beta').currentHp,
-    ).toBe(8);
+    expect(player(after, '1').fighters.find(entry => entry.id === 'beta').currentHp).toBe(8);
   });
 
   it('окно «немедленно» идёт раньше «во время боя», а эффект карты доигрывается после гибели бойца', () => {
@@ -177,9 +170,7 @@ describe('окна эффектов боя', () => {
       defense: defenseCard([
         {
           moment: 'immediately',
-          then: [
-            { action: 'SET_HEALTH', fighterIds: ['medusa'], delta: -99 },
-          ],
+          then: [{ action: 'SET_HEALTH', fighterIds: ['medusa'], delta: -99 }],
         },
       ]),
       attackerDeck: 2,
@@ -257,19 +248,25 @@ describe('окна эффектов боя', () => {
     const resolved = SET_COMBAT(resolving, { op: 'resolve' });
     const closed = SET_COMBAT(resolved, { op: 'close' });
     expect(closed.combat).toBeNull();
-    expect(() =>
-      SET_COMBAT(closed, { op: 'value', side: 'attack', delta: 1 }),
-    ).toThrow(/бой не идёт/);
+    expect(() => SET_COMBAT(closed, { op: 'value', side: 'attack', delta: 1 })).toThrow(
+      /бой не идёт/,
+    );
   });
 
   it('очередь шагов: по моментам боя и по сторонам, защитник раньше атакующего', () => {
     const attack = attackCard([
-      { moment: 'duringCombat', then: [{ action: 'SET_COMBAT', op: 'value', side: 'attack', delta: 1 }] },
+      {
+        moment: 'duringCombat',
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'attack', delta: 1 }],
+      },
       { moment: 'afterCombat', then: [{ action: 'SET_HEALTH', fighterIds: ['beta'], delta: -1 }] },
     ]);
     const defense = defenseCard([
       { moment: 'immediately', then: [{ action: 'SET_HEALTH', fighterIds: ['medusa'], delta: 0 }] },
-      { moment: 'afterCombat', then: [{ action: 'SET_HEALTH', fighterIds: ['medusa'], delta: -1 }] },
+      {
+        moment: 'afterCombat',
+        then: [{ action: 'SET_HEALTH', fighterIds: ['medusa'], delta: -1 }],
+      },
     ]);
     const state = buildState({ attack, defense });
 
@@ -332,9 +329,7 @@ describe('окна эффектов боя', () => {
 
     expect(first.combat.choice.used).toBe(1);
     expect(first.combat.attackValue).toBe(4);
-    expect(first.combat.choice.candidates).toEqual([
-      { cardId: 'loud_1', bonus: 3 },
-    ]);
+    expect(first.combat.choice.candidates).toEqual([{ cardId: 'loud_1', bonus: 3 }]);
     expect(runUi(first, '0').controls.ok.label).toBe('Закончить эффект');
     expect(runUi(first, '0').controls.ok.enabled).toBe(true);
 
@@ -372,9 +367,7 @@ describe('окна эффектов боя', () => {
 
     expect(queue.map(entry => entry.status)).toEqual(['skipped']);
     expect(after.combat).toBeNull();
-    expect(
-      player(after, '1').fighters.find(entry => entry.id === 'beta').currentHp,
-    ).toBe(11);
+    expect(player(after, '1').fighters.find(entry => entry.id === 'beta').currentHp).toBe(11);
   });
 
   it('победа не объявляется, пока бой не закрыт', () => {

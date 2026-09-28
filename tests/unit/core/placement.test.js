@@ -7,10 +7,10 @@ import { createState, fighter, PHASES } from '../../fixtures/state.js';
 const arenaMap = {
   id: 'arena',
   nodes: [
-    { id: 1, neighbors: [6], position: 1, areas: ['#3B82F6'] },
-    { id: 6, neighbors: [1], position: 1, heroStart: true, areas: ['#3B82F6'] },
-    { id: 5, neighbors: [10], position: 2, areas: ['#EF4444'] },
-    { id: 10, neighbors: [5], position: 2, heroStart: true, areas: ['#EF4444'] },
+    { id: 1, neighbors: [6], terrain: 'arcane' },
+    { id: 6, neighbors: [1], terrain: 'arcane', heroStart: true, position: 1 },
+    { id: 5, neighbors: [10], terrain: 'lava' },
+    { id: 10, neighbors: [5], terrain: 'lava', heroStart: true, position: 2 },
   ],
 };
 
@@ -132,9 +132,7 @@ describe('core: gameStart placement', () => {
     const preview = runAction(started, pickFighter('0', 'h2'));
     const reverted = runAction(preview, { type: 'UI_BACK', playerId: '0' });
     expect(runUi(reverted, '0').hint).toContain('Выберите');
-    expect(
-      reverted.players[0].fighters.find(f => f.id === 'h2').currentPosition,
-    ).toBeNull();
+    expect(reverted.players[0].fighters.find(f => f.id === 'h2').currentPosition).toBeNull();
   });
 
   it('pickNumHero: exit без UI_OK запрещён', () => {
@@ -158,9 +156,9 @@ describe('core: gameStart placement', () => {
 
   it('отклоняет не тот клик в фазах расстановки', () => {
     const state = runLifecycle(placementState());
-    expect(() =>
-      runAction(state, { type: 'PICK', kind: 'deck', playerId: '0' }),
-    ).toThrow(/клик по клетке/);
+    expect(() => runAction(state, { type: 'PICK', kind: 'deck', playerId: '0' })).toThrow(
+      /клик по клетке/,
+    );
   });
 });
 
@@ -172,7 +170,7 @@ describe('runUi: placement highlights', () => {
     expect(ui.highlightedCellIds).not.toContain('6');
   });
 
-  it('PICK: клетка другого цвета запрещена', () => {
+  it('PICK: клетка вне области героя запрещена', () => {
     const state = runLifecycle(
       createState({
         phase: PHASES.gameStart,
@@ -180,16 +178,14 @@ describe('runUi: placement highlights', () => {
         map: {
           id: 'arena',
           nodes: [
-            { id: 1, neighbors: [6, 7], position: 1, areas: ['#3B82F6'] },
-            { id: 6, neighbors: [1], position: 1, heroStart: true, areas: ['#3B82F6'] },
-            { id: 7, neighbors: [1], position: 1, areas: ['#94a3b8'] },
+            { id: 1, neighbors: [6, 7], terrain: 'arcane' },
+            { id: 6, neighbors: [1], terrain: 'arcane', heroStart: true, position: 1 },
+            { id: 7, neighbors: [1], terrain: 'mountains' },
           ],
         },
       }),
     );
-    expect(() => runAction(state, pickCell('0', '0-pawn', 7))).toThrow(
-      /области расстановки/,
-    );
+    expect(() => runAction(state, pickCell('0', '0-pawn', 7))).toThrow(/одной области/);
   });
 
   it('place: после UI_OK подсказка ожидания, пока второй игрок не готов', () => {

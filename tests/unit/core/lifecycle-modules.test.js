@@ -22,8 +22,6 @@ describe('lifecycle-модули', () => {
       expect(typeof hook.body).toBe('function');
     }
 
-    expect(Object.keys(lifecycleHooks).sort()).toEqual(
-      hooks.map(hook => hook.name).sort(),
-    );
+    expect(Object.keys(lifecycleHooks).sort()).toEqual(hooks.map(hook => hook.name).sort());
   });
 });

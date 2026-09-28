@@ -1,14 +1,31 @@
-import { SET_FIGHTER_CELL } from '#shared/actions-new/fighter.js';
+import { SET_FIGHTER_CELL } from '#shared/actions/fighter.js';
 import { findPlayer, playerHeroes, resolveOkBackControls } from '#shared/helpers/base.js';
 import {
   allPlayersPlacementReady,
   clearHeroOnNumberedCell,
   hasHeroOnNumberedCell,
+  isLockedHero,
   numberedCellId,
   placePhaseHighlightedCellIds,
   placementRejection,
   playerFightersPlaced,
 } from '#shared/helpers/placement.js';
+
+/**
+ * Нечего расставлять — подтверждаем сами. Так у героя без помощников (Никола Тесла: один герой,
+ * он уже стоит на номерной клетке и двигать его нельзя) расстановка завершается без нажатия «ОК».
+ */
+const confirmIfNothingToPlace = (partyState, playerId) => {
+  const player = findPlayer(partyState, playerId);
+  if (!player?.fighters?.length || player.placementReady) return partyState;
+  if (!playerFightersPlaced(player)) return partyState;
+
+  const movable = player.fighters.some(fighter => !isLockedHero(fighter, partyState, playerId));
+  if (movable) return partyState;
+
+  player.placementReady = true;
+  return partyState;
+};
 
 export default {
   name: 'place',
@@ -20,14 +37,12 @@ export default {
         return Boolean(player && !player.placementReady);
       },
       text: () =>
-        'Разместите на поле всех своих бойцов. Их можно размещать в одной зоне с вашим героем',
+        'Разместите на поле всех своих бойцов. Их можно ставить на клетках в одной области с героем',
     },
     waitingForAllPlayers: {
       active: (partyState, playerId) => {
         const player = findPlayer(partyState, playerId);
-        return Boolean(
-          player?.placementReady && !allPlayersPlacementReady(partyState),
-        );
+        return Boolean(player?.placementReady && !allPlayersPlacementReady(partyState));
       },
       text: () => 'Ожидание расстановки бойцов всех игроков',
     },
@@ -41,16 +56,14 @@ export default {
     }
     const heroes = playerHeroes(player);
     if (heroes.length === 1) return true;
-    return (
-      hasHeroOnNumberedCell(partyState, playerId) && player.numberedHeroCommitted
-    );
+    return hasHeroOnNumberedCell(partyState, playerId) && player.numberedHeroCommitted;
   },
 
   enter: (partyState, playerId) => {
     const player = findPlayer(partyState, playerId);
     const heroes = playerHeroes(player);
     if (heroes.length !== 1 || hasHeroOnNumberedCell(partyState, playerId)) {
-      return partyState;
+      return confirmIfNothingToPlace(partyState, playerId);
     }
 
     const cellId = numberedCellId(partyState, playerId);
@@ -60,7 +73,7 @@ export default {
     SET_FIGHTER_CELL(state, { fighterId: heroes[0].id, cellId, start: true });
     const updated = findPlayer(state, playerId);
     if (updated) updated.numberedHeroCommitted = true;
-    return state;
+    return confirmIfNothingToPlace(state, playerId);
   },
 
   ui(partyState, playerId, clientContext = {}, phase) {
@@ -111,17 +124,10 @@ export default {
   moves: {
     PICK: (partyState, action) => {
       if (action.kind !== 'cell') {
-        throw new Error(
-          `PICK: в расстановке доступен клик по клетке (пришло "${action.kind}")`,
-        );
+        throw new Error(`PICK: в расстановке доступен клик по клетке (пришло "${action.kind}")`);
       }
 
-      const reason = placementRejection(
-        partyState,
-        action.playerId,
-        action.fighterId,
-        action.id,
-      );
+      const reason = placementRejection(partyState, action.playerId, action.fighterId, action.id);
       if (reason) throw new Error(`PICK: ${reason}`);
 
       return SET_FIGHTER_CELL(partyState, {
@@ -134,12 +140,12 @@ export default {
 };
 
 /*
- Расстановка всех бойцов в стартовой зоне игрока. Фаза активна, пока игрок не подтвердил расстановку кнопкой «ОК», и не все игроки не завершили расстановку.
+ Расстановка всех бойцов в области героя. Фаза активна, пока игрок не подтвердил расстановку кнопкой «ОК», и не все игроки не завершили расстановку.
 
  1. Если у игрока один герой — при входе он автоматически ставится на номерную клетку (SET_FIGHTER_CELL).
  2. Если героев несколько — сюда попадаем только после закреплённого выбора в pickNumHero. И выбранный герой уже стоит на номерной клетке.
- 3. Сверху подсказка: «Разместите на поле всех своих бойцов. Их можно размещать в одной зоне с вашим героем.» Текст висит, пока игрок не нажмёт «ОК».
- 4. Пока «ОК» не нажата, можно переставлять бойцов по допустимым клеткам: клик по клетке (PICK kind cell) с выбранным бойцом. Допустимые клетки - клетки, содержащие такой же цвет, что и клетка, на которой стоит ваш главный герой. Допустимые свободные клетки подсвечиваются до нажатия «ОК». Главный герой на номерной клетке зафиксирован — его двигать нельзя.
+ 3. Сверху подсказка: «Разместите на поле всех своих бойцов. Их можно ставить на клетках в одной области с героем.» Текст висит, пока игрок не нажмёт «ОК».
+ 4. Пока «ОК» не нажата, можно переставлять бойцов по допустимым клеткам: клик по клетке (PICK kind cell) с выбранным бойцом. Допустимые клетки — клетки, у которых есть общая стихия с номерной клеткой героя (двух- и трёхцветные клетки считаются сразу во всех своих областях). Допустимые свободные клетки подсвечиваются до нажатия «ОК». Главный герой на номерной клетке зафиксирован — его двигать нельзя.
  5. «ОК» активна, когда все бойцы стоят на клетках; после нажатия расстановка этого игрока считается завершённой.
  6. «Назад» в этой фазе невидима.
  7. После нажатия «ОК» мы ждем расстановки всех игроков, если они еще не завершены, и выводим подсказку "Ожидание расстановки всех игроков". Переход в следующую фазу происходит только после того, как все игроки завершили расстановку.

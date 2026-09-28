@@ -1,9 +1,5 @@
 import { rules } from '#shared/constants/rules.js';
-import {
-  finishedSides,
-  nextAlivePlayerId,
-  queryPlayers,
-} from '#shared/facts-new/players.js';
+import { finishedSides, nextAlivePlayerId, queryPlayers } from '#shared/facts/players.js';
 
 export default {
   name: 'turnStart',
@@ -29,9 +25,7 @@ export default {
       return { ...state, hook: 'gameEnd', winner };
     }
 
-    const aliveIds = new Set(
-      alivePlayers.map(entry => String(entry.playerId)),
-    );
+    const aliveIds = new Set(alivePlayers.map(entry => String(entry.playerId)));
     const actedRound = [
       ...new Set([
         ...(state.turn?.actedRound ?? []).filter(id => aliveIds.has(String(id))),

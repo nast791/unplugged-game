@@ -26,10 +26,10 @@ describe('lifecycle turnEnd', () => {
     const state = createState({ phase: PHASES.turnEnd, actionsLeft: 0 });
     expect(turnEnd.body(state)).toBe(true);
 
-    player(state, '0').hand.cards = Array.from(
-      { length: rules.maxHandSize + 1 },
-      (_, index) => ({ id: `x${index}`, instanceId: `x${index}_0` }),
-    );
+    player(state, '0').hand.cards = Array.from({ length: rules.maxHandSize + 1 }, (_, index) => ({
+      id: `x${index}`,
+      instanceId: `x${index}_0`,
+    }));
     expect(turnEnd.body(state)).toBe(false);
   });
 

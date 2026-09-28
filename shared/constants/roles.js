@@ -1,9 +1,5 @@
 /** Кто может видеть карты стопки (count — у всех). */
-export const visibility = [
-  { name: 'self' },
-  { name: 'team' },
-  { name: 'enemy' },
-];
+export const visibility = [{ name: 'self' }, { name: 'team' }, { name: 'enemy' }];
 
 /** Боевые роли. order — порядок эффектов в фазе. */
 export const participants = [
@@ -12,8 +8,4 @@ export const participants = [
 ];
 
 /** Роли относительно ctx.player (facts, UI). */
-export const player = [
-  { name: 'self' },
-  { name: 'opponent' },
-  { name: 'teammate' },
-];
+export const player = [{ name: 'self' }, { name: 'opponent' }, { name: 'teammate' }];

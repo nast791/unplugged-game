@@ -49,11 +49,10 @@ describe('phase choose: объявление атаки', () => {
     choose.moves.PICK(state, { kind: 'card', id: 'atk_0', playerId: '0' });
 
     expect(ap(state)).toBe(1);
-    expect(hand(player(state, '0')).map(card => card.instanceId)).toEqual([
-      'def_0',
-      'fx_0',
-    ]);
-    expect(state.combat.stage).toBe('target');
+    expect(hand(player(state, '0')).map(card => card.instanceId)).toEqual(['def_0', 'fx_0']);
+    // цель одна: движок выбирает её сам, бой сразу ждёт защиту
+    expect(state.combat.stage).toBe('defense');
+    expect(state.combat.targetFighterId).toBe('beta');
     expect(state.combat.attackerFighterId).toBe('alpha');
     expect(choose.active(state, '0')).toBe(false);
     expect(attack.active(state, '0')).toBe(true);
@@ -70,16 +69,17 @@ describe('phase choose: объявление атаки', () => {
     ).toThrow(/не достаёт/);
 
     const reachable = attackState();
+    // карта эффекта идёт своим путём (розыгрыш как действие): без правил played она не разыгрывается
     expect(() =>
       choose.moves.PICK(reachable, {
         kind: 'card',
         id: 'fx_0',
         playerId: '0',
       }),
-    ).toThrow(/не атакует/);
-    expect(() =>
-      choose.moves.PICK(reachable, { kind: 'cell', id: 9, playerId: '0' }),
-    ).toThrow(/колода и карта атаки/);
+    ).toThrow(/не описан розыгрыш/);
+    expect(() => choose.moves.PICK(reachable, { kind: 'cell', id: 9, playerId: '0' })).toThrow(
+      /сейчас выбирать некого/,
+    );
   });
 });
 
@@ -91,7 +91,7 @@ describe('phase attack', () => {
     return state;
   };
 
-  it('этапы объявления: кандидаты, выбор атакующего, выбор цели', () => {
+  it('этапы объявления: кандидаты, выбор атакующего, единственная цель', () => {
     const state = openSwing();
     expect(state.combat.stage).toBe('attacker');
 
@@ -104,49 +104,50 @@ describe('phase attack', () => {
 
     attack.moves.PICK(state, { kind: 'fighter', id: 'pawn', playerId: '0' });
     expect(state.combat.attackerFighterId).toBe('pawn');
-    expect(state.combat.stage).toBe('target');
-
-    ui = uiOf(attack, state, '0');
-    expect(ui.highlightedFighterIds).toEqual(['beta']);
-    expect(ui.framedFighterIds).toEqual(['pawn']);
-    expect(resolvePhaseHint(attack.hints, state, '0')).toBe(
-      'Выберите цель среди подсвеченных бойцов противника',
-    );
-
-    attack.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '0' });
+    // единственного врага движок берёт в цель сам, поэтому сразу ждём защиту
     expect(state.combat.stage).toBe('defense');
     expect(state.combat.targetFighterId).toBe('beta');
+
+    ui = uiOf(attack, state, '0');
+    // на защите кликать уже нечего: подсветки нет, бойца под удар показываем рамкой
+    expect(ui.highlightedFighterIds).toEqual([]);
+    expect(ui.framedFighterIds).toEqual(['beta']);
+    expect(ui.pickFighters).toBe(false);
+    expect(resolvePhaseHint(attack.hints, state, '0')).toBe('Ожидание защиты игрока Beta');
+
     expect(state.combat.defenderPlayerId).toBe('1');
   });
 
-  it('после выбора цели: подсветка цели, ожидание защиты, карты недоступны', () => {
+  it('после выбора цели: ожидание защиты, карты недоступны', () => {
     const state = attackState();
     choose.moves.PICK(state, { kind: 'card', id: 'atk_0', playerId: '0' });
     attack.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '0' });
 
     const ui = uiOf(attack, state, '0');
-    expect(ui.highlightedFighterIds).toEqual(['beta']);
-    expect(ui.framedFighterIds).toEqual(['alpha']);
+    expect(ui.highlightedFighterIds).toEqual([]);
+    expect(ui.framedFighterIds).toEqual(['beta']);
     expect(ui.playableCardIds).toEqual([]);
     expect(ui.disabledCardIds).toEqual(['def_0', 'fx_0']);
     expect(ui.deck.clickable).toBe(false);
     expect(ui.controls.ok.visible).toBe(false);
-    expect(resolvePhaseHint(attack.hints, state, '0')).toBe(
-      'Ожидание защиты игрока Beta',
-    );
+    expect(resolvePhaseHint(attack.hints, state, '0')).toBe('Ожидание защиты игрока Beta');
   });
 
   it('отклоняет клик не по бойцу и выборы на стадии защиты', () => {
     const state = attackState();
     choose.moves.PICK(state, { kind: 'card', id: 'atk_0', playerId: '0' });
-    expect(() =>
-      attack.moves.PICK(state, { kind: 'cell', id: 9, playerId: '0' }),
-    ).toThrow(/клик по бойцу/);
+    expect(() => attack.moves.PICK(state, { kind: 'cell', id: 9, playerId: '0' })).toThrow(
+      /клик по бойцу/,
+    );
 
     attack.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '0' });
+    // повторный клик по уже выбранной цели ничего не меняет, а по чужому бойцу — ошибка
     expect(() =>
       attack.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '0' }),
-    ).toThrow(/некого/);
+    ).not.toThrow();
+    expect(() => attack.moves.PICK(state, { kind: 'fighter', id: 'pawn', playerId: '0' })).toThrow(
+      /некого/,
+    );
   });
 
   it('защитник и остальные в бой не вмешиваются', () => {

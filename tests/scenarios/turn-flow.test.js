@@ -46,6 +46,7 @@ describe('scenario: ход через gameEngine.runAction', () => {
       budget: null,
       fighters: null,
       optional: false,
+      throughEnemies: false,
       moves: [],
       source: null,
     });
@@ -54,9 +55,7 @@ describe('scenario: ход через gameEngine.runAction', () => {
     expect(runUi(state, '0').controls.ok.label).toBe('Закончить действие');
 
     // 2. Шаг бойца по подсвеченной клетке.
-    expect(runUi(state, '0', { selectedFighterId: 'alpha' }).highlightedCellIds).toEqual([
-      '2',
-    ]);
+    expect(runUi(state, '0', { selectedFighterId: 'alpha' }).highlightedCellIds).toEqual(['2']);
     state = runAction(state, {
       type: 'PICK',
       kind: 'cell',
@@ -81,11 +80,14 @@ describe('scenario: ход через gameEngine.runAction', () => {
     });
     expect(ap(state)).toBe(0);
     expect(state.hook).toBe(PHASES.turn);
-    expect(state.combat.stage).toBe('target');
+    // враг один: движок сразу берёт его в цель, бой ждёт защиту
+    expect(state.combat.stage).toBe('defense');
+    expect(state.combat.targetFighterId).toBe('beta');
     expect(state.combat.attackerFighterId).toBe('alpha');
-    expect(runUi(state, '0', {}).highlightedFighterIds).toEqual(['beta']);
+    expect(runUi(state, '0', {}).highlightedFighterIds).toEqual([]);
+    expect(runUi(state, '0', {}).framedFighterIds).toEqual(['beta']);
 
-    // 5. Выбор цели: дальше отвечает защитник, у него своя фаза.
+    // 5. Клик по уже выбранной цели ничего не меняет: дальше отвечает защитник, у него своя фаза.
     state = runAction(state, {
       type: 'PICK',
       kind: 'fighter',
@@ -146,8 +148,8 @@ describe('scenario: ход через gameEngine.runAction', () => {
 
   it('чужой клик отклоняется: у ожидающего нет ходов', () => {
     let state = turnState();
-    expect(() =>
-      runAction(state, { type: 'PICK', kind: 'deck', playerId: '1' }),
-    ).toThrow(/недоступен/);
+    expect(() => runAction(state, { type: 'PICK', kind: 'deck', playerId: '1' })).toThrow(
+      /недоступен/,
+    );
   });
 });

@@ -9,9 +9,9 @@ const card = medusaCards.find(entry => entry.id === 'medusa_01');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], areas: ['#blue'] },
-    { id: 2, neighbors: [1, 3], areas: ['#blue'] },
-    { id: 3, neighbors: [2], areas: ['#red'] },
+    { id: 1, neighbors: [2], terrain: 'arcane' },
+    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
+    { id: 3, neighbors: [2], terrain: 'lava' },
   ],
 };
 
@@ -48,9 +48,7 @@ const attackState = (defenderCards = []) =>
     phase: PHASES.turn,
     map: lineMap,
     players: [
-      slot('0', 'Медуза', 1, [hero('medusa', 1, 16)], [
-        { ...card, instanceId: 'medusa_01_1' },
-      ]),
+      slot('0', 'Медуза', 1, [hero('medusa', 1, 16)], [{ ...card, instanceId: 'medusa_01_1' }]),
       slot('1', 'Beta', 2, [hero('beta', 2, 13)], defenderCards),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
@@ -145,9 +143,7 @@ describe('карта medusa_01 «Взгляд смерти»', () => {
       phase: PHASES.turn,
       map: lineMap,
       players: [
-        slot('0', 'Медуза', 1, [hero('medusa', 1, 16)], [
-          { ...card, instanceId: 'medusa_01_1' },
-        ]),
+        slot('0', 'Медуза', 1, [hero('medusa', 1, 16)], [{ ...card, instanceId: 'medusa_01_1' }]),
         slot('1', 'Beta', 2, [
           hero('beta', 3, 13),
           fighter({

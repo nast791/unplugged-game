@@ -1,7 +1,5 @@
 import { rules } from '#shared/constants/rules.js';
-import { CHECK_HAND_LIMIT } from '#shared/events/index.js';
-import { createPartyApi } from '#shared/gameEngine.js';
-import { zoneCards } from '#shared/helpers.js';
+import { zoneCards } from '#shared/helpers/base.js';
 
 /** Имена lifecycle-хуков для тестов. */
 export const PHASES = {
@@ -16,12 +14,6 @@ export const ap = state => state.turn?.actionsLeft;
 export const hand = player => zoneCards(player?.hand);
 export const deck = player => zoneCards(player?.deck);
 export const discard = player => zoneCards(player?.discard);
-
-/** Мок api для unit-тестов actions/events. */
-export const createApi = () =>
-  createPartyApi({
-    beforeEnterTurnEnd: (state, api) => CHECK_HAND_LIMIT(state, {}, api),
-  });
 
 const card = partial => ({
   type: 'effect',
@@ -57,8 +49,14 @@ export const miniMap = {
  * @param {object} [patch]
  */
 export const createState = (patch = {}) => {
-  const { phase, actionsLeft, players: patchPlayers, map: patchMap, turn: patchTurn, ...rest } =
-    patch;
+  const {
+    phase,
+    actionsLeft,
+    players: patchPlayers,
+    map: patchMap,
+    turn: patchTurn,
+    ...rest
+  } = patch;
 
   const state = {
     id: 'test-game',
@@ -180,7 +178,6 @@ export const createState = (patch = {}) => {
   return structuredClone(state);
 };
 
-export const player = (state, id = '0') =>
-  state.players.find(p => String(p.id) === String(id));
+export const player = (state, id = '0') => state.players.find(p => String(p.id) === String(id));
 
 export { card, fighter, PHASES };

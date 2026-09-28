@@ -3,7 +3,7 @@ import { rules } from '#shared/constants/rules.js';
 import { runFact } from '#shared/core.js';
 import { createState, player } from '../../fixtures/state.js';
 
-describe('facts хода (facts-new)', () => {
+describe('facts хода', () => {
   it('ACTIVE_PLAYER: чей ход', () => {
     const state = createState();
     expect(runFact(state, 'ACTIVE_PLAYER', {}, { playerId: '0' }).ok).toBe(true);
@@ -23,35 +23,20 @@ describe('facts хода (facts-new)', () => {
     const state = createState();
     state.movement = { playerId: '0', origins: {}, bonus: 0 };
 
+    expect(runFact(state, 'IN_PROGRESS', { has: 'movement' }, { playerId: '0' }).ok).toBe(true);
+    expect(runFact(state, 'IN_PROGRESS', { has: 'movement' }, { playerId: '1' }).ok).toBe(false);
     expect(
-      runFact(state, 'IN_PROGRESS', { has: 'movement' }, { playerId: '0' }).ok,
-    ).toBe(true);
-    expect(
-      runFact(state, 'IN_PROGRESS', { has: 'movement' }, { playerId: '1' }).ok,
-    ).toBe(false);
-    expect(
-      runFact(
-        state,
-        'IN_PROGRESS',
-        { has: 'movement', mine: false },
-        { playerId: '1' },
-      ).ok,
+      runFact(state, 'IN_PROGRESS', { has: 'movement', mine: false }, { playerId: '1' }).ok,
     ).toBe(true);
     expect(runFact(state, 'IN_PROGRESS', { has: 'combat' }).ok).toBe(false);
-    expect(runFact(state, 'IN_PROGRESS', {}, { playerId: '0' }).value.name).toBe(
-      'movement',
-    );
+    expect(runFact(state, 'IN_PROGRESS', {}, { playerId: '0' }).value.name).toBe('movement');
   });
 
   it('IN_PROGRESS: бой принадлежит обеим сторонам', () => {
     const state = createState();
     state.combat = { attackerPlayerId: '0', defenderPlayerId: '1' };
-    expect(runFact(state, 'IN_PROGRESS', { has: 'combat' }, { playerId: '1' }).ok).toBe(
-      true,
-    );
-    expect(runFact(state, 'IN_PROGRESS', { has: 'combat' }, { playerId: '2' }).ok).toBe(
-      false,
-    );
+    expect(runFact(state, 'IN_PROGRESS', { has: 'combat' }, { playerId: '1' }).ok).toBe(true);
+    expect(runFact(state, 'IN_PROGRESS', { has: 'combat' }, { playerId: '2' }).ok).toBe(false);
   });
 
   it('TARGETING: открытый выбор цели и чей он', () => {
@@ -68,12 +53,8 @@ describe('facts хода (facts-new)', () => {
 
     expect(runFact(state, 'TARGETING', {}, { playerId: '0' }).ok).toBe(true);
     expect(runFact(state, 'TARGETING', {}, { playerId: '1' }).ok).toBe(false);
-    expect(runFact(state, 'TARGETING', { mine: false }, { playerId: '1' }).ok).toBe(
-      true,
-    );
-    expect(
-      runFact(state, 'TARGETING', { mine: false }).value.candidates,
-    ).toHaveLength(1);
+    expect(runFact(state, 'TARGETING', { mine: false }, { playerId: '1' }).ok).toBe(true);
+    expect(runFact(state, 'TARGETING', { mine: false }).value.candidates).toHaveLength(1);
   });
 
   it('PICKED: отмеченные бойцы открытого окна', () => {
@@ -91,10 +72,7 @@ describe('facts хода (facts-new)', () => {
     expect(runFact(state, 'PICKED', {}).value).toEqual(['beta']);
 
     state.targeting.picked = ['beta', 'pawn'];
-    expect(runFact(state, 'PICKED', { min: 2 }).value).toEqual([
-      'beta',
-      'pawn',
-    ]);
+    expect(runFact(state, 'PICKED', { min: 2 }).value).toEqual(['beta', 'pawn']);
   });
 
   it('HAND: карты руки по типу', () => {
@@ -111,14 +89,11 @@ describe('facts хода (facts-new)', () => {
     expect(inLimit.ok).toBe(false);
     expect(inLimit.value.mustDiscard).toBe(0);
 
-    player(state, '0').hand.cards = Array.from(
-      { length: rules.maxHandSize + 2 },
-      (_, index) => ({
-        id: `x${index}`,
-        instanceId: `x${index}_0`,
-        type: 'effect',
-      }),
-    );
+    player(state, '0').hand.cards = Array.from({ length: rules.maxHandSize + 2 }, (_, index) => ({
+      id: `x${index}`,
+      instanceId: `x${index}_0`,
+      type: 'effect',
+    }));
     const over = runFact(state, 'HAND_OVER_LIMIT', {}, { playerId: '0' });
     expect(over.ok).toBe(true);
     expect(over.value.mustDiscard).toBe(2);
@@ -129,12 +104,7 @@ describe('facts хода (facts-new)', () => {
     const own = runFact(state, 'FIGHTERS', { side: 'self' }, { playerId: '0' });
     expect(own.value.map(entry => entry.fighterId)).toEqual(['alpha', 'pawn']);
 
-    const enemies = runFact(
-      state,
-      'FIGHTERS',
-      { side: 'opponent' },
-      { playerId: '0' },
-    );
+    const enemies = runFact(state, 'FIGHTERS', { side: 'opponent' }, { playerId: '0' });
     expect(enemies.value.map(entry => entry.fighterId)).toEqual(['beta']);
 
     const assistants = runFact(state, 'FIGHTERS', { type: 'assistant' });
@@ -154,9 +124,9 @@ describe('facts хода (facts-new)', () => {
   it('FIGHTERS: areaOf — бойцы одной области', () => {
     const state = createState();
     state.map.nodes = [
-      { id: 8, neighbors: [9], areas: ['#111'] },
-      { id: 9, neighbors: [8, 10], areas: ['#111'] },
-      { id: 10, neighbors: [9], areas: ['#222'] },
+      { id: 8, neighbors: [9], terrain: 'arcane' },
+      { id: 9, neighbors: [8, 10], terrain: 'arcane' },
+      { id: 10, neighbors: [9], terrain: 'lava' },
     ];
     const same = runFact(state, 'FIGHTERS', { areaOf: 'alpha' });
     expect(same.value.map(entry => entry.fighterId)).toEqual(['alpha', 'pawn']);

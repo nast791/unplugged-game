@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { SET_COMBAT } from '#shared/actions-new/combat.js';
+import { SET_COMBAT } from '#shared/actions/combat.js';
 import { advanceCombat } from '#shared/cards/run.js';
 import { endGameIfFinished } from '#shared/helpers/turn.js';
 import { isMoment } from '#shared/constants/moments.js';
 import { runAction, runUi } from '#shared/gameEngine.js';
-import {
-  movableFighterIds,
-  movementDestinations,
-} from '#shared/helpers/turn.js';
+import { movableFighterIds, movementDestinations } from '#shared/helpers/turn.js';
 import medusaCards from '../../../server/content/heroes/medusa/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -19,7 +16,7 @@ const lineMap = {
   nodes: [1, 2, 3, 4, 5, 6].map(id => ({
     id,
     neighbors: [id - 1, id + 1].filter(neighbor => neighbor >= 1 && neighbor <= 6),
-    areas: ['#blue'],
+    terrain: 'arcane',
   })),
 };
 
@@ -68,16 +65,22 @@ const buildState = (role = 'attack') =>
         ],
         [{ ...card, instanceId: 'medusa_06_1' }],
       ),
-      slot('1', 'Бета', 2, [unit('beta', 6, 13, { attackType: 'ranged' })], [
-        {
-          id: 'beta_atk',
-          instanceId: 'beta_atk_1',
-          type: 'attack',
-          value: role === 'defense' ? 5 : 2,
-          bonus: 1,
-          fighter: 'beta',
-        },
-      ]),
+      slot(
+        '1',
+        'Бета',
+        2,
+        [unit('beta', 6, 13, { attackType: 'ranged' })],
+        [
+          {
+            id: 'beta_atk',
+            instanceId: 'beta_atk_1',
+            type: 'attack',
+            value: role === 'defense' ? 5 : 2,
+            bonus: 1,
+            fighter: 'beta',
+          },
+        ],
+      ),
     ],
     turn: {
       index: 1,
@@ -200,9 +203,7 @@ describe('карта medusa_06 «Ускорение»', () => {
     expect(queue.map(entry => entry.status)).toEqual(['skipped']);
     expect(after.combat).toBeNull();
     expect(after.movement).toBeNull();
-    expect(player(after, '0').fighters.map(entry => entry.id)).toEqual([
-      'harpies_1',
-    ]);
+    expect(player(after, '0').fighters.map(entry => entry.id)).toEqual(['harpies_1']);
     expect(after.hook).toBe(PHASES.gameEnd);
     expect(after.winner).toBe('1');
   });

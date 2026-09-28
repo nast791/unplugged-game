@@ -9,8 +9,8 @@ const card = medusaCards.find(entry => entry.id === 'medusa_02');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], areas: ['#blue'] },
-    { id: 2, neighbors: [1], areas: ['#blue'] },
+    { id: 1, neighbors: [2], terrain: 'arcane' },
+    { id: 2, neighbors: [1], terrain: 'arcane' },
   ],
 };
 
@@ -56,10 +56,13 @@ const attackState = (extraCards = []) =>
     phase: PHASES.turn,
     map: lineMap,
     players: [
-      slot('0', 'Медуза', 1, [hero('medusa', 1, 16)], [
-        { ...card, instanceId: 'medusa_02_1' },
-        ...extraCards,
-      ]),
+      slot(
+        '0',
+        'Медуза',
+        1,
+        [hero('medusa', 1, 16)],
+        [{ ...card, instanceId: 'medusa_02_1' }, ...extraCards],
+      ),
       slot('1', 'Beta', 2, [hero('beta', 2, 13)]),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
@@ -103,9 +106,7 @@ describe('карта medusa_02 «Град стрел»', () => {
     // бой встал на окне усиления: игрок 0 выбирает карту из руки
     expect(paused.combat.choice.playerId).toBe('0');
     expect(paused.combat.choice.side).toBe('attack');
-    expect(paused.combat.choice.candidates).toEqual([
-      { cardId: 'quiet_1', bonus: 2 },
-    ]);
+    expect(paused.combat.choice.candidates).toEqual([{ cardId: 'quiet_1', bonus: 2 }]);
     expect(effectsOf(paused)).toEqual([
       {
         order: 1,
@@ -140,9 +141,7 @@ describe('карта medusa_02 «Град стрел»', () => {
   });
 
   it('правило с max: 1 — вторая карта остаётся в руке, окно закрывается само', () => {
-    const state = openBattle(
-      attackState([bonusCard('quiet', 2), bonusCard('loud', 3)]),
-    );
+    const state = openBattle(attackState([bonusCard('quiet', 2), bonusCard('loud', 3)]));
     const paused = answerPass(state);
     const queue = paused.combat.effects;
     expect(paused.combat.choice.max).toBe(1);
@@ -160,9 +159,7 @@ describe('карта medusa_02 «Град стрел»', () => {
     expect(boosted.lastCombat.combatDamage).toBe(5);
     expect(queue[0].status).toBe('applied');
     expect(queue[0].cards).toEqual(['quiet_1']);
-    expect(player(boosted, '0').hand.cards.map(entry => entry.id)).toEqual([
-      'loud',
-    ]);
+    expect(player(boosted, '0').hand.cards.map(entry => entry.id)).toEqual(['loud']);
   });
 
   it('в окне видно только свои карты, чужая рука не подсказывается', () => {
@@ -192,19 +189,13 @@ describe('карта medusa_02 «Град стрел»', () => {
     expect(skipped.lastCombat.attackValue).toBe(3);
     expect(skipped.lastCombat.combatDamage).toBe(3);
     expect(fighterOf(skipped, '1', 'beta').currentHp).toBe(10);
-    expect(player(skipped, '0').hand.cards.map(entry => entry.id)).toEqual([
-      'quiet',
-    ]);
-    expect(player(skipped, '0').discard.cards.map(entry => entry.id)).toEqual([
-      'medusa_02',
-    ]);
+    expect(player(skipped, '0').hand.cards.map(entry => entry.id)).toEqual(['quiet']);
+    expect(player(skipped, '0').discard.cards.map(entry => entry.id)).toEqual(['medusa_02']);
     expect(skipped.combat).toBeNull();
   });
 
   it('нет карт с бонусом — эффект не срабатывает, бой идёт без паузы', () => {
-    const state = openBattle(
-      attackState([bonusCard('empty', 0), bonusCard('typed', 0)]),
-    );
+    const state = openBattle(attackState([bonusCard('empty', 0), bonusCard('typed', 0)]));
 
     const after = answerPass(state);
 
@@ -222,4 +213,5 @@ describe('карта medusa_02 «Град стрел»', () => {
     const after = answerPass(state);
     expect(after.combat).toBeNull();
     expect(after.lastCombat.combatDamage).toBe(3);
-  });});
+  });
+});

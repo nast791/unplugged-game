@@ -1,6 +1,6 @@
-import { SET_COMBAT } from '#shared/actions-new/combat.js';
-import { SET_MOVEMENT } from '#shared/actions-new/movement.js';
-import { advanceCombat } from '#shared/cards/run.js';
+import { SET_COMBAT } from '#shared/actions/combat.js';
+import { SET_MOVEMENT } from '#shared/actions/movement.js';
+import { advanceCombat, runEffectMoment } from '#shared/cards/run.js';
 import { resolveOkBackControls } from '#shared/helpers/base.js';
 import {
   bonusCardIds,
@@ -14,20 +14,29 @@ import {
 
 const cellIdOf = action => action.cellId ?? action.id;
 
-/** Перемещение открыто эффектом карты: бой ждёт, пока игрок подвигал бойцов. */
+/** Перемещение от эффекта боя: бой ждёт, пока игрок подвигал бойцов. */
 const effectMovement = partyState =>
   partyState.combat?.choice?.effect === 'movement' ? partyState.combat.choice : null;
 
-/** Закрыть перемещение от эффекта: шаг очереди получает итог, бой доигрывается дальше. */
+/** Закрыть перемещение от эффекта: шаг очереди получает итог, а эффект доигрывается дальше. */
 const finishEffectMovement = (partyState, action) => {
   let state = SET_MOVEMENT(partyState, {
     op: 'close',
     playerId: action.playerId,
   });
-  if (!effectMovement(state)) return endGameIfFinished(state);
 
-  state = SET_COMBAT(state, { op: 'skip', playerId: action.playerId });
-  state = advanceCombat(state);
+  // перемещение от эффекта боя: шаг очереди боя, дальше бой доигрывает advanceCombat
+  if (effectMovement(state)) {
+    state = SET_COMBAT(state, { op: 'skip', playerId: action.playerId });
+    state = advanceCombat(state);
+    return endGameIfFinished(state);
+  }
+
+  // перемещение от эффектной карты: продолжаем очередь её шагов
+  if (state.effect) {
+    state = runEffectMoment(state, 'effect');
+    if (!state.targeting && !state.movement) state.effect = null;
+  }
 
   return endGameIfFinished(state);
 };
@@ -45,17 +54,14 @@ export default {
     },
   },
 
-  active: (partyState, playerId) =>
-    isMomentMine(partyState, playerId, 'movement'),
+  active: (partyState, playerId) => isMomentMine(partyState, playerId, 'movement'),
 
   ui(partyState, playerId, clientContext = {}, phase) {
     const selectedFighterId = clientContext.selectedFighterId ?? null;
     const fromEffect = partyState.movement?.source != null;
     // усиление картой — только у обычного перемещения, эффект карты усиливать нечем
     const playable =
-      !fromEffect && !partyState.movement?.bonusUsed
-        ? bonusCardIds(partyState, playerId)
-        : [];
+      !fromEffect && !partyState.movement?.bonusUsed ? bonusCardIds(partyState, playerId) : [];
 
     return {
       deck: { clickable: false },
@@ -84,19 +90,18 @@ export default {
         : resolveOkBackControls(phase, partyState, playerId),
     };
   },
-
   ok: {
     label: 'Закончить действие',
     enabled: (partyState, playerId) => {
       if (!isMomentMine(partyState, playerId, 'movement')) return false;
       if (partyState.movement?.source == null) return true;
       return (
-        partyState.movement?.optional === true ||
-        (partyState.movement?.moves?.length ?? 0) > 0
+        partyState.movement?.optional === true || (partyState.movement?.moves?.length ?? 0) > 0
       );
     },
     onPress: (partyState, action) =>
-      effectMovement(partyState)
+      // перемещение открыто эффектом (боя или карты) — закрываем его вместе с эффектом
+      partyState.movement?.source != null
         ? finishEffectMovement(partyState, action)
         : SET_MOVEMENT(partyState, { op: 'close', playerId: action.playerId }),
   },
@@ -112,12 +117,7 @@ export default {
 
       if (action.kind === 'cell') {
         const cellId = cellIdOf(action);
-        const reason = movementRejection(
-          partyState,
-          playerId,
-          action.fighterId,
-          cellId,
-        );
+        const reason = movementRejection(partyState, playerId, action.fighterId, cellId);
         if (reason) throw new Error(`PICK: ${reason}`);
 
         return SET_MOVEMENT(partyState, {

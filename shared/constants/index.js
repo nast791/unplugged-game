@@ -3,4 +3,14 @@ export { lifecycle, turn, combat } from './hooks.js';
 export { modes } from './modes.js';
 export { playerFields, stateFields } from './state.js';
 export { rules } from './rules.js';
+export { SEAT_SIDES, seatSide } from './seats.js';
 export { visibility, participants, player } from './roles.js';
+export {
+  TERRAIN,
+  TERRAIN_IDS,
+  isTerrainId,
+  terrainInfo,
+  terrainName,
+  terrainColor,
+  terrainPattern,
+} from './terrain.js';

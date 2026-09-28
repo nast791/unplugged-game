@@ -6,6 +6,9 @@
   "engines": {
     "node": ">=20"
   },
+  "imports": {
+    "#shared/*": "./shared/*"
+  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
@@ -16,15 +19,12 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tabletop-engine:setup": "tabletop-engine setup",
-    "tabletop-engine:update": "tabletop-engine update",
-    "tabletop-engine:update:engine": "tabletop-engine update engine",
-    "tabletop-engine:update:cards": "tabletop-engine update cards"
+    "test:bot": "node tests/support/bot-sweep.js",
+    "convert-to-webp": "node scripts/convert-to-webp.mjs",
+    "contain:fix": "node scripts/apply-contain.mjs"
   },
   "dependencies": {
     "@fontsource-variable/onest": "5.2.11",
-    "@nast791/cards": "file:../tabletop-engine/packages/cards",
-    "@nast791/engine": "file:../tabletop-engine/packages/engine",
     "@nuxt/icon": "2.3.1",
     "@nuxt/image": "2.0.0",
     "@peterbud/nuxt-query": "1.9.0",
@@ -42,6 +42,8 @@
     "@nuxt/test-utils": "4.0.3",
     "@vue/test-utils": "2.4.11",
     "happy-dom": "20.10.6",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "fast-glob": "3.3.3",
+    "sharp": "0.34.5"
   }
 }

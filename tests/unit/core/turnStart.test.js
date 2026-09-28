@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runLifecycle } from '#shared/core.js';
 import { ap, createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
-const enterTurnStart = state =>
-  runLifecycle({ ...state, hook: PHASES.turnEnd });
+const enterTurnStart = state => runLifecycle({ ...state, hook: PHASES.turnEnd });
 
 describe('core: turnStart', () => {
   it('первый turnStart: index=1, AP=2, bonus сброшен, первый игрок по order', () => {

@@ -8,21 +8,35 @@
  */
 export const moments = [
   {
+    name: 'gameStart',
+    order: 0,
+    title: 'начало игры',
+    where: 'lifecycle/gameStart.js → enter, для каждого игрока',
+    note: 'стартовые состояния: например, у Теслы одна катушка становится активной',
+  },
+  {
     name: 'turnStart',
     order: 1,
     title: 'начало хода игрока',
     where: 'lifecycle/turn.js → enter, до первого действия',
   },
   {
-    name: 'picked',
+    name: 'effect',
     order: 2,
+    title: 'эффектная карта разыграна как действие',
+    where: 'phases/choose.js → moves.PICK (kind: card, type: effect)',
+    note: 'действие уже потрачено, карта открыта всем в слоте state.effect, её правила идут шаг за шагом — очередь шагов устроена как очередь эффектов боя',
+  },
+  {
+    name: 'picked',
+    order: 3,
     title: 'цель отмечена в открытом окне выбора',
     where: 'phases/choose.js → moves.PICK (kind: fighter)',
-    note: 'окно ещё открыто: отмеченных бойцов отдаёт факт PICKED (движок закрывает окно после прогона)',
+    note: 'окно ещё открыто: отмеченных бойцов отдаёт факт PICKED (движок закрывает окно после прогона); правила берутся у того, чей это выбор — способность или разыгранная карта',
   },
   {
     name: 'immediately',
-    order: 3,
+    order: 4,
     combat: 'reveal',
     title: 'немедленно: карты вскрыты, числа и урон ещё не считались',
     where: 'phases/defense.js → окно до расчёта чисел',
@@ -30,7 +44,7 @@ export const moments = [
   },
   {
     name: 'duringCombat',
-    order: 4,
+    order: 5,
     combat: 'reveal',
     title: 'во время боя: правила меняют числа боя до расчёта',
     where: 'phases/defense.js → второе окно до расчёта чисел',
@@ -38,11 +52,18 @@ export const moments = [
   },
   {
     name: 'afterCombat',
-    order: 5,
+    order: 6,
     combat: 'close',
     title: 'после битвы: карты вскрыты, числа и урон уже разыграны',
     where: 'phases/defense.js → окно после расчёта чисел, до закрытия боя',
     note: 'эффекты доигрываются, даже если боец погиб: сгорает только то, что требует бойца на поле; итог боя — факт COMBAT',
+  },
+  {
+    name: 'turnEnd',
+    order: 7,
+    title: 'конец хода игрока',
+    where: 'lifecycle/turnEnd.js → enter, после закрытия моментов хода',
+    note: 'здесь живут эффекты «в конце хода»: например, заряд катушек Теслы',
   },
 ];
 

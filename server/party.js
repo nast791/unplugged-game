@@ -48,11 +48,7 @@ const findYou = (state, playerId) => {
 /** Роль обращающегося (you) относительно другого игрока. В state не пишем — она разная у каждого клиента. */
 const role = (you, player) => {
   if (String(player.id) === String(you.id)) return 'self';
-  if (
-    you.team != null &&
-    player.team != null &&
-    String(you.team) === String(player.team)
-  ) {
+  if (you.team != null && player.team != null && String(you.team) === String(player.team)) {
     return 'team';
   }
   return 'enemy';
@@ -64,7 +60,11 @@ const canSee = (visibility, rel) => {
   return roles.includes(rel);
 };
 
-/** Карты боя пер-рольные: своя карта видна владельцу, после вскрытия — всем. Выбор эффекта — только владельцу. */
+/**
+ * Карты боя пер-рольные: своя карта видна владельцу, после вскрытия — всем.
+ * Пауза выбора эффекта: владельцу — целиком (кандидаты, отметки), остальным — только кто выбирает
+ * и что за эффект: по этому клиент понимает, кому передать управление (hotseat), но чужой руки не видит.
+ */
 const projectCombat = (combat, playerId) => {
   if (!combat) return null;
 
@@ -89,8 +89,15 @@ const projectCombat = (combat, playerId) => {
   }
   if (revealed || isAttacker) out.attackValue = attackValue;
   if (revealed || isDefender) out.defenseValue = defenseValue;
-  if (combatChoice && String(combatChoice.playerId) === String(playerId)) {
-    out.choice = structuredClone(combatChoice);
+  if (combatChoice) {
+    out.choice =
+      String(combatChoice.playerId) === String(playerId)
+        ? structuredClone(combatChoice)
+        : {
+            playerId: String(combatChoice.playerId),
+            effect: combatChoice.effect,
+            optional: combatChoice.optional === true,
+          };
   }
   return out;
 };
@@ -152,10 +159,8 @@ const projectZone = (name, zone, rel) => {
 const projectPlayer = (player, state, you) => {
   const rel = role(you, player);
   const hidePos = state.hook === 'gameStart' && rel !== 'self';
-  const movementOwnerId =
-    state.movement?.playerId == null ? null : String(state.movement.playerId);
-  const hideMoved =
-    movementOwnerId != null && movementOwnerId !== String(you.id);
+  const movementOwnerId = state.movement?.playerId == null ? null : String(state.movement.playerId);
+  const hideMoved = movementOwnerId != null && movementOwnerId !== String(you.id);
   const out = {};
 
   for (const [key, visibility] of Object.entries(playerFields)) {

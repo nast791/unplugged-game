@@ -79,6 +79,7 @@ describe('phase choose', () => {
       budget: null,
       fighters: null,
       optional: false,
+      throughEnemies: false,
       moves: [],
       source: null,
     });
@@ -109,9 +110,9 @@ describe('phase choose', () => {
 
   it('отклоняет клик по полю в фазе объявления', () => {
     const state = turnState();
-    expect(() =>
-      choose.moves.PICK(state, { kind: 'cell', id: 2, playerId: '0' }),
-    ).toThrow(/колода и карта атаки/);
+    expect(() => choose.moves.PICK(state, { kind: 'cell', id: 2, playerId: '0' })).toThrow(
+      /сейчас выбирать некого/,
+    );
   });
 
   it('ui: колода кликабельна, карты недоступны, кнопки нет; hint сверху', () => {
@@ -141,9 +142,9 @@ describe('phase choose', () => {
       'Выберите цель среди подсвеченных бойцов',
     );
 
-    expect(() =>
-      choose.moves.PICK(state, { kind: 'fighter', id: 'alpha', playerId: '0' }),
-    ).toThrow(/не среди кандидатов/);
+    expect(() => choose.moves.PICK(state, { kind: 'fighter', id: 'alpha', playerId: '0' })).toThrow(
+      /не среди кандидатов/,
+    );
 
     choose.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '0' });
     expect(state.targeting).toBeNull();
@@ -161,13 +162,11 @@ describe('phase choose', () => {
 
     expect(choose.active(state, '0')).toBe(true);
     expect(activePhaseOf(state, '0')?.name).toBe('choose');
-    expect(
-      turn.body({ ...state, turn: { ...state.turn, actionsLeft: 0 } }),
-    ).toBe(false);
+    expect(turn.body({ ...state, turn: { ...state.turn, actionsLeft: 0 } })).toBe(false);
 
-    expect(() =>
-      choose.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '1' }),
-    ).toThrow(/некого/);
+    expect(() => choose.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '1' })).toThrow(
+      /некого/,
+    );
   });
 });
 
@@ -251,9 +250,9 @@ describe('phase movement', () => {
       /доступны клетка и карта усиления/,
     );
 
-    expect(() => movement.moves.PICK(state, { kind: 'cell', id: 99, fighterId: 'alpha', playerId: '0' })).toThrow(
-      /не найдена на карте/,
-    );
+    expect(() =>
+      movement.moves.PICK(state, { kind: 'cell', id: 99, fighterId: 'alpha', playerId: '0' }),
+    ).toThrow(/не найдена на карте/);
   });
 
   it('усиление: одна карта за действие, bonus всему перемещению', () => {
@@ -280,15 +279,15 @@ describe('phase movement', () => {
       '4',
     ]);
 
-    expect(() =>
-      movement.moves.PICK(state, { kind: 'card', id: 'atk_0', playerId: '0' }),
-    ).toThrow(/усиление уже использовано/);
+    expect(() => movement.moves.PICK(state, { kind: 'card', id: 'atk_0', playerId: '0' })).toThrow(
+      /усиление уже использовано/,
+    );
   });
 
   it('усилить можно только карту с bonus', () => {
     const state = openMovement();
     player(state, '0').hand.cards.push({
-      id: 'plain',
+      id: 'arcane',
       instanceId: 'plain_0',
       type: 'effect',
       value: 0,
@@ -328,9 +327,7 @@ describe('phase waiting', () => {
     expect(resolvePhaseHint(waiting.hints, state, '1')).toBe('Ход игрока Alpha');
 
     state.movement = { playerId: '0', origins: {}, bonus: 0 };
-    expect(resolvePhaseHint(waiting.hints, state, '1')).toBe(
-      'Ждём перемещения бойцов: Alpha',
-    );
+    expect(resolvePhaseHint(waiting.hints, state, '1')).toBe('Ждём перемещения бойцов: Alpha');
   });
 
   it('ui: без подсветки и без кнопок, ходов нет', () => {

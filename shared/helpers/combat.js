@@ -6,7 +6,6 @@ import {
 } from '#shared/helpers/base.js';
 import { bfsDistance } from '#shared/helpers/board.js';
 import {
-  cardFighterId,
   cardKey,
   fighterMatchesCard,
   hasFighterForCard,
@@ -17,14 +16,12 @@ import { combatMoments } from '#shared/constants/moments.js';
 
 const attackRangeOf = fighter => Number(fighter?.attackRange ?? 1);
 
-/** Боец дальнего боя (attackType: 'ranged') бьёт по зонам, а не по расстоянию. */
+/** Боец дальнего боя (attackType: 'ranged') бьёт по области (стихии), а не по расстоянию. */
 const isRangedFighter = fighter => String(fighter?.attackType ?? '') === 'ranged';
 
 /** Боец, который может действовать: жив и стоит на клетке. */
 const isReady = fighter =>
-  Boolean(fighter) &&
-  fighter.currentPosition != null &&
-  Number(fighter.currentHp) > 0;
+  Boolean(fighter) && fighter.currentPosition != null && Number(fighter.currentHp) > 0;
 
 const isEnemyPlayer = (partyState, playerId, other) => {
   if (String(other.id) === String(playerId)) return false;
@@ -46,8 +43,8 @@ const enemiesOf = (partyState, playerId) => {
 /**
  * Достаёт ли атакующий цель.
  * Ближний — по attackRange: соседние клетки (BFS-расстояние не больше дальности).
- * Дальний — по зоне: любая цель в одной области с ним, расстояние внутри зоны не ограничено
- * (многоцветная клетка считается сразу во всех своих зонах). Ближний предел при этом сохраняется.
+ * Дальний — по области (стихии): любая цель на клетке той же стихии, расстояние внутри области
+ * не ограничено (область — это стихия клетки, `docs/terrain.md`). Ближний предел при этом сохраняется.
  */
 const canReach = (partyState, attacker, fighter) => {
   if (
@@ -70,7 +67,8 @@ const canReach = (partyState, attacker, fighter) => {
 
 /**
  * Бойцы игрока, которые могут атаковать этой картой.
- * Привязка `card.fighter` сужает выбор до одного бойца ('any' — без привязки).
+ * Привязка `card.fighter` сужает выбор: это может быть id бойца, группа помощников (три Гарпии)
+ * или 'any' — без привязки. Группу как id подставлять нельзя: у Гарпий свои id (`harpies_1..3`).
  */
 export const attackCandidates = (partyState, playerId, card) => {
   if (!isAttackCard(card)) return [];
@@ -78,15 +76,12 @@ export const attackCandidates = (partyState, playerId, card) => {
   const player = findPlayer(partyState, playerId);
   if (!player) return [];
 
-  const bound = cardFighterId(card);
   const enemies = enemiesOf(partyState, playerId);
 
   return (player.fighters ?? [])
     .filter(isReady)
-    .filter(fighter => bound == null || fighterMatchesCard(fighter, card))
-    .filter(fighter =>
-      enemies.some(entry => canReach(partyState, fighter, entry.fighter)),
-    )
+    .filter(fighter => fighterMatchesCard(fighter, card))
+    .filter(fighter => enemies.some(entry => canReach(partyState, fighter, entry.fighter)))
     .map(fighter => ({
       fighterId: String(fighter.id),
       playerId: String(player.id),
@@ -96,11 +91,7 @@ export const attackCandidates = (partyState, playerId, card) => {
 
 /** Цели, которых выбранный боец достаёт своей attackRange. */
 export const attackTargets = (partyState, playerId, attackerFighterId) => {
-  const { fighter: attacker } = findOwnedFighter(
-    partyState,
-    playerId,
-    attackerFighterId,
-  );
+  const { fighter: attacker } = findOwnedFighter(partyState, playerId, attackerFighterId);
   if (!isReady(attacker)) return [];
 
   return enemiesOf(partyState, playerId)
@@ -119,9 +110,12 @@ export const combatSides = [
 ];
 
 /**
- * Очередь эффектов боя: по моментам боя (immediately → duringCombat → afterCombat) и по сторонам
- * (защитник → атакующий). В очередь попадают только карты, у которых в этом моменте есть правило, —
- * остальные в бою ничего не делают. Статус шага: pending → applied | skipped | waiting | declined.
+ * Очередь эффектов боя: по моментам боя (immediately → duringCombat → afterCombat), по сторонам
+ * (защитник → атакующий) и по правилам карты — **шаг на каждое правило**. Шаг на правило нужен потому,
+ * что правило может открыть паузу (выбор, перемещение) и ждать её конца, а следующее правило того же
+ * момента начинается своим шагом: два ожидания в одном шаге не уживаются (`tesla_08`: сначала толчок
+ * бойца противника, потом выбор катушек). В очередь попадают только карты, у которых в этом моменте
+ * есть правило. Статус шага: pending → applied | skipped | waiting | declined | cancelled.
  */
 export const buildCombatEffects = combat => {
   const effects = [];
@@ -129,17 +123,21 @@ export const buildCombatEffects = combat => {
   for (const moment of combatMoments) {
     for (const entry of combatSides) {
       const card = combat?.[entry.cardKey];
-      if (!card?.rules?.some(rule => rule.moment === moment)) continue;
+      const rules = (card?.rules ?? []).filter(rule => rule.moment === moment);
+      if (rules.length === 0) continue;
 
       const playerId = combat[entry.playerKey];
-      effects.push({
-        order: effects.length + 1,
-        moment,
-        side: entry.side,
-        cardId: cardKey(card),
-        playerId: playerId == null ? null : String(playerId),
-        status: 'pending',
-      });
+
+      for (let index = 0; index < rules.length; index += 1) {
+        effects.push({
+          order: effects.length + 1,
+          moment,
+          side: entry.side,
+          cardId: cardKey(card),
+          playerId: playerId == null ? null : String(playerId),
+          status: 'pending',
+        });
+      }
     }
   }
 

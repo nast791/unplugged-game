@@ -22,9 +22,7 @@ const resultsOf = partyState => ({
       name: fighter.name ?? String(fighter.id),
       type: fighter.type,
       hp: Number(fighter.currentHp) || 0,
-      maxHp: Number.isFinite(Number(fighter.startHp))
-        ? Number(fighter.startHp)
-        : null,
+      maxHp: Number.isFinite(Number(fighter.startHp)) ? Number(fighter.startHp) : null,
     })),
   })),
 });
@@ -37,9 +35,7 @@ export default {
       active: () => true,
       text: partyState => {
         const name = winnerName(partyState);
-        return name == null
-          ? 'Партия завершена'
-          : `Партия завершена: победа — ${name}`;
+        return name == null ? 'Партия завершена' : `Партия завершена: победа — ${name}`;
       },
     },
   },

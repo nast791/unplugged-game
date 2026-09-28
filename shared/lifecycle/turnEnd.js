@@ -1,3 +1,4 @@
+import { runSkillMoment } from '#shared/skills/run.js';
 import { isHandOverLimit } from '#shared/helpers/turn.js';
 
 export default {
@@ -8,17 +9,20 @@ export default {
 
   enter: partyState => {
     if (partyState._enteredHooks?.turnEnd) return partyState;
-    return {
+
+    const state = {
       ...partyState,
       movement: null,
       combat: null,
       targeting: null,
       _enteredHooks: { ...(partyState._enteredHooks ?? {}), turnEnd: true },
     };
+
+    // эффекты «в конце хода»: правила способности игрока, чей ход заканчивается (заряд катушек и т.п.)
+    return runSkillMoment(state, state.turn?.playerId, 'turnEnd');
   },
 
-  body: partyState =>
-    !isHandOverLimit(partyState, partyState.turn?.playerId),
+  body: partyState => !isHandOverLimit(partyState, partyState.turn?.playerId),
 
   exit: partyState => {
     const state = {

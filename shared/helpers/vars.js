@@ -19,10 +19,7 @@ export const resolveVars = (value, vars = {}) => {
 
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [
-        key,
-        resolveVars(entry, vars),
-      ]),
+      Object.entries(value).map(([key, entry]) => [key, resolveVars(entry, vars)]),
     );
   }
 

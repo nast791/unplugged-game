@@ -1,52 +1,139 @@
-import { areaIdAtCell, findFighter } from '#shared/helpers.js';
+import { bfsDistance } from '#shared/helpers/board.js';
+import { findFighter, findPlayer, isTeamFormat } from '#shared/helpers/base.js';
+import { cellTerrain, cellTerrains, sharesArea } from '#shared/helpers/placement.js';
+
+const sortedPlayers = state =>
+  [...(state.players ?? [])].sort(
+    (left, right) => Number(left.order ?? 0) - Number(right.order ?? 0),
+  );
+
+/** Роль игрока относительно владельца: any | self | opponent | teammate. */
+const sideMatches = (state, side, ownerId, player) => {
+  if (side === 'any') return true;
+
+  const isOwner = ownerId != null && String(player.id) === ownerId;
+  if (side === 'self') return isOwner;
+
+  const owner = isOwner ? player : findPlayer(state, ownerId);
+  const sameTeam =
+    isTeamFormat(state) &&
+    owner?.team != null &&
+    player.team != null &&
+    String(owner.team) === String(player.team);
+
+  if (side === 'teammate') return !isOwner && sameTeam;
+  if (side === 'opponent') return !isOwner && !sameTeam;
+  return true;
+};
 
 /**
- * Универсальный запрос бойцов.
- * params: { side?: 'opponent'|'self'|'any', areaOf?: fighterId }
+ * Бойцы на поле по фильтру.
+ * params: { side, of, type, group, fighterIds, alive, placed, areaOf, terrain, reachableTo, adjacentTo }
+ * side: 'any' — все, 'self' — свои, 'opponent' — бойцы ВСЕХ врагов (в команде — всех чужих команд),
+ * 'teammate' — союзники без себя;
+ * of — бойцы одного игрока (id), например противника в этой битве: `COMBAT { player: 'opponent' }` → `of: '$enemy'`;
+ * group — помощники одного вида (у трёх Гарпий id `harpies_1..3`, группа `harpies`);
+ * fighterIds — конкретные бойцы (например, «мой боец из этого боя ещё на поле»);
+ * areaOf — в одной области с указанным бойцом (область = стихия клетки, `docs/terrain.md`);
+ * terrain — бойцы, стоящие на клетке с этой стихией (двухцветная клетка считается в обеих);
+ * reachableTo — кто дотягивается до него своей attackRange;
+ * adjacentTo — кто стоит ровно на соседней с ним клетке (своя клетка не считается).
  */
 export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
-  const side = params.side ?? 'any';
-  let areaId = null;
+  const ownerId = ownerPlayerId == null ? null : String(ownerPlayerId);
+  const side = params.of == null ? (params.side ?? 'any') : 'of';
+  const onlyPlayerId = params.of == null ? null : String(params.of);
+  const aliveOnly = params.alive !== false;
+  const placedOnly = params.placed !== false;
+  const nodes = state.map?.nodes ?? [];
 
+  let areaCellId = null;
   if (params.areaOf != null) {
     const { fighter } = findFighter(state, params.areaOf);
-    if (!fighter?.currentPosition) return [];
-    areaId = areaIdAtCell(state, fighter.currentPosition);
-    if (areaId == null) return [];
+    if (!fighter || fighter.currentPosition == null) return [];
+    areaCellId = fighter.currentPosition;
+    if (cellTerrains(state, areaCellId).length === 0) return [];
+  }
+
+  const terrain = params.terrain == null ? null : String(params.terrain);
+
+  let reference = null;
+  if (params.reachableTo != null) {
+    reference = findFighter(state, params.reachableTo).fighter;
+    if (!reference || reference.currentPosition == null) return [];
+  }
+
+  let adjacentCell = null;
+  if (params.adjacentTo != null) {
+    const { fighter } = findFighter(state, params.adjacentTo);
+    if (!fighter || fighter.currentPosition == null) return [];
+    adjacentCell = fighter.currentPosition;
   }
 
   const out = [];
-  for (const player of state.players ?? []) {
-    const isOwner = String(player.id) === String(ownerPlayerId);
-    if (side === 'opponent' && isOwner) continue;
-    if (side === 'self' && !isOwner) continue;
+  for (const player of sortedPlayers(state)) {
+    if (onlyPlayerId != null) {
+      if (String(player.id) !== onlyPlayerId) continue;
+    } else if (!sideMatches(state, side, ownerId, player)) {
+      continue;
+    }
 
     for (const fighter of player.fighters ?? []) {
-      if (fighter.currentPosition == null) continue;
-      if (Number(fighter.currentHp) <= 0) continue;
-      if (areaId != null && areaIdAtCell(state, fighter.currentPosition) !== areaId) {
+      if (placedOnly && fighter.currentPosition == null) continue;
+      if (aliveOnly && Number(fighter.currentHp) <= 0) continue;
+      if (params.type != null && fighter.type !== params.type) continue;
+      if (params.group != null && String(fighter.group ?? '') !== String(params.group)) {
         continue;
       }
+      if (
+        params.fighterIds != null &&
+        !(Array.isArray(params.fighterIds) ? params.fighterIds : [params.fighterIds])
+          .map(String)
+          .includes(String(fighter.id))
+      ) {
+        continue;
+      }
+      if (terrain != null && !cellTerrains(state, fighter.currentPosition).includes(terrain)) {
+        continue;
+      }
+      if (areaCellId != null && !sharesArea(state, areaCellId, fighter.currentPosition)) {
+        continue;
+      }
+      if (reference) {
+        const range = Number(fighter.attackRange ?? 1);
+        const distance = bfsDistance(
+          nodes,
+          fighter.currentPosition,
+          reference.currentPosition,
+          range,
+        );
+        if (distance > range) continue;
+      }
+      if (adjacentCell != null) {
+        const distance = bfsDistance(nodes, fighter.currentPosition, adjacentCell, 1);
+        if (distance === 0 || distance > 1) continue;
+      }
+
       out.push({
         fighterId: String(fighter.id),
         playerId: String(player.id),
         name: fighter.name || fighter.id,
+        type: fighter.type,
         position: fighter.currentPosition,
+        terrain: cellTerrain(state, fighter.currentPosition),
       });
     }
   }
+
   return out;
 };
 
-/**
- * FIGHTERS — список бойцов по фильтру.
- * min / as задаются на дескрипторе триггера в evaluateTriggers.
- */
+/** FIGHTERS — бойцы по фильтру; params.min — минимальный размер списка. */
 export const FIGHTERS = (ctx, params = {}) => {
-  const list = queryFighters(ctx.state, params, {
-    ownerPlayerId: ctx.player?.id ?? ctx.state?.turn?.playerId,
-  });
-  return { ok: true, value: list };
+  const ownerPlayerId = ctx.player?.id ?? ctx.state?.turn?.playerId;
+  const list = queryFighters(ctx.state, params, { ownerPlayerId });
+  const min = params.min ?? 0;
+  return { ok: list.length >= min, value: list };
 };
 
 export default FIGHTERS;

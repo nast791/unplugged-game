@@ -48,9 +48,7 @@ describe('skills: runSkillMoment', () => {
     const started = runSkillMoment(state, '0', 'turnStart');
     expect(started.targeting.source).toBe('test_skill');
     expect(started.targeting.playerId).toBe('0');
-    expect(started.targeting.candidates.map(entry => entry.fighterId)).toEqual([
-      'beta',
-    ]);
+    expect(started.targeting.candidates.map(entry => entry.fighterId)).toEqual(['beta']);
 
     const picked = runSkillMoment(withPickedTarget(started), '0', 'picked');
     expect(player(picked, '1').fighters[0].currentHp).toBe(10);
@@ -66,9 +64,7 @@ describe('skills: runSkillMoment', () => {
       },
     ]);
 
-    expect(player(runSkillMoment(state, '0', 'picked'), '1').fighters[0].currentHp).toBe(
-      13,
-    );
+    expect(player(runSkillMoment(state, '0', 'picked'), '1').fighters[0].currentHp).toBe(13);
   });
 
   it('правила независимы: срабатывают все подходящие (развилки — взаимно исключающими условиями)', () => {
@@ -89,11 +85,7 @@ describe('skills: runSkillMoment', () => {
     expect(hand(player(withTwo, '0'))).toHaveLength(4);
     expect(ap(withTwo)).toBe(2);
 
-    const withThree = runSkillMoment(
-      stateWith(rules, { actionsLeft: 3 }),
-      '0',
-      'picked',
-    );
+    const withThree = runSkillMoment(stateWith(rules, { actionsLeft: 3 }), '0', 'picked');
     expect(hand(player(withThree, '0'))).toHaveLength(4);
     expect(ap(withThree)).toBe(8);
   });
@@ -141,9 +133,7 @@ describe('skills: runSkillMoment', () => {
     ]);
 
     const next = runSkillMoment(state, '0', 'picked');
-    expect(next.targeting.candidates.map(entry => entry.fighterId)).toEqual([
-      'beta',
-    ]);
+    expect(next.targeting.candidates.map(entry => entry.fighterId)).toEqual(['beta']);
   });
 
   it('any: если ни одна ветка не подошла — правило не срабатывает', () => {
@@ -209,9 +199,7 @@ describe('skills: runSkillMoment', () => {
   });
 
   it('неизвестный момент и неизвестное действие — ошибки', () => {
-    expect(() => runSkillMoment(stateWith([]), '0', 'nowhere')).toThrow(
-      /неизвестный момент/,
-    );
+    expect(() => runSkillMoment(stateWith([]), '0', 'nowhere')).toThrow(/неизвестный момент/);
 
     const broken = stateWith([{ moment: 'picked', then: [{ action: 'NOPE' }] }]);
     expect(() => runSkillMoment(broken, '0', 'picked')).toThrow(/не найдено/);
@@ -242,17 +230,23 @@ describe('skills: runSkillMoment', () => {
 
   it('список моментов — единственный источник имён', () => {
     expect(moments.map(entry => entry.name)).toEqual([
+      'gameStart',
       'turnStart',
+      'effect',
       'picked',
       'immediately',
       'duringCombat',
       'afterCombat',
+      'turnEnd',
     ]);
+    expect(isMoment('gameStart')).toBe(true);
     expect(isMoment('turnStart')).toBe(true);
+    expect(isMoment('effect')).toBe(true);
     expect(isMoment('picked')).toBe(true);
     expect(isMoment('immediately')).toBe(true);
     expect(isMoment('duringCombat')).toBe(true);
     expect(isMoment('afterCombat')).toBe(true);
+    expect(isMoment('turnEnd')).toBe(true);
     expect(isMoment('skipped')).toBe(false);
   });
 });

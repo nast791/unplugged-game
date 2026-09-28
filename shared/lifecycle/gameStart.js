@@ -2,6 +2,7 @@ import pickNumHero from '../phases/pickNumHero.js';
 import place from '../phases/place.js';
 import { allPlayersPlacementReady } from '#shared/helpers/placement.js';
 import { runPhase } from '#shared/phases/run.js';
+import { runSkillMoment } from '#shared/skills/run.js';
 
 /** Фазы расстановки: тот же список передаём в runPhase, отдельный реестр фаз не нужен. */
 const gameStartPhases = [pickNumHero, place];
@@ -16,6 +17,10 @@ export default {
       ...partyState,
       _enteredHooks: { ...(partyState._enteredHooks ?? {}), gameStart: true },
     };
+    // стартовые состояния способностей: у Теслы здесь активируется первая катушка
+    for (const player of state.players ?? []) {
+      state = runSkillMoment(state, player.id, 'gameStart');
+    }
     for (const player of state.players ?? []) {
       state = runPhase(state, gameStartPhases, player.id);
     }

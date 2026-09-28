@@ -3,17 +3,20 @@ import { stacks } from '#shared/constants/deck.js';
 import { shuffle } from './utils.js';
 
 export const buildConnections = nodes =>
-  (nodes ?? []).reduce((acc, node) => {
-    for (const raw of node.neighbors ?? []) {
-      const a = String(node.id);
-      const b = String(raw);
-      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-      if (acc.seen.has(key)) continue;
-      acc.seen.add(key);
-      acc.list.push({ from: node.id, to: raw });
-    }
-    return acc;
-  }, { seen: new Set(), list: [] }).list;
+  (nodes ?? []).reduce(
+    (acc, node) => {
+      for (const raw of node.neighbors ?? []) {
+        const a = String(node.id);
+        const b = String(raw);
+        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+        if (acc.seen.has(key)) continue;
+        acc.seen.add(key);
+        acc.list.push({ from: node.id, to: raw });
+      }
+      return acc;
+    },
+    { seen: new Set(), list: [] },
+  ).list;
 
 export const buildDeck = (cards = []) =>
   cards.flatMap(card =>
@@ -55,9 +58,7 @@ export const buildFighters = (pack, mapState, seatIndex) => {
   const heroUnits = heroList.map(hero => buildFighter(hero, 0));
   const assistants = (pack.assistants ?? []).flatMap(assistant => {
     const count = assistant.count || 1;
-    return Array.from({ length: count }, (_, index) =>
-      buildFighter(assistant, index),
-    );
+    return Array.from({ length: count }, (_, index) => buildFighter(assistant, index));
   });
   return [...heroUnits, ...assistants];
 };
@@ -79,12 +80,18 @@ export const buildPlayer = (slot, pack, seatIndex, mapState, rng) => {
     placementReady: false,
     numberedHeroCommitted: false,
     fighters: buildFighters(pack, mapState, seatIndex),
-    items: (pack.items ?? []).map((item, i) => ({
-      ...item,
-      id: item.count > 1 ? `${item.id}_${i + 1}` : item.id,
-      copies: item.count ?? item.copies ?? 1,
-      state: item.state ?? 'inactive',
-    })),
+    // Предметы, как помощники: на каждую копию свой объект со своим id и общей группой.
+    // state — состояние копии (у катушек 'inactive' | 'active'), его задаёт сам пак.
+    items: (pack.items ?? []).flatMap(item => {
+      const copies = item.count ?? item.copies ?? 1;
+      return Array.from({ length: copies }, (_, index) => ({
+        ...item,
+        id: copies > 1 ? `${item.id}_${index + 1}` : item.id,
+        group: item.id,
+        copies,
+        state: item.state ?? 'inactive',
+      }));
+    }),
     deck: {
       visibility: structuredClone(stacks.find(s => s.name === 'deck').visibility),
       cards: deck,

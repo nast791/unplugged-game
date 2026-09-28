@@ -38,16 +38,14 @@ export const validateCreate = (body, { heroes: HEROES, maps: MAPS }) => {
   const heroes = body?.heroes ?? [];
 
   if (!mapId) errors.push('mapId обязателен');
-  else if (!MAPS[mapId]) {
+  else if (!MAPS[mapId] && mapId !== 'generated') {
     errors.push(
-      `неизвестная карта "${mapId}" (доступно: ${Object.keys(MAPS).join(', ')})`,
+      `неизвестная карта "${mapId}" (доступно: ${[...Object.keys(MAPS), 'generated'].join(', ')})`,
     );
   }
 
   if (!modeDef) {
-    errors.push(
-      `неизвестный mode "${modeName}" (доступно: ${modes.map(m => m.name).join(', ')})`,
-    );
+    errors.push(`неизвестный mode "${modeName}" (доступно: ${modes.map(m => m.name).join(', ')})`);
   }
 
   if (!Array.isArray(body?.heroes)) {
@@ -69,8 +67,7 @@ export const validateCreate = (body, { heroes: HEROES, maps: MAPS }) => {
     const heroId = raw?.heroId != null ? String(raw.heroId).trim() : '';
     const team = raw?.team != null ? String(raw.team).trim() : '';
     const order = Number(raw?.order);
-    const control =
-      raw?.control != null ? String(raw.control).trim().toLowerCase() : '';
+    const control = raw?.control != null ? String(raw.control).trim().toLowerCase() : '';
 
     if (!heroId) errors.push(`heroes[${i}]: heroId обязателен`);
     else if (!HEROES[heroId]) {

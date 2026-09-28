@@ -9,6 +9,9 @@ export const stateFields = {
   map: ['self', 'team', 'enemy'],
   settings: ['self', 'team', 'enemy'],
   combat: ['self', 'team', 'enemy'],
+  effect: ['self', 'team', 'enemy'],
+  // раскрытые карты — публичная информация: «Раскройте» значит «покажите всем»
+  reveal: ['self', 'team', 'enemy'],
   movement: ['self', 'team', 'enemy'],
   targeting: ['self', 'team', 'enemy'],
   lastCombat: ['self', 'team', 'enemy'],

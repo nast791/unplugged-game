@@ -1,22 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { runAction, runLifecycle } from '#shared/gameEngine.js';
-import {
-  ap,
-  createState,
-  discard,
-  fighter,
-  hand,
-  PHASES,
-  player,
-} from '../fixtures/state.js';
+import { ap, createState, discard, fighter, hand, PHASES, player } from '../fixtures/state.js';
 
-/** Карта на трёх игроков: у каждого своя номерная клетка. */
+/** Карта на трёх игроков: у каждого своя номерная клетка и своя область. */
 const threePlayerMap = {
   id: 'tri',
   nodes: [
-    { id: 1, neighbors: [2], position: 1, heroStart: true, areas: ['#a'] },
-    { id: 2, neighbors: [1, 3], position: 2, heroStart: true, areas: ['#b'] },
-    { id: 3, neighbors: [2], position: 3, heroStart: true, areas: ['#c'] },
+    { id: 1, neighbors: [2], heroStart: true, position: 1, terrain: 'arcane' },
+    { id: 2, neighbors: [1, 3], heroStart: true, position: 2, terrain: 'lava' },
+    { id: 3, neighbors: [2], heroStart: true, position: 3, terrain: 'forest' },
   ],
 };
 
@@ -57,12 +49,11 @@ const threeWayBattle = (players = null) =>
   createState({
     phase: PHASES.turn,
     map: threePlayerMap,
-    players:
-      players ?? [
-        battleSlot('0', 1, 'a', [attackCard]),
-        battleSlot('1', 2, 'b'),
-        battleSlot('2', 3, 'c'),
-      ],
+    players: players ?? [
+      battleSlot('0', 1, 'a', [attackCard]),
+      battleSlot('1', 2, 'b'),
+      battleSlot('2', 3, 'c'),
+    ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
     _enteredHooks: { gameStart: true, turn: true },
   });
@@ -116,20 +107,24 @@ describe('scenario: сдача партии (RESIGN)', () => {
   });
 
   it('во время расстановки сдавшийся не блокирует остальных', () => {
+    // у игрока 0 есть помощник, поэтому его расстановка ждёт «ОК»; игроки с одним героем
+    // подтверждаются автоматически (герой уже на номерной клетке и двигать его нельзя)
+    const players = threePlayers();
+    players[0].fighters.push(fighter({ id: 'a_pawn', type: 'assistant', currentPosition: 2 }));
+
     const state = createState({
       phase: PHASES.gameStart,
       map: threePlayerMap,
-      players: threePlayers(),
+      players,
       turn: { playerId: null, actedRound: [] },
     });
 
     let next = runAction(state, { type: 'RESIGN', playerId: '1' });
     expect(next.hook).toBe(PHASES.gameStart);
+    expect(player(next, '0').placementReady).toBe(false);
+    expect(player(next, '2').placementReady).toBe(true);
 
     next = runAction(next, { type: 'UI_OK', playerId: '0' });
-    expect(next.hook).toBe(PHASES.gameStart);
-
-    next = runAction(next, { type: 'UI_OK', playerId: '2' });
     expect(next.hook).toBe(PHASES.turn);
     expect(next.turn.playerId).toBe('0');
   });
@@ -142,12 +137,8 @@ describe('scenario: сдача партии (RESIGN)', () => {
     });
     const after = runAction(state, { type: 'RESIGN', playerId: '1' });
 
-    expect(() => runAction(after, { type: 'RESIGN', playerId: '1' })).toThrow(
-      /уже сдался/,
-    );
-    expect(() => runAction(after, { type: 'RESIGN', playerId: 'nope' })).toThrow(
-      /нет в партии/,
-    );
+    expect(() => runAction(after, { type: 'RESIGN', playerId: '1' })).toThrow(/уже сдался/);
+    expect(() => runAction(after, { type: 'RESIGN', playerId: 'nope' })).toThrow(/нет в партии/);
   });
 
   it('после gameEnd ход отклоняется', () => {
@@ -171,27 +162,20 @@ describe('scenario: сдача партии (RESIGN)', () => {
     expect(state.lastCombat).toBeNull();
     expect(player(state, '1').fighters).toHaveLength(0);
     expect(hand(player(state, '0'))).toHaveLength(0);
-    expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual([
-      'atk_0',
-    ]);
+    expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual(['atk_0']);
     expect(player(state, '2').fighters[0].currentHp).toBe(10);
     expect(ap(state)).toBe(1);
   });
 
   it('сдача защитника при двух игроках завершает партию и закрывает бой', () => {
-    let state = openBattle([
-      battleSlot('0', 1, 'a', [attackCard]),
-      battleSlot('1', 2, 'b'),
-    ]);
+    let state = openBattle([battleSlot('0', 1, 'a', [attackCard]), battleSlot('1', 2, 'b')]);
     state = runAction(state, { type: 'RESIGN', playerId: '1' });
 
     expect(state.hook).toBe(PHASES.gameEnd);
     expect(state.winner).toBe('0');
     expect(state.combat).toBeNull();
     expect(state.turn.actionsLeft).toBe(0);
-    expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual([
-      'atk_0',
-    ]);
+    expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual(['atk_0']);
   });
 
   it('сдача активного игрока в перемещении передаёт ход следующему', () => {

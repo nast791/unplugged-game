@@ -12,15 +12,19 @@ export default {
       text: partyState =>
         `Ждём перемещения бойцов: ${playerName(partyState, partyState.movement?.playerId)}`,
     },
+    // пауза эффекта у другого игрока: он выбирает карту из своей руки, остальные ждут
+    waitingChoice: {
+      active: partyState => Boolean(partyState.combat?.choice),
+      text: partyState =>
+        `Оппонент выбирает карту для эффекта: ${playerName(partyState, partyState.combat?.choice?.playerId)}`,
+    },
     waitingTurn: {
       active: () => true,
-      text: partyState =>
-        `Ход игрока ${playerName(partyState, partyState.turn?.playerId)}`,
+      text: partyState => `Ход игрока ${playerName(partyState, partyState.turn?.playerId)}`,
     },
   },
 
-  active: (partyState, playerId) =>
-    String(partyState.turn?.playerId ?? '') !== String(playerId),
+  active: (partyState, playerId) => String(partyState.turn?.playerId ?? '') !== String(playerId),
 
   ui() {
     return {

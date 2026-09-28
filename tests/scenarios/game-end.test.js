@@ -62,9 +62,9 @@ describe('scenario: конец партии', () => {
     expect(ui.hint).toBe('Партия завершена: победа — Alpha');
     expect(ui.results.winnerName).toBe('Alpha');
 
-    expect(() =>
-      runAction(state, { type: 'PICK', kind: 'deck', playerId: '0' }),
-    ).toThrow(/партия завершена/);
+    expect(() => runAction(state, { type: 'PICK', kind: 'deck', playerId: '0' })).toThrow(
+      /партия завершена/,
+    );
   });
 
   it('turnStart уводит в gameEnd, когда ходить некому', () => {

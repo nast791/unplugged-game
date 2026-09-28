@@ -1,29 +1,22 @@
-const heroModules = import.meta.glob('./heroes/*/index.js', {
-  eager: true,
-  import: 'default',
-});
-const cardModules = import.meta.glob('./heroes/*/cards.js', {
-  eager: true,
-  import: 'default',
-});
-const mapModules = import.meta.glob('./maps/*.js', {
-  eager: true,
-  import: 'default',
-});
+import arena from './maps/arena.js';
+import medusa from './heroes/medusa/index.js';
+import medusaCards from './heroes/medusa/cards.js';
+import tesla from './heroes/tesla/index.js';
+import teslaCards from './heroes/tesla/cards.js';
 
-const idFromPath = (path, pattern) => path.match(pattern)?.[1];
+/**
+ * Реестр контента: герои и карты собираются здесь явно.
+ * Раньше это делал `import.meta.glob`, но в собранном Nitro-сервере он не работает
+ * (`globalThis._importMeta_.glob is not a function`) — API отвечал 500. Новый герой добавляется
+ * двумя строками (пак + его колода), карта — одной.
+ */
+const withCards = (hero, cards) => ({ ...hero, cards });
 
-export const heroes = Object.fromEntries(
-  Object.entries(heroModules).map(([path, hero]) => {
-    const heroId = hero.id ?? idFromPath(path, /heroes\/([^/]+)\/index\.js$/);
-    const cardsPath = path.replace('/index.js', '/cards.js');
-    return [heroId, { ...hero, cards: cardModules[cardsPath] ?? [] }];
-  }),
-);
+export const heroes = {
+  [medusa.id]: withCards(medusa, medusaCards),
+  [tesla.id]: withCards(tesla, teslaCards),
+};
 
-export const maps = Object.fromEntries(
-  Object.entries(mapModules).map(([path, map]) => {
-    const mapId = map.id ?? idFromPath(path, /maps\/([^/]+)\.js$/);
-    return [mapId, map];
-  }),
-);
+export const maps = {
+  [arena.id]: arena,
+};

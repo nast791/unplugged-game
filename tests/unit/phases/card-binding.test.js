@@ -1,19 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { runAction, runUi } from '#shared/gameEngine.js';
 import { attackCandidates, attackRejection } from '#shared/helpers/combat.js';
-import {
-  cardFighterId,
-  fighterMatchesCard,
-  hasFighterForCard,
-} from '#shared/helpers/cards.js';
+import { cardFighterId, fighterMatchesCard, hasFighterForCard } from '#shared/helpers/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], areas: ['#blue'] },
-    { id: 2, neighbors: [1, 3], areas: ['#blue'] },
-    { id: 3, neighbors: [2], areas: ['#blue'] },
+    { id: 1, neighbors: [2], terrain: 'arcane' },
+    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
+    { id: 3, neighbors: [2], terrain: 'arcane' },
   ],
 };
 
@@ -54,8 +50,7 @@ const slot = (id, name, order, fighters, hand = []) => ({
   fighters,
 });
 
-const handCardOf = (state, id) =>
-  handCards(state).find(entry => entry.id === id);
+const handCardOf = (state, id) => handCards(state).find(entry => entry.id === id);
 
 const handCards = state => player(state, '0').hand.cards;
 
@@ -86,9 +81,13 @@ const state = (harpiesAlive = true, turnPlayerId = '0') =>
           card('harpy_def', 'defense', 2, 'harpies'),
         ],
       ),
-      slot('1', 'Бета', 2, [unit('beta', 3, 13, { attackType: 'ranged' })], [
-        card('beta_atk', 'attack', 3, 'beta'),
-      ]),
+      slot(
+        '1',
+        'Бета',
+        2,
+        [unit('beta', 3, 13, { attackType: 'ranged' })],
+        [card('beta_atk', 'attack', 3, 'beta')],
+      ),
     ],
     turn: { index: 1, playerId: turnPlayerId, actedRound: [turnPlayerId] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -111,11 +110,52 @@ describe('привязка карты к бойцу', () => {
     const alive = state();
     expect(hasFighterForCard(alive, '0', handCardOf(alive, 'harpy_atk'))).toBe(true);
     expect(
-      attackCandidates(alive, '0', handCardOf(alive, 'harpy_atk')).map(
-        entry => entry.fighterId,
-      ),
+      attackCandidates(alive, '0', handCardOf(alive, 'harpy_atk')).map(entry => entry.fighterId),
     ).toEqual(['harpies_1']);
     expect(attackRejection(alive, '0', 'harpy_atk_1')).toBeNull();
+  });
+
+  it('карта Гарпий: атакующего движок берёт сам, и это реальный боец, а не группа', () => {
+    const battle = runAction(state(), {
+      type: 'PICK',
+      kind: 'card',
+      id: 'harpy_atk_1',
+      playerId: '0',
+    });
+
+    // привязка 'harpies' — группа: в атакующего должен попасть harpies_1, иначе целей не найдётся
+    expect(battle.combat.attackerFighterId).toBe('harpies_1');
+    // враг один — цель тоже выбирается сама
+    expect(battle.combat.stage).toBe('defense');
+    expect(battle.combat.targetFighterId).toBe('beta');
+  });
+
+  it('несколько Гарпий достают врага: атакующего выбирает игрок', () => {
+    const two = state();
+    two.map.nodes.push({ id: 4, neighbors: [3], terrain: 'arcane' });
+    two.map.nodes.find(node => node.id === 3).neighbors.push(4);
+    player(two, '0').fighters.push(
+      unit('harpies_2', 4, 4, { type: 'assistant', group: 'harpies' }),
+    );
+
+    const opened = runAction(two, {
+      type: 'PICK',
+      kind: 'card',
+      id: 'harpy_atk_1',
+      playerId: '0',
+    });
+    expect(opened.combat.stage).toBe('attacker');
+    expect(opened.combat.attackerFighterId).toBeNull();
+
+    const chosen = runAction(opened, {
+      type: 'PICK',
+      kind: 'fighter',
+      id: 'harpies_2',
+      playerId: '0',
+    });
+    expect(chosen.combat.attackerFighterId).toBe('harpies_2');
+    expect(chosen.combat.stage).toBe('defense');
+    expect(chosen.combat.targetFighterId).toBe('beta');
   });
 
   it('без живых Гарпий их карты в атаку не идут', () => {
@@ -141,9 +181,7 @@ describe('привязка карты к бойцу', () => {
   it('карта «любым бойцом» играется, даже если Гарпий нет', () => {
     const dead = state(false);
     expect(
-      attackCandidates(dead, '0', handCardOf(dead, 'any_atk')).map(
-        entry => entry.fighterId,
-      ),
+      attackCandidates(dead, '0', handCardOf(dead, 'any_atk')).map(entry => entry.fighterId),
     ).toEqual(['medusa']);
     expect(attackRejection(dead, '0', 'any_atk_1')).toBeNull();
   });
@@ -174,6 +212,6 @@ describe('привязка карты к бойцу', () => {
         id: 'harpy_def_1',
         playerId: '0',
       }),
-    ).toThrow(/нет на поле/);
+    ).toThrow(/не для бойца, которого атакуют/);
   });
 });

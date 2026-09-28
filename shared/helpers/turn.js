@@ -1,7 +1,8 @@
 import { rules } from '#shared/constants/rules.js';
-import { finishedSides } from '#shared/facts-new/players.js';
+import { finishedSides } from '#shared/facts/players.js';
 import { movementZoneIds } from '#shared/helpers/board.js';
 import {
+  findFighter,
   findOwnedFighter,
   findPlayer,
   playerHeroes,
@@ -14,12 +15,10 @@ import { findNode } from '#shared/helpers/placement.js';
 export const activePlayerId = partyState => partyState.turn?.playerId ?? null;
 
 export const isActivePlayer = (partyState, playerId) =>
-  activePlayerId(partyState) != null &&
-  String(activePlayerId(partyState)) === String(playerId);
+  activePlayerId(partyState) != null && String(activePlayerId(partyState)) === String(playerId);
 
 /** Есть ли чем объявлять действие. */
-export const hasActions = partyState =>
-  (Number(partyState.turn?.actionsLeft) || 0) > 0;
+export const hasActions = partyState => (Number(partyState.turn?.actionsLeft) || 0) > 0;
 
 /**
  * Партия завершена (живых сторон не больше одной): hook = gameEnd и winner; остальное — в gameEnd.enter.
@@ -45,23 +44,18 @@ export const hasMoment = partyState =>
   Boolean(partyState?.movement || partyState?.combat || partyState?.targeting);
 
 /** Объявленное действие в работе: перемещение или бой. Выбор цели объявить действие не мешает. */
-export const hasAction = partyState =>
-  Boolean(partyState?.movement || partyState?.combat);
+export const hasAction = partyState => Boolean(partyState?.movement || partyState?.combat);
 
 /** Выбор цели открыт и открыт этим игроком. */
 export const isTargetingMine = (partyState, playerId) => {
   const targeting = partyState?.targeting;
-  return (
-    Boolean(targeting) && String(targeting.playerId) === String(playerId)
-  );
+  return Boolean(targeting) && String(targeting.playerId) === String(playerId);
 };
 
 /** Кандидаты выбора цели, если выбор открыт этим игроком. */
 export const targetingCandidates = (partyState, playerId) =>
   isTargetingMine(partyState, playerId)
-    ? (partyState.targeting.candidates ?? []).map(entry =>
-        String(entry.fighterId),
-      )
+    ? (partyState.targeting.candidates ?? []).map(entry => String(entry.fighterId))
     : [];
 
 /** выбор эффекта боя, если оно открыто и ждёт решения этого игрока. */
@@ -72,24 +66,20 @@ export const combatChoiceOf = (partyState, playerId) => {
 };
 
 /** Момент открыт и принадлежит игроку (у боя владельцев двое). */
-export const isMomentMine = (partyState, playerId, name) => {  const moment = momentOf(partyState, name);
+export const isMomentMine = (partyState, playerId, name) => {
+  const moment = momentOf(partyState, name);
   if (!moment) return false;
 
   const owners =
-    name === 'combat'
-      ? [moment.attackerPlayerId, moment.defenderPlayerId]
-      : [moment.playerId];
+    name === 'combat' ? [moment.attackerPlayerId, moment.defenderPlayerId] : [moment.playerId];
 
-  return owners.some(
-    owner => owner != null && String(owner) === String(playerId),
-  );
+  return owners.some(owner => owner != null && String(owner) === String(playerId));
 };
 
 export const handCards = (partyState, playerId) =>
   zoneCards(findPlayer(partyState, playerId)?.hand);
 
-export const handCardIds = (partyState, playerId) =>
-  handCards(partyState, playerId).map(cardKey);
+export const handCardIds = (partyState, playerId) => handCards(partyState, playerId).map(cardKey);
 
 /** Карты руки с усилением (поле bonus). */
 export const bonusCardIds = (partyState, playerId) =>
@@ -124,11 +114,11 @@ export const movableFighterIds = (partyState, playerId) => {
   if (!movement || String(movement.playerId) !== String(playerId)) return [];
   if (movement.fighters == null) return [];
 
-  const player = findPlayer(partyState, playerId);
-  return (player?.fighters ?? [])
-    .filter(fighter => fighter.currentPosition != null)
-    .map(fighter => String(fighter.id))
-    .filter(fighterId => movement.fighters.includes(fighterId));
+  // список из правила важнее владельца: принудительное перемещение двигает чужих бойцов
+  return (movement.fighters ?? []).map(String).filter(fighterId => {
+    const fighter = findFighter(partyState, fighterId)?.fighter;
+    return fighter != null && fighter.currentPosition != null;
+  });
 };
 
 /** Можно ли двигать этого бойца в текущем перемещении. */
@@ -144,10 +134,7 @@ export const occupiedCellIds = (partyState, exceptFighterId = null) => {
   for (const player of partyState?.players ?? []) {
     for (const fighter of player.fighters ?? []) {
       if (fighter.currentPosition == null) continue;
-      if (
-        exceptFighterId != null &&
-        String(fighter.id) === String(exceptFighterId)
-      ) {
+      if (exceptFighterId != null && String(fighter.id) === String(exceptFighterId)) {
         continue;
       }
       blocked.add(String(fighter.currentPosition));
@@ -156,8 +143,12 @@ export const occupiedCellIds = (partyState, exceptFighterId = null) => {
   return blocked;
 };
 
-/** Непроходимые клетки для шага: сквозь своих можно, если rules.canPassThroughTeammates. */
-export const blockedCellsForStep = (partyState, player, fighterId) => {
+/**
+ * Непроходимые клетки для шага: сквозь своих можно, если rules.canPassThroughTeammates,
+ * сквозь врагов — если rules.canPassThroughEnemies или сам эффект разрешил проход (movement.throughEnemies).
+ * Конечная клетка всё равно должна быть свободной — это проверяет movementDestinations.
+ */
+export const blockedCellsForStep = (partyState, player, fighterId, movement = null) => {
   const blocked = occupiedCellIds(partyState, fighterId);
   if (rules.canPassThroughTeammates) {
     for (const fighter of player?.fighters ?? []) {
@@ -167,7 +158,7 @@ export const blockedCellsForStep = (partyState, player, fighterId) => {
       }
     }
   }
-  if (rules.canPassThroughEnemies) {
+  if (rules.canPassThroughEnemies || movement?.throughEnemies === true) {
     for (const other of partyState.players ?? []) {
       if (String(other.id) === String(player?.id)) continue;
       for (const fighter of other.fighters ?? []) {
@@ -191,6 +182,45 @@ const byCellId = (left, right) => {
 };
 
 /**
+ * Боец для черновика перемещения: если правило задало список бойцов (`movement.fighters`),
+ * двигать можно ровно их — даже чужих (принудительное перемещение). Иначе — только свои.
+ */
+export const draftFighter = (partyState, movement, playerId, fighterId) => {
+  if (!movement || fighterId == null) return null;
+
+  if (movement.fighters != null) {
+    if (!movement.fighters.map(String).includes(String(fighterId))) return null;
+    return findFighter(partyState, fighterId)?.fighter ?? null;
+  }
+
+  return findOwnedFighter(partyState, playerId, fighterId)?.fighter ?? null;
+};
+
+/**
+ * Почему бойца нельзя двигать этим черновиком; null — можно.
+ * Без списка бойцов двигают только своих; со списком — ровно тех, кого назвало правило
+ * (так работает принудительное перемещение чужих бойцов).
+ */
+export const movementFighterRejection = (partyState, movement, playerId, fighterId) => {
+  if (!movement) return 'перемещение не открыто';
+  if (fighterId == null) return 'нужен боец';
+
+  if (movement.fighters == null) {
+    return findOwnedFighter(partyState, playerId, fighterId).fighter
+      ? null
+      : `боец ${fighterId} не ваш`;
+  }
+
+  if (!movement.fighters.map(String).includes(String(fighterId))) {
+    return `этим перемещением двигают только бойцов из списка (${fighterId} не подходит)`;
+  }
+
+  return draftFighter(partyState, movement, playerId, fighterId)
+    ? null
+    : `боец ${fighterId} не найден`;
+};
+
+/**
  * Клетки, куда боец может шагнуть в текущем перемещении.
  * Радиус считается от origins бойца: за одно действие он уходит не дальше своего радиуса.
  */
@@ -201,30 +231,24 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
     return [];
   }
 
-  const { fighter } = findOwnedFighter(partyState, playerId, fighterId);
+  const fighter = draftFighter(partyState, movement, playerId, fighterId);
   if (!fighter || fighter.currentPosition == null) return [];
-  // эффект карты двигает только своих бойцов из списка — чужим клетки не подсвечиваем
-  if (!canMoveFighter(partyState, playerId, fighterId)) return [];
 
   const budget = movementBudget(fighter, movement);
   if (budget <= 0) return [];
 
-  const origin =
-    movement.origins?.[String(fighterId)] ?? fighter.currentPosition;
+  const origin = movement.origins?.[String(fighterId)] ?? fighter.currentPosition;
   const reach = movementZoneIds(
     partyState.map?.nodes ?? [],
     origin,
     budget,
-    blockedCellsForStep(partyState, player, fighterId),
+    blockedCellsForStep(partyState, player, fighterId, movement),
   );
   const occupied = occupiedCellIds(partyState, fighterId);
 
   return [...reach]
     .map(String)
-    .filter(
-      cellId =>
-        cellId !== String(fighter.currentPosition) && !occupied.has(cellId),
-    )
+    .filter(cellId => cellId !== String(fighter.currentPosition) && !occupied.has(cellId))
     .sort(byCellId);
 };
 
@@ -241,12 +265,10 @@ export const movementRejection = (partyState, playerId, fighterId, cellId) => {
     return 'это чужое перемещение';
   }
 
-  const { fighter } = findOwnedFighter(partyState, playerId, fighterId);
-  if (!fighter) return `боец ${fighterId} не ваш`;
+  const fighter = draftFighter(partyState, movement, playerId, fighterId);
+  const fighterReason = movementFighterRejection(partyState, movement, playerId, fighterId);
+  if (fighterReason) return fighterReason;
   if (fighter.currentPosition == null) return 'боец не расставлен';
-  if (!canMoveFighter(partyState, playerId, fighterId)) {
-    return `этим эффектом двигают только своих бойцов из списка (${fighterId} не подходит)`;
-  }
   if (String(fighter.currentPosition) === String(cellId)) {
     return 'боец уже на этой клетке';
   }

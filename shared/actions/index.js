@@ -1,25 +1,37 @@
-/**
- * Обработчики фаз партии для движка карт (@nast791/cards).
- * Ход и расстановка мигрированы: shared/lifecycle + shared/phases + shared/actions-new.
- * Эти входы (onPhase и родственные) будут переподключены, когда эффекты карт перепишут
- * на беспромптовую модель.
- */
-import {
-  onGameEnd,
-  onGameStart,
-  onPhase,
-  onTurnEnd,
-  onTurnStart,
-  resolveEffect,
-} from './resolveEffect.js';
+export { commonMoves, UI_OK, UI_BACK, RESIGN } from './moves.js';
+export { SET_ACTIONS, SET_RESIGNED } from './base.js';
+export { SET_CARDS } from './cards.js';
+export { SET_HEALTH } from './health.js';
+export { SET_FIGHTER_CELL } from './fighter.js';
+export { SET_MOVEMENT } from './movement.js';
+export { SET_COMBAT } from './combat.js';
+export { SET_TARGETING } from './targeting.js';
+export { REVIVE_FIGHTER } from './revive.js';
+export { SET_ITEM } from './items.js';
+export { SET_REVEAL } from './reveal.js';
 
-export { onGameEnd, onGameStart, onPhase, onTurnEnd, onTurnStart, resolveEffect };
+import { SET_ACTIONS, SET_RESIGNED } from './base.js';
+import { SET_CARDS } from './cards.js';
+import { SET_COMBAT } from './combat.js';
+import { SET_FIGHTER_CELL } from './fighter.js';
+import { SET_HEALTH } from './health.js';
+import { SET_MOVEMENT } from './movement.js';
+import { SET_TARGETING } from './targeting.js';
+import { REVIVE_FIGHTER } from './revive.js';
+import { SET_ITEM } from './items.js';
+import { SET_REVEAL } from './reveal.js';
 
-export default {
-  onGameEnd,
-  onGameStart,
-  onPhase,
-  onTurnEnd,
-  onTurnStart,
-  resolveEffect,
+/** Универсальные actions (CAPS) — манипуляторы доменами; вызываются из фаз и из phase.moves. */
+export const actions = {
+  SET_FIGHTER_CELL,
+  SET_ACTIONS,
+  SET_RESIGNED,
+  SET_CARDS,
+  SET_HEALTH,
+  SET_MOVEMENT,
+  SET_COMBAT,
+  SET_TARGETING,
+  REVIVE_FIGHTER,
+  SET_ITEM,
+  SET_REVEAL,
 };

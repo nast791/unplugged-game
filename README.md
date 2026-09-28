@@ -1,20 +1,12 @@
 # UnPlugged
 
-Клиент настольной игры на Nuxt 4. Общая логика партии — через пакет [`@nast791/engine`](https://github.com/nast791/tabletop-engine) (без boardgame.io).
+Клиент настольной игры на Nuxt 4. Логика партии — своя, в `shared/` (жизненный цикл → фазы → экшены,
+правила `moment + when + then`); внешних движков в проекте нет.
 
 ## Требования
 
 - Node.js `>= 20`
 - pnpm `11.10.0` (см. `packageManager` в `package.json`)
-- доступ к GitHub Packages для scope `@nast791` (`read:packages`)
-
-В `%USERPROFILE%\.npmrc`:
-
-```ini
-//npm.pkg.github.com/:_authToken=YOUR_GITHUB_PAT
-```
-
-В проекте уже есть `.npmrc` с `@nast791:registry=https://npm.pkg.github.com`.
 
 ## Установка
 
@@ -32,13 +24,19 @@ pnpm install
 | `pnpm generate` | статическая генерация |
 | `pnpm clean` | очистка `.nuxt` / кэша |
 | `pnpm format` | Prettier |
-| `pnpm tabletop-engine:update` | обновить пакеты `@nast791/*` |
-| `pnpm tabletop-engine:update:engine` | обновить только `@nast791/engine` |
+| `pnpm test` | все тесты (vitest) |
+| `pnpm test:watch` | тесты в режиме наблюдения |
+| `pnpm test:bot` | бот сам играет дуэль Медуза против Теслы и ищет баги |
+
+Прогон бота: по умолчанию 60 партий, длинная серия — `pnpm test:bot -- --seeds=2000`,
+разбор одной партии по сиду — `pnpm test:bot -- --seed=50` (сид воспроизводим: в отчёте есть
+лог последних действий и сообщение движка). Ненулевой код возврата — бот нашёл падение,
+тупик или нарушенный инвариант. Тот же прогон идёт в `pnpm test`.
 
 ## Стек
 
 - **Nuxt 4** + Vue 3
-- **@nast791/engine** — create / action / view партии
+- **Свой движок партии** — `shared/core.js` (`runLifecycle` / `runAction` / `runUi` / `runFact`)
 - **Tailwind CSS 4** (`@tailwindcss/vite`)
 - **Konva** / **vue-konva** — canvas-сцена
 - **@nuxt/image**, **@nuxt/icon**, **@peterbud/nuxt-query**
@@ -46,44 +44,15 @@ pnpm install
 
 Версии в `package.json` зафиксированы без `^`.
 
-## Движок
-
-Модуль подключён в `nuxt.config.ts`:
-
-```ts
-modules: ['@nast791/engine', /* … */],
-tabletopEngine: {
-  apiPrefix: '/api/tabletop',
-},
-```
-
-Автоимпорт composables:
-
-| Composable | Назначение |
-|------------|------------|
-| `useGameSetup` | настройки партии (map, rules, options) |
-| `usePlayerSetup` | слоты игроков |
-| `useGameView` | живая партия: create / action / view |
-| `useGameHelpers` | `isMyTurn`, `me`, `phase`, … |
-
-API (Nitro):
-
-| Метод | Путь |
-|-------|------|
-| `POST` | `/api/tabletop/create` |
-| `POST` | `/api/tabletop/action` |
-| `GET` | `/api/tabletop/view?gameId=&playerId=` |
-
-Документация движка: [`@nast791/engine` README](https://github.com/nast791/tabletop-engine/tree/main/packages/engine).
-
 ## Структура
 
 ```
-app/
-  assets/          # стили (Tailwind + тема)
-  layouts/
-  pages/
-  plugins/         # vue-konva (client)
-  app.vue
+app/                 # страницы, компоненты доски, composables (клиент)
+server/              # сборка партии (create.js), проекции (party.js), API (api/), контент (content/)
+shared/              # движок: core, lifecycle, phases, actions, facts, rules
+tests/               # unit, scenarios, фаззинг-бот (support/)
 nuxt.config.ts
 ```
+
+Сборка партии отделена от HTTP: `server/create.js` — домен, `server/api/game/create.post.js` — адаптер
+(его нельзя импортировать из тестов и бота: он тянет Nitro).

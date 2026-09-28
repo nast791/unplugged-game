@@ -17,7 +17,7 @@ const lineMap = {
   nodes: [1, 2, 3, 4, 5, 6, 7, 8].map(id => ({
     id,
     neighbors: [id - 1, id + 1].filter(neighbor => neighbor >= 1 && neighbor <= 8),
-    areas: ['#blue'],
+    terrain: 'arcane',
   })),
 };
 
@@ -78,9 +78,13 @@ const state = () =>
         ],
         [{ ...card, instanceId: 'medusa_04_1' }],
       ),
-      slot('1', 'Бета', 2, [unit('beta', 3, 13, { attackType: 'ranged' })], [
-        cardOf('beta_atk', 'attack', 3, 'beta'),
-      ]),
+      slot(
+        '1',
+        'Бета',
+        2,
+        [unit('beta', 3, 13, { attackType: 'ranged' })],
+        [cardOf('beta_atk', 'attack', 3, 'beta')],
+      ),
     ],
     turn: { index: 1, playerId: '1', actedRound: ['1'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -97,7 +101,7 @@ const answerDefense = () => {
   battle = runAction(battle, {
     type: 'PICK',
     kind: 'fighter',
-    id: 'medusa',
+    id: 'harpies_1',
     playerId: '1',
   });
   return runAction(battle, {
@@ -118,9 +122,7 @@ const step = (state, fighterId, cellId) =>
   });
 
 const positions = state =>
-  Object.fromEntries(
-    player(state, '0').fighters.map(entry => [entry.id, entry.currentPosition]),
-  );
+  Object.fromEntries(player(state, '0').fighters.map(entry => [entry.id, entry.currentPosition]));
 
 describe('карта medusa_04 «Зов стаи»', () => {
   it('описана правилами, момент — из списка', () => {
@@ -141,10 +143,7 @@ describe('карта medusa_04 «Зов стаи»', () => {
     expect(paused.combat.effects[0].status).toBe('waiting');
 
     // подсвечены только те, кого можно двигать, кнопка — про эффект
-    expect(runUi(paused, '0').highlightedFighterIds).toEqual([
-      'harpies_1',
-      'harpies_2',
-    ]);
+    expect(runUi(paused, '0').highlightedFighterIds).toEqual(['harpies_1', 'harpies_2']);
     expect(runUi(paused, '0').controls.ok.label).toBe('Закончить эффект');
     expect(movableFighterIds(paused, '0')).toEqual(['harpies_1', 'harpies_2']);
   });
@@ -154,16 +153,12 @@ describe('карта medusa_04 «Зов стаи»', () => {
 
     // Гарпия в конце линии: доступны 1, 2 и 3 клетки, четвёртая — уже нет
     expect(movementDestinations(paused, '0', 'harpies_2')).toEqual(['5', '6', '7']);
-    expect(movementRejection(paused, '0', 'harpies_2', '4')).toMatch(
-      /вне радиуса/,
-    );
+    expect(movementRejection(paused, '0', 'harpies_2', '4')).toMatch(/вне радиуса/);
 
     const moved = step(paused, 'harpies_2', '6');
 
     expect(positions(moved).harpies_2).toBe('6');
-    expect(moved.movement.moves).toEqual([
-      { fighterId: 'harpies_2', from: 8, to: '6' },
-    ]);
+    expect(moved.movement.moves).toEqual([{ fighterId: 'harpies_2', from: 8, to: '6' }]);
   });
 
   it('чужие бойцы путь блокируют: это перемещение, а не перенос', () => {
@@ -172,9 +167,7 @@ describe('карта medusa_04 «Зов стаи»', () => {
     // Гарпия 1 стоит за спиной Беты (клетка 3): единственная соседняя свободная клетка — 4,
     // но пройти к ней можно только через врага, поэтому ходов нет вовсе
     expect(movementDestinations(paused, '0', 'harpies_1')).toEqual([]);
-    expect(movementRejection(paused, '0', 'harpies_1', '4')).toMatch(
-      /нет доступных клеток/,
-    );
+    expect(movementRejection(paused, '0', 'harpies_1', '4')).toMatch(/нет доступных клеток/);
   });
 
   it('двигать можно только бойцов из списка: Медузу — нет', () => {
@@ -211,9 +204,7 @@ describe('карта medusa_04 «Зов стаи»', () => {
 
   it('без живых Гарпий двигать некого: эффект не срабатывает', () => {
     const dead = state();
-    player(dead, '0').fighters = player(dead, '0').fighters.filter(
-      entry => entry.type === 'hero',
-    );
+    player(dead, '0').fighters = player(dead, '0').fighters.filter(entry => entry.type === 'hero');
 
     let battle = runAction(dead, {
       type: 'PICK',
@@ -228,7 +219,8 @@ describe('карта medusa_04 «Зов стаи»', () => {
       playerId: '1',
     });
 
-    // карта привязана к Гарпиям: без живых Гарпий её и не сыграть в защиту
+    // карта привязана к Гарпиям: без живых Гарпий её и не сыграть в защиту,
+    // а бьют Медузу — значит карта Гарпий не подходит вдвойне
     expect(() =>
       runAction(battle, {
         type: 'PICK',
@@ -236,6 +228,6 @@ describe('карта medusa_04 «Зов стаи»', () => {
         id: 'medusa_04_1',
         playerId: '0',
       }),
-    ).toThrow(/нет на поле/);
+    ).toThrow(/не для бойца, которого атакуют/);
   });
 });

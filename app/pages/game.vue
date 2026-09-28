@@ -4,54 +4,71 @@
       <div class="flex flex-col gap-1">
         <h1 class="text-28 font-semibold tracking-tight">Партия</h1>
         <p class="text-14 opacity-60">
-          gameId: <code>{{ gameId ?? '—' }}</code>
-          · map: {{ mapSummary }}
+          gameId: <code>{{ gameId ?? '—' }}</code> · map: {{ mapSummary }}
         </p>
       </div>
-      <NuxtLink to="/" class="text-16 underline opacity-70 hover:opacity-100">
-        В лобби
-      </NuxtLink>
+      <NuxtLink to="/" class="text-16 underline opacity-70 hover:opacity-100"> В лобби </NuxtLink>
     </header>
 
-    <p
-      v-if="hint"
-      class="border border-primary/20 bg-primary/5 px-4 py-3 text-16"
-    >
+    <p v-if="hint" class="border-primary/20 bg-primary/5 text-16 border px-4 py-3">
       {{ hint }}
     </p>
 
-    <section class="grid gap-2 border border-primary/15 p-3 text-14 sm:grid-cols-3">
+    <p v-if="error" class="text-16 border border-red-300 bg-red-50 px-4 py-3 text-red-700">
+      {{ error }}
+    </p>
+
+    <p v-if="combatInfo" class="text-14 border border-amber-300 bg-amber-50 px-4 py-3">
+      {{ combatInfo }}
+    </p>
+
+    <p
+      v-for="card in revealedCards"
+      :key="`reveal-${card.cardId}`"
+      class="text-14 border border-violet-300 bg-violet-50 px-4 py-3"
+    >
+      Раскрыта карта ({{ card.ownerName }}): «{{ card.name }}» · значение {{ card.value }} · бонус
+      {{ card.bonus }} — её видят все игроки
+    </p>
+
+    <section class="border-primary/15 text-14 grid gap-2 border p-3 sm:grid-cols-3">
       <p>
         phase: <strong>{{ phase ?? '—' }}</strong>
         <span v-if="isPlacement" class="opacity-60"> · расстановка</span>
       </p>
-      <p>turn: <strong>{{ turn }}</strong></p>
-      <p>current: <strong>{{ currentPlayerId ?? '—' }}</strong></p>
-      <p>AP: <strong>{{ actionsLeft }}</strong></p>
-      <p>you: <strong>{{ you ?? '—' }}</strong></p>
+      <p>
+        turn: <strong>{{ turn }}</strong>
+      </p>
+      <p>
+        current: <strong>{{ currentPlayerId ?? '—' }}</strong>
+      </p>
+      <p>
+        AP: <strong>{{ actionsLeft }}</strong>
+      </p>
+      <p>
+        you: <strong>{{ you ?? '—' }}</strong>
+      </p>
       <p>
         isMyTurn:
         <strong :class="isMyTurn ? 'text-green-700' : 'opacity-50'">{{ isMyTurn }}</strong>
       </p>
-      <p v-if="targeting" class="sm:col-span-3 text-emerald-900">
+      <p v-if="targeting" class="text-emerald-900 sm:col-span-3">
         выбор цели: {{ targeting.candidates?.length ?? 0 }} кандидат(ов)
       </p>
-      <p v-if="movement" class="sm:col-span-3 text-sky-800">
+      <p v-if="movement" class="text-sky-800 sm:col-span-3">
         перемещение открыто
         <template v-if="movement.bonus"> · усиление +{{ movement.bonus }}</template>
       </p>
-      <p v-if="combat" class="sm:col-span-3 text-amber-800">
+      <p v-if="combat" class="text-amber-800 sm:col-span-3">
         бой: {{ combat.stage }}
-        <template v-if="combat.targetFighterId">
-          · цель {{ combat.targetFighterId }}
-        </template>
+        <template v-if="combat.targetFighterId"> · цель {{ combat.targetFighterId }} </template>
         <template v-if="combat.defenderPlayerId">
           · защищается {{ combat.defenderPlayerId }}
         </template>
       </p>
-      <p v-if="lastCombat" class="sm:col-span-3 text-emerald-800">
-        прошлый бой: {{ lastCombat.attackValue }} vs {{ lastCombat.defenseValue }} →
-        урон {{ lastCombat.combatDamage }} · победил
+      <p v-if="lastCombat" class="text-emerald-800 sm:col-span-3">
+        прошлый бой: {{ lastCombat.attackValue }} vs {{ lastCombat.defenseValue }} → урон
+        {{ lastCombat.combatDamage }} · победил
         {{ lastCombat.winner === 'attacker' ? 'атакующий' : 'защитник' }}
         ({{ lastCombat.winnerPlayerId }})
       </p>
@@ -61,9 +78,10 @@
       </p>
     </section>
 
-    <div class="grid flex-1 gap-4 lg:grid-cols-[280px_1fr]">
+    <!-- доска — основная площадь экрана: две трети высоты и вся ширина, кроме боковой панели -->
+    <div class="grid flex-1 gap-4 lg:grid-cols-[240px_1fr]">
       <aside class="flex flex-col gap-3">
-        <section class="flex flex-col gap-2 border border-primary/15 p-3">
+        <section class="border-primary/15 flex flex-col gap-2 border p-3">
           <p class="text-14 font-medium">Hotseat</p>
           <p class="text-12 opacity-60">
             смотрите глазами:
@@ -77,7 +95,7 @@
             v-for="player in players"
             :key="player.id"
             type="button"
-            class="border border-primary/20 px-3 py-2 text-left text-14 disabled:opacity-40"
+            class="border-primary/20 text-14 border px-3 py-2 text-left disabled:opacity-40"
             :class="String(you) === String(player.id) ? 'bg-primary text-white' : ''"
             :disabled="pending || String(you) === String(player.id)"
             @click="onSwitchPlayer(player.id)"
@@ -90,14 +108,11 @@
           </button>
         </section>
 
-        <section
-          v-if="!isGameOver"
-          class="flex flex-col gap-2 border border-primary/15 p-3"
-        >
+        <section v-if="!isGameOver" class="border-primary/15 flex flex-col gap-2 border p-3">
           <p class="text-14 font-medium">Действия</p>
           <button
             type="button"
-            class="border border-primary/20 px-3 py-2 text-left text-14 disabled:opacity-40"
+            class="border-primary/20 text-14 border px-3 py-2 text-left disabled:opacity-40"
             :disabled="pending || isGameOver || !deckClickable"
             @click="onDeckClick"
           >
@@ -106,7 +121,7 @@
           <button
             v-if="okControl.visible"
             type="button"
-            class="bg-primary px-3 py-2 text-14 text-white disabled:opacity-40"
+            class="bg-primary text-14 px-3 py-2 text-white disabled:opacity-40"
             :disabled="pending || isGameOver || !okControl.enabled"
             @click="onFinishAction"
           >
@@ -116,7 +131,7 @@
           <button
             v-if="backControl.visible"
             type="button"
-            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
+            class="border-primary text-14 border px-3 py-2 disabled:opacity-40"
             :disabled="pending || isGameOver || !backControl.enabled"
             @click="onUiBack"
           >
@@ -125,7 +140,7 @@
           <button
             v-if="!isGameOver"
             type="button"
-            class="border border-primary px-3 py-2 text-14 disabled:opacity-40"
+            class="border-primary text-14 border px-3 py-2 disabled:opacity-40"
             :disabled="pending"
             @click="onResign"
           >
@@ -136,17 +151,17 @@
           </p>
         </section>
 
-        <section class="flex flex-col gap-2 border border-primary/15 p-3">
+        <section class="border-primary/15 flex flex-col gap-2 border p-3">
           <p class="text-14 font-medium">Бойцы</p>
           <p v-if="isPlacement" class="text-12 opacity-60">
             <template v-if="placementPhase === 'pickNumHero'">
               Выберите героя для номерной клетки.
             </template>
             <template v-else>
-              Расставьте всех бойцов в своей зоне, затем нажмите «ОК».
+              Расставьте всех бойцов на клетках в одной области с героем, затем нажмите «ОК».
             </template>
           </p>
-          <ul v-if="isPlacement" class="flex flex-col gap-1 text-12 opacity-70">
+          <ul v-if="isPlacement" class="text-12 flex flex-col gap-1 opacity-70">
             <li v-for="player in players" :key="`ready-${player.id}`">
               {{ player.name || player.id }}:
               {{ player.placementReady ? 'подтвердил' : 'расставляет…' }}
@@ -156,7 +171,7 @@
             v-for="fighter in myFighters"
             :key="fighter.id"
             type="button"
-            class="border border-primary/20 px-3 py-2 text-left text-14"
+            class="border-primary/20 text-14 border px-3 py-2 text-left"
             :class="
               String(selectedFighterId) === String(fighter.id)
                 ? 'bg-primary text-white'
@@ -166,20 +181,21 @@
           >
             {{ fighter.name || fighter.id }}
             <span class="opacity-70">
-              · {{ fighter.type }}
-              · hp {{ fighter.currentHp }}/{{ fighter.startHp }}
+              · {{ fighter.type }} · hp {{ fighter.currentHp }}/{{ fighter.startHp }}
               ·
               {{
                 fighter.currentPosition == null ? 'не на доске' : `кл. ${fighter.currentPosition}`
               }}
             </span>
           </button>
+          <ul v-if="myItems.length" class="text-12 flex flex-col gap-1 opacity-70">
+            <li v-for="item in myItems" :key="item.id">
+              {{ item.name || item.id }} · {{ itemStateLabel(item.state) }}
+            </li>
+          </ul>
         </section>
 
-        <section
-          v-if="isGameOver"
-          class="flex flex-col gap-2 border border-primary/15 p-3"
-        >
+        <section v-if="isGameOver" class="border-primary/15 flex flex-col gap-2 border p-3">
           <p class="text-14 font-medium">Итоги партии</p>
           <p class="text-16">
             Победа: <strong>{{ results?.winnerName ?? '—' }}</strong>
@@ -187,7 +203,7 @@
           <p class="text-12 opacity-70">
             раундов: {{ results?.round ?? '—' }} · ходов: {{ results?.turn ?? '—' }}
           </p>
-          <ul class="flex flex-col gap-1 text-12">
+          <ul class="text-12 flex flex-col gap-1">
             <li v-for="entry in results?.players ?? []" :key="`res-${entry.id}`">
               <strong>{{ entry.name }}</strong>
               <span v-if="entry.resigned" class="opacity-70"> · сдался</span>
@@ -208,7 +224,7 @@
           </ul>
           <button
             type="button"
-            class="bg-primary px-3 py-2 text-14 text-white"
+            class="bg-primary text-14 px-3 py-2 text-white"
             @click="onBackToMenu"
           >
             В меню
@@ -216,15 +232,54 @@
         </section>
 
         <section
+          v-if="choices.length"
+          class="flex flex-col gap-2 border border-amber-400/60 bg-amber-50 p-3"
+        >
+          <p class="text-14 font-medium">Свойство карты</p>
+          <button
+            v-for="choice in choices"
+            :key="choice.optionId"
+            type="button"
+            class="border-primary/20 text-14 border px-3 py-2 text-left disabled:opacity-40"
+            :class="choice.disabled ? 'bg-zinc-100' : 'bg-white'"
+            :disabled="pending || choice.disabled"
+            @click="onChoiceClick(choice.optionId)"
+          >
+            {{ choice.title }}
+            <span v-if="choice.disabled" class="opacity-70"> · недоступно</span>
+          </button>
+        </section>
+
+        <section
+          v-if="pickCandidates.length"
+          class="flex flex-col gap-2 border border-sky-400/60 bg-sky-50 p-3"
+        >
+          <p class="text-14 font-medium">Кого выбрать</p>
+          <button
+            v-for="fighter in pickCandidates"
+            :key="`pick-${fighter.id}`"
+            type="button"
+            class="border-primary/20 text-14 border bg-white px-3 py-2 text-left disabled:opacity-40"
+            :disabled="pending"
+            @click="onFighterClick({ fighterId: fighter.id })"
+          >
+            {{ fighter.name || fighter.id }}
+            <span class="opacity-70">
+              · {{ fighter.playerName }} · hp {{ fighter.currentHp }}
+            </span>
+          </button>
+        </section>
+
+        <section
           v-if="!isPlacement && !isGameOver"
-          class="flex flex-col gap-2 border border-primary/15 p-3"
+          class="border-primary/15 flex flex-col gap-2 border p-3"
         >
           <p class="text-14 font-medium">Hand ({{ myHand.length }})</p>
           <button
             v-for="card in myHand"
             :key="card.instanceId || card.id"
             type="button"
-            class="border border-primary/20 px-2 py-1.5 text-left text-12 disabled:opacity-40"
+            class="border-primary/20 text-12 border px-2 py-1.5 text-left disabled:opacity-40"
             :class="isCardPlayable(card) ? 'bg-white' : 'bg-zinc-100'"
             :disabled="pending || isGameOver || !isCardPlayable(card)"
             @click="onCardClick(card)"
@@ -232,12 +287,18 @@
             <span class="font-medium">{{ card.title || card.id }}</span>
             <span class="opacity-70">
               · {{ card.type }}{{ card.value != null ? ` ${card.value}` : '' }}
-              <template v-if="card.bonus != null">
-                · бон.{{ card.bonus }}
-              </template>
+              <template v-if="card.bonus != null"> · бон.{{ card.bonus }} </template>
+              · боец: {{ cardFighterLabel(card) }}
             </span>
-            <span class="mt-0.5 block opacity-80">
-              боец: {{ cardFighterLabel(card) }}
+            <span v-if="card.text" class="mt-0.5 block opacity-80">
+              {{ card.text }}
+            </span>
+            <span
+              v-for="option in card.options ?? []"
+              :key="option.id"
+              class="mt-0.5 block opacity-70"
+            >
+              — {{ option.text }}
             </span>
           </button>
           <p v-if="!myHand.length" class="text-12 opacity-50">пусто</p>
@@ -248,6 +309,7 @@
 
       <GameBoard
         class="min-h-140"
+        style="min-height: 66vh"
         :map="view?.map"
         :players="players"
         :selected-fighter-id="selectedFighterId"
@@ -264,14 +326,12 @@
       v-if="showPickNumHero"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
-      <div
-        class="flex max-w-md flex-col gap-4 border border-primary/20 bg-white p-6 shadow-lg"
-      >
+      <div class="border-primary/20 flex max-w-md flex-col gap-4 border bg-white p-6 shadow-lg">
         <p class="text-16 font-medium">Герой для номерной клетки</p>
         <label
           v-for="hero in myHeroes"
           :key="hero.id"
-          class="flex cursor-pointer items-center gap-3 border border-primary/15 p-3"
+          class="border-primary/15 flex cursor-pointer items-center gap-3 border p-3"
         >
           <input
             v-model="selectedNumHeroId"
@@ -287,7 +347,7 @@
 
     <details v-if="view" class="text-14 opacity-70">
       <summary class="cursor-pointer">view (raw)</summary>
-      <pre class="mt-2 max-h-60 overflow-auto border border-primary/10 p-3 text-12">{{
+      <pre class="border-primary/10 text-12 mt-2 max-h-60 overflow-auto border p-3">{{
         viewJson
       }}</pre>
     </details>
@@ -333,6 +393,12 @@ const {
   myHeroes,
   deckCount,
   results,
+  choices,
+  myItems,
+  itemStateLabel,
+  pickCandidates,
+  combatInfo,
+  revealedCards,
   deckClickable,
   okControl,
   backControl,
@@ -350,6 +416,7 @@ const {
   onSwitchPlayer,
   onDeckClick,
   onCardClick,
+  onChoiceClick,
   onFinishAction,
   onUiBack,
   onResign,

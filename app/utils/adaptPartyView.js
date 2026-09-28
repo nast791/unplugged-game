@@ -1,13 +1,14 @@
-const zoneCards = zone => {
-  if (!zone) return [];
-  if (Array.isArray(zone.cards)) return zone.cards.map(c => ({ ...c }));
-  return [];
-};
+/** Карты зоны: сервер прячет чужую зону целиком, поэтому список может быть пустым. */
+const zoneCards = zone => (Array.isArray(zone?.cards) ? zone.cards.map(card => ({ ...card })) : []);
 
-const zoneCount = zone =>
-  zone?.count ?? (Array.isArray(zone?.cards) ? zone.cards.length : 0);
+/** Сколько карт в зоне: сервер отдаёт либо список карт, либо только счётчик (закрытая колода). */
+const zoneCount = zone => zone?.count ?? (Array.isArray(zone?.cards) ? zone.cards.length : 0);
 
-/** Host view → формат useGameHelpers (phase, currentPlayer, hand[]). */
+/**
+ * Проекция сервера → формат клиента: хук как `phase`, объект `turn` как числа, зоны как массивы карт.
+ * Из зон клиент читает только свою руку (карты) и число карт в колоде, поэтому закрытые колода и сброс
+ * в view не переносятся — иначе они висели бы в состоянии клиента без дела.
+ */
 export const adaptPartyView = raw => {
   if (!raw) return null;
 
@@ -20,14 +21,10 @@ export const adaptPartyView = raw => {
     turn: turnObj?.index ?? (typeof raw.turn === 'number' ? raw.turn : 0),
     actionsLeft: turnObj?.actionsLeft ?? raw.actionsLeft ?? 0,
     winner: raw.winner ?? null,
-    players: (raw.players ?? []).map(p => ({
+    players: (raw.players ?? []).map(({ deck, discard, hand, ...p }) => ({
       ...p,
-      hand: zoneCards(p.hand),
-      deck: zoneCards(p.deck),
-      discard: zoneCards(p.discard),
-      handCount: zoneCount(p.hand),
-      deckCount: zoneCount(p.deck),
-      discardCount: zoneCount(p.discard),
+      hand: zoneCards(hand),
+      deckCount: zoneCount(deck),
     })),
   };
 };

@@ -1,4 +1,4 @@
-import { SET_CARDS } from '#shared/actions-new/cards.js';
+import { SET_CARDS } from '#shared/actions/cards.js';
 import { rules } from '#shared/constants/rules.js';
 import {
   handCardIds,
@@ -43,9 +43,7 @@ export default {
   moves: {
     PICK: (partyState, action) => {
       if (action.kind !== 'card') {
-        throw new Error(
-          `PICK: при сбросе руки доступен клик по карте (пришло "${action.kind}")`,
-        );
+        throw new Error(`PICK: при сбросе руки доступен клик по карте (пришло "${action.kind}")`);
       }
       return SET_CARDS(partyState, {
         playerId: action.playerId,

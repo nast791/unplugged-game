@@ -1,5 +1,6 @@
 import { runUi } from '#shared/core.js';
 import { cardKey } from '#shared/helpers/cards.js';
+import { fighterClickIntent, fighterPickExpected } from '#shared/helpers/ui.js';
 
 /**
  * UI-сессия партии: что видно и что кликается, считает runUi(state, viewerId).
@@ -86,8 +87,100 @@ export const useGameSession = () => {
   const results = computed(() => ui.value?.results ?? null);
   const showPickNumHero = computed(() => Boolean(ui.value?.modals?.pickNumHero));
 
+  /** Варианты свойства карты: движок отдаёт их с пометкой `disabled` — недоступный выбрать нельзя. */
+  const choices = computed(() =>
+    (ui.value?.choices ?? []).map(entry => ({
+      optionId: String(entry.optionId),
+      title: entry.title ?? String(entry.optionId),
+      disabled: entry.disabled === true,
+    })),
+  );
+
   const isCardPlayable = card => playableCardIds.value.includes(cardKey(card));
   const isCardDisabled = card => disabledCardIds.value.includes(cardKey(card));
+
+  /** Предметы игрока (у Теслы — катушки): их состояния читают свойства карт, поэтому показываем. */
+  const myItems = computed(() => me.value?.items ?? []);
+  const itemStateLabel = state => {
+    if (state === 'active') return 'активна';
+    if (state === 'inactive') return 'разряжена';
+    return state == null ? '—' : String(state);
+  };
+
+  /**
+   * Ждёт ли движок клика по бойцу: объявление атаки (выбор атакующего или цели) и окно выбора цели.
+   * Перемещение и расстановка тоже подсвечивают бойцов, но там клик только выбирает бойца для хода.
+   * Правило живёт в shared/helpers/ui.js: `view.phase` — это хук (`turn`), а не имя фазы,
+   * и путать их нельзя (на этом клик по атакующему перестал доходить до движка).
+   */
+  const expectsFighterPick = computed(() => fighterPickExpected(ui.value));
+
+  /** Кого сейчас можно отметить: кандидаты боя или окна цели — их же показываем кнопками. */
+  const pickCandidates = computed(() => {
+    if (!expectsFighterPick.value) return [];
+    const ids = new Set(highlightedFighterIds.value);
+
+    return (players.value ?? [])
+      .flatMap(entry =>
+        (entry.fighters ?? []).map(fighter => ({
+          ...fighter,
+          playerName: entry.name ?? entry.id,
+        })),
+      )
+      .filter(fighter => ids.has(String(fighter.id)));
+  });
+
+  /**
+   * Раскрытая карта («Раскройте» = показать всем): движок держит снимок в `state.reveal`,
+   * показываем её всем, кто смотрит на экран.
+   */
+  const revealedCards = computed(() =>
+    (view.value?.reveal ?? []).flatMap(entry =>
+      (entry.cards ?? []).map(card => ({
+        ...card,
+        ownerId: entry.playerId,
+        ownerName:
+          (players.value ?? []).find(player => String(player.id) === String(entry.playerId))
+            ?.name ?? String(entry.playerId),
+      })),
+    ),
+  );
+
+  const fighterLabel = id => {
+    if (id == null) return '—';
+    for (const entry of players.value ?? []) {
+      const fighter = (entry.fighters ?? []).find(
+        item => String(item.id) === String(id),
+      );
+      if (fighter) return `${fighter.name || fighter.id} (${entry.name ?? entry.id})`;
+    }
+    return String(id);
+  };
+
+  /** Что сейчас на столе в бою: разыгранная карта, кто атакует, кого бьют, чем защищаются. */
+  const combatInfo = computed(() => {
+    const current = combat.value;
+    if (!current) return '';
+
+    const parts = [];
+    const attackCard = current.attackCard;
+    if (attackCard) {
+      parts.push(`карта боя «${attackCard.title ?? attackCard.id}»`);
+    }
+    if (current.attackerFighterId) {
+      parts.push(`атакует ${fighterLabel(current.attackerFighterId)}`);
+    }
+    if (current.targetFighterId) {
+      parts.push(`цель ${fighterLabel(current.targetFighterId)}`);
+    }
+    const defenseCard = current.defenseCard;
+    if (defenseCard) {
+      parts.push(`защита «${defenseCard.title ?? defenseCard.id}»`);
+    }
+    if (!parts.length) return '';
+
+    return `Бой (${current.stage}): ${parts.join(' · ')}`;
+  });
 
   const boardInteractive = computed(
     () =>
@@ -145,11 +238,15 @@ export const useGameSession = () => {
     ensureSelection();
   };
 
-  /** Кто должен смотреть на экран: защитник в бою, владелец выбора цели или активный игрок. */
+  /** Кто должен смотреть на экран: владелец паузы эффекта, защитник в бою, владелец выбора цели или активный игрок. */
   const hotseatTarget = () => {
     const current = view.value;
     if (!current) return null;
     if (current.phase === 'gameEnd' || current.phase === 'turnEnd') return null;
+    // пауза эффекта (например, враг выбирает карту для сброса) — смотреть должен тот, кто выбирает
+    if (current.combat?.choice?.playerId != null) {
+      return current.combat.choice.playerId;
+    }
     if (current.combat?.stage === 'defense') {
       return current.combat.defenderPlayerId ?? null;
     }
@@ -193,6 +290,22 @@ export const useGameSession = () => {
   const onFinishAction = () =>
     send({ type: 'UI_OK' });
 
+  /** Отметка варианта свойства: PICK kind 'option'. Недоступный вариант клик не отправляет. */
+  const onChoiceClick = optionId => {
+    const choice = choices.value.find(
+      entry => String(entry.optionId) === String(optionId),
+    );
+    if (!choice) {
+      message.value = 'Такого варианта нет';
+      return undefined;
+    }
+    if (choice.disabled) {
+      message.value = 'Этот вариант сейчас недоступен';
+      return undefined;
+    }
+    return pick({ kind: 'option', id: choice.optionId });
+  };
+
   const onUiBack = () => send({ type: 'UI_BACK' });
 
   /** Сдаться можно в любой момент: RESIGN — общий move, доступный в каждой фазе. */
@@ -222,24 +335,37 @@ export const useGameSession = () => {
     message.value = '';
   };
 
-  /** Клик по фишке: подсвеченного бойца отдаём движку, своего — просто выбираем. */
+  /**
+   * Клик по фишке: что он значит — решает общее правило (`fighterClickIntent`): кандидат уходит движку,
+   * подсвеченный боец (в том числе чужой — принудительное перемещение) просто выбирается для шага.
+   */
   const onFighterClick = ({ fighterId }) => {
     const id = String(fighterId);
-    if (highlightedFighterIds.value.includes(id)) {
-      return pick({ kind: 'fighter', id });
-    }
-    if (myFighters.value.some(fighter => String(fighter.id) === id)) {
+    const intent = fighterClickIntent(
+      ui.value,
+      id,
+      myFighters.value.map(fighter => fighter.id),
+    );
+
+    if (intent === 'pick') return pick({ kind: 'fighter', id });
+    if (intent === 'select') {
       selectFighter(id);
       return undefined;
     }
-    message.value = 'Этот боец сейчас недоступен';
+
+    const candidateNames = pickCandidates.value
+      .map(fighter => fighter.name || fighter.id)
+      .join(', ');
+    message.value = candidateNames
+      ? `Сейчас можно выбрать: ${candidateNames}`
+      : 'Этого бойца сейчас выбрать нельзя';
     return undefined;
   };
 
   /** Клик по клетке: в расстановке — поставить бойца, в ходу — шаг по подсвеченной клетке. */
   const onCellClick = cellId => {
     if (selectedFighterId.value == null) {
-      message.value = 'Сначала выберите своего бойца';
+      message.value = 'Сначала выберите бойца';
       return undefined;
     }
 
@@ -292,6 +418,12 @@ export const useGameSession = () => {
     myHeroes,
     deckCount,
     results,
+    choices,
+    myItems,
+    itemStateLabel,
+    pickCandidates,
+    combatInfo,
+    revealedCards,
     deckClickable,
     playableCardIds,
     disabledCardIds,
@@ -310,15 +442,22 @@ export const useGameSession = () => {
     isCardDisabled,
     cardFighterLabel: card => {
       if (card?.fighter == null) return 'любой';
-      const fighter = myFighters.value.find(
-        entry => String(entry.id) === String(card.fighter),
-      );
-      return fighter?.name || String(card.fighter);
+      const binding = String(card.fighter);
+      const mine = myFighters.value;
+      // привязка бывает и группой помощников: показываем имя бойца, иначе — название группы
+      const fighter =
+        mine.find(entry => String(entry.id) === binding) ??
+        mine.find(entry => String(entry.group) === binding);
+      if (fighter) {
+        return fighter.name || fighter.id;
+      }
+      return binding === 'any' ? 'любой' : binding;
     },
     selectFighter,
     onSwitchPlayer,
     onDeckClick,
     onCardClick,
+    onChoiceClick,
     onFinishAction,
     onUiBack,
     onResign,

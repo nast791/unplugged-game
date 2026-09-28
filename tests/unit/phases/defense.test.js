@@ -40,14 +40,10 @@ describe('phase defense', () => {
 
   it('подсказки: с картой защиты и без неё', () => {
     const state = battleState();
-    expect(resolvePhaseHint(defense.hints, state, '1')).toMatch(
-      /Защититесь картой/,
-    );
+    expect(resolvePhaseHint(defense.hints, state, '1')).toMatch(/Защититесь картой/);
 
     player(state, '1').hand.cards = [];
-    expect(resolvePhaseHint(defense.hints, state, '1')).toMatch(
-      /Карт защиты нет/,
-    );
+    expect(resolvePhaseHint(defense.hints, state, '1')).toMatch(/Карт защиты нет/);
   });
 
   it('ui: playable только карты защиты, подсвечен атакующий, кнопка активна', () => {
@@ -74,12 +70,8 @@ describe('phase defense', () => {
     expect(fighterOf(state, '1', 'beta').currentHp).toBe(12);
     expect(state.lastCombat.combatDamage).toBe(1);
     expect(state.lastCombat.defendedWithCard).toBe(true);
-    expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual([
-      'atk_0',
-    ]);
-    expect(discard(player(state, '1')).map(card => card.instanceId)).toEqual([
-      'bdef_0',
-    ]);
+    expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual(['atk_0']);
+    expect(discard(player(state, '1')).map(card => card.instanceId)).toEqual(['bdef_0']);
     expect(activePhase(state, '0')?.name).toBe('choose');
     expect(activePhase(state, '1')?.name).toBe('waiting');
   });
@@ -99,12 +91,16 @@ describe('phase defense', () => {
 
   it('отклоняет клик не по карте и попытки атакующего', () => {
     const state = battleState();
-    expect(() =>
-      defense.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '1' }),
-    ).toThrow(/карте защиты/);
+    expect(() => defense.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '1' })).toThrow(
+      /карте защиты/,
+    );
+    // цель уже выбрана движком: повторный клик по ней безвреден, а по своему бойцу — ошибка
     expect(() =>
       attack.moves.PICK(state, { kind: 'fighter', id: 'beta', playerId: '0' }),
-    ).toThrow(/некого/);
+    ).not.toThrow();
+    expect(() => attack.moves.PICK(state, { kind: 'fighter', id: 'alpha', playerId: '0' })).toThrow(
+      /некого/,
+    );
   });
 
   it('после смертельного урона партия завершается', () => {

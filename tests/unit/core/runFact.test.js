@@ -77,9 +77,9 @@ describe('runFact / runFacts', () => {
 
   it('runFacts: неизвестная $переменная — ошибка, а не пустая подстановка', () => {
     const state = createState();
-    expect(() =>
-      runFacts(state, [{ fact: 'HAND', params: { of: '$nobody' } }]),
-    ).toThrow(/не задана/);
+    expect(() => runFacts(state, [{ fact: 'HAND', params: { of: '$nobody' } }])).toThrow(
+      /не задана/,
+    );
   });
 
   it('NEXT_PLAYER пропускает мёртвого', () => {

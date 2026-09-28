@@ -1,11 +1,12 @@
 <template>
   <div
     ref="wrapRef"
-    class="relative min-h-80 w-full overflow-hidden border border-primary/15 bg-[#f4f4f5]"
+    class="border-primary/15 relative h-full min-h-96 w-full overflow-hidden border bg-[#eef1f4]"
   >
     <ClientOnly>
       <v-stage v-if="stageReady" :config="stageConfig">
         <v-layer>
+          <!-- соединители идут под кружками: сквозь заливку их не видно -->
           <v-line v-for="(line, idx) in edgeLines" :key="`e-${idx}`" :config="line" />
 
           <v-group
@@ -15,8 +16,31 @@
             @click="onNodeClick(node.id, $event)"
             @tap="onNodeClick(node.id, $event)"
           >
+            <!-- база даёт заливку и тень; сектора цветной клетки рисуются поверх -->
             <v-circle :config="nodeCircleConfig(node)" />
-            <v-text :config="nodeLabelConfig(node)" />
+            <template v-if="sectorsOf(node).length">
+              <v-wedge
+                v-for="(sector, index) in sectorsOf(node)"
+                :key="`w-${index}`"
+                :config="sectorConfig(sector)"
+              />
+              <!-- тонкие чёрные полоски между секторами: светлые заливки иначе сливаются -->
+              <v-line
+                v-for="(divider, index) in dividersOf(node)"
+                :key="`d-${index}`"
+                :config="divider"
+              />
+              <v-circle :config="nodeOutlineConfig(node)" />
+            </template>
+            <v-text :config="cellLabelConfig(node)" />
+          </v-group>
+
+          <!-- маркеры стартовых клеток: маленькие кружки с номерами, только на расстановке -->
+          <v-group :config="{ listening: false }">
+            <template v-for="marker in startMarkersOf" :key="`m-${marker.id}`">
+              <v-circle :config="marker.disc" />
+              <v-text :config="marker.label" />
+            </template>
           </v-group>
 
           <v-group
@@ -33,13 +57,28 @@
         </v-layer>
       </v-stage>
       <template #fallback>
-        <p class="p-4 text-14 opacity-60">Загрузка доски…</p>
+        <p class="text-14 p-4 opacity-60">Загрузка доски…</p>
       </template>
     </ClientOnly>
   </div>
 </template>
 
 <script setup>
+import { terrainColor } from '#shared/constants/terrain.js';
+import {
+  SHADOW,
+  STROKE,
+  bendFor,
+  curvePoints,
+  fieldBounds,
+  nodeLabelConfig,
+  nodeRadius,
+  placementMarkers,
+  placementOngoing,
+  sectorDividers,
+  sectorWedges,
+} from '../../utils/boardGeometry.js';
+
 const props = defineProps({
   map: { type: Object, default: null },
   players: { type: Array, default: () => [] },
@@ -57,8 +96,8 @@ const stageReady = ref(false);
 const size = ref({ width: 720, height: 480 });
 
 const nodes = computed(() => (Array.isArray(props.map?.nodes) ? props.map.nodes : []));
-
-const nodeSize = computed(() => Number(props.map?.settings?.nodeSize) || 64);
+const nodeSize = computed(() => Number(props.map?.settings?.nodeSize) || 72);
+const radius = computed(() => nodeRadius(nodeSize.value));
 
 const highlightedSet = computed(
   () => new Set((props.highlightedCellIds || []).map(id => String(id))),
@@ -66,12 +105,29 @@ const highlightedSet = computed(
 
 const isHighlighted = node => highlightedSet.value.has(String(node.id));
 
+/**
+ * Стихии клетки: основная задаёт заливку, у двух- и трёхцветных клеток их несколько —
+ * такая клетка принадлежит сразу всем своим областям (docs/terrain.md).
+ */
+const nodeTerrains = node => {
+  const raw = node?.terrain;
+  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  return list.filter(Boolean).map(String);
+};
+
+const sectorsOf = node => sectorWedges(nodeTerrains(node));
+const dividersOf = node => sectorDividers(nodeTerrains(node), radius.value);
+
 const nodeById = computed(() => {
   const map = new Map();
   for (const n of nodes.value) map.set(String(n.id), n);
   return map;
 });
 
+/**
+ * Соединители: почти никогда не прямые, толстые, идут под кружками и упираются в их границы.
+ * Одна пара клеток — одна линия, поэтому пары собираем через ключ.
+ */
 const edgeLines = computed(() => {
   const seen = new Set();
   const lines = [];
@@ -85,9 +141,12 @@ const edgeLines = computed(() => {
       const other = nodeById.value.get(b);
       if (!other) continue;
       lines.push({
-        points: [node.x, node.y, other.x, other.y],
-        stroke: '#94a3b8',
-        strokeWidth: 2,
+        points: curvePoints(node, other, radius.value, bendFor(node, other)),
+        bezier: true,
+        stroke: STROKE.edgeColor,
+        strokeWidth: STROKE.edge,
+        lineCap: 'round',
+        ...SHADOW.edge,
         listening: false,
       });
     }
@@ -120,41 +179,26 @@ const placedFighters = computed(() => {
   const placed = [];
   for (const group of groups.values()) {
     group.forEach((token, i) => {
-      const offset = group.length > 1 ? (i - (group.length - 1) / 2) * 14 : 0;
+      const offset = group.length > 1 ? (i - (group.length - 1) / 2) * 16 : 0;
       placed.push({ ...token, x: token.x + offset, y: token.y - offset });
     });
   }
   return placed;
 });
 
-const bounds = computed(() => {
-  if (!nodes.value.length) {
-    return { minX: 0, minY: 0, maxX: 400, maxY: 300 };
-  }
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const n of nodes.value) {
-    minX = Math.min(minX, n.x);
-    minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x);
-    maxY = Math.max(maxY, n.y);
-  }
-  const pad = nodeSize.value;
-  return {
-    minX: minX - pad,
-    minY: minY - pad,
-    maxX: maxX + pad,
-    maxY: maxY + pad,
-  };
-});
+/** Маркеры стартовых клеток: пока расстановка не подтверждена всеми, потом исчезают навсегда. */
+const startMarkersOf = computed(() => placementMarkers(nodes.value, radius.value, props.players));
 
+const bounds = computed(() =>
+  fieldBounds(nodes.value, radius.value, { showMarkers: placementOngoing(props.players) }),
+);
+
+/** Поле занимает почти всю область: масштаб подгоняем по контейнеру, а не по «капитанскому» пределу. */
 const stageConfig = computed(() => {
   const { minX, minY, maxX, maxY } = bounds.value;
   const contentW = Math.max(maxX - minX, 1);
   const contentH = Math.max(maxY - minY, 1);
-  const scale = Math.min(size.value.width / contentW, size.value.height / contentH, 2);
+  const scale = Math.min(size.value.width / contentW, size.value.height / contentH, 4);
   return {
     width: size.value.width,
     height: size.value.height,
@@ -167,27 +211,48 @@ const stageConfig = computed(() => {
   };
 });
 
-const isStartNode = node => node?.position != null;
+/** Границы клеток одинаковые: номерную клетку видно по ромбику героя, а не по толщине. */
+const nodeStroke = node => {
+  if (isHighlighted(node)) return { color: '#0284c7', width: STROKE.highlight };
+  return { color: STROKE.edgeColor, width: STROKE.cell };
+};
 
+/** Заливка клетки = её стихия; клетка непрозрачная, с тенью, чтобы соединители не просвечивали. */
 const nodeCircleConfig = node => {
-  const lit = isHighlighted(node);
+  const stroke = nodeStroke(node);
   return {
-    radius: nodeSize.value / 2,
-    fill: Array.isArray(node.areas) && node.areas[0] ? node.areas[0] : '#cbd5e1',
-    opacity: lit ? 1 : isStartNode(node) ? 0.9 : 0.55,
-    stroke: lit ? '#0284c7' : '#141414',
-    strokeWidth: lit ? 4 : isStartNode(node) ? 2 : 1,
+    radius: radius.value,
+    fill: terrainColor(nodeTerrains(node)[0]),
+    opacity: 1,
+    stroke: stroke.color,
+    strokeWidth: stroke.width,
+    ...SHADOW.cell,
   };
 };
 
-const nodeLabelConfig = node => ({
-  text: String(node.id),
-  fontSize: 12,
-  fill: '#141414',
-  offsetX: 4,
-  offsetY: 6,
+/** Цветная клетка: сектора «пирогом» и толстая граница поверх них. */
+const nodeOutlineConfig = node => {
+  const stroke = nodeStroke(node);
+  return {
+    radius: radius.value,
+    fill: undefined,
+    opacity: 1,
+    stroke: stroke.color,
+    strokeWidth: stroke.width,
+    listening: false,
+  };
+};
+
+const sectorConfig = sector => ({
+  radius: radius.value,
+  angle: sector.angle,
+  rotation: sector.rotation,
+  fill: sector.color,
   listening: false,
 });
+
+/** Подпись внутри клетки — id клетки; номер героя на расстановке рисуется кружком на границе. */
+const cellLabelConfig = node => nodeLabelConfig(node, radius.value);
 
 const highlightedFighterSet = computed(
   () => new Set((props.highlightedFighterIds || []).map(id => String(id))),
@@ -197,7 +262,7 @@ const framedFighterSet = computed(
   () => new Set((props.framedFighterIds || []).map(id => String(id))),
 );
 
-/** Рамка выбранного бойца — красная, подсветка кандидата — синяя. */
+/** Рамка выбранного бойца — красная, подсветка кандидата — синяя, заметная (толще и ярче). */
 const fighterHaloConfig = token => {
   const id = String(token.fighter.id);
   const framed = framedFighterSet.value.has(id);
@@ -205,30 +270,31 @@ const fighterHaloConfig = token => {
   const selected = String(props.selectedFighterId) === id;
 
   return {
-    radius: nodeSize.value / 3 + 6,
+    radius: radius.value * (framed || highlighted ? 0.92 : 0.82),
     fill: selected && !framed && !highlighted ? token.color : 'transparent',
     opacity: framed || highlighted ? 1 : 0.35,
-    stroke: framed ? '#dc2626' : highlighted ? '#0284c7' : 'transparent',
-    strokeWidth: framed ? 4 : highlighted ? 3 : 0,
+    stroke: framed ? '#dc2626' : highlighted ? '#0ea5e9' : 'transparent',
+    strokeWidth: framed ? 5 : highlighted ? 5 : 0,
     listening: false,
   };
 };
 
 const fighterBodyConfig = token => ({
-  radius: nodeSize.value / 3,
+  radius: radius.value * 0.62,
   fill: token.color,
   stroke: '#fff',
-  strokeWidth: 2,
+  strokeWidth: 3,
 });
 
 const fighterLabelConfig = token => ({
   text: String(token.fighter.name || token.fighter.id).slice(0, 1),
-  fontSize: 14,
+  fontSize: Math.round(radius.value * 0.62),
   fontStyle: 'bold',
   fill: '#fff',
+  width: radius.value * 1.24,
   align: 'center',
-  offsetX: 5,
-  offsetY: 7,
+  x: -radius.value * 0.62,
+  y: -radius.value * 0.32,
   listening: false,
 });
 

@@ -9,8 +9,8 @@ const card = medusaCards.find(entry => entry.id === 'medusa_03');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], areas: ['#blue'] },
-    { id: 2, neighbors: [1], areas: ['#blue'] },
+    { id: 1, neighbors: [2], terrain: 'arcane' },
+    { id: 2, neighbors: [1], terrain: 'arcane' },
   ],
 };
 
@@ -53,13 +53,8 @@ const battleState = (enemyHand = []) =>
     phase: PHASES.turn,
     map: lineMap,
     players: [
-      slot('0', 'Медуза', 1, [hero('medusa', 1, 16)], [
-        { ...card, instanceId: 'medusa_03_1' },
-      ]),
-      slot('1', 'Бета', 2, [hero('beta', 2, 13)], [
-        handCard('batk', 'attack'),
-        ...enemyHand,
-      ]),
+      slot('0', 'Медуза', 1, [hero('medusa', 1, 16)], [{ ...card, instanceId: 'medusa_03_1' }]),
+      slot('1', 'Бета', 2, [hero('beta', 2, 13)], [handCard('batk', 'attack'), ...enemyHand]),
     ],
     turn: { index: 1, playerId: '1', actedRound: ['1'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -90,8 +85,7 @@ const answerDefense = state =>
     playerId: '0',
   });
 
-const handIds = (state, playerId) =>
-  player(state, playerId).hand.cards.map(entry => entry.id);
+const handIds = (state, playerId) => player(state, playerId).hand.cards.map(entry => entry.id);
 
 describe('карта medusa_03 «Шепот змей»', () => {
   it('описана правилами, момент — из списка', () => {
@@ -137,10 +131,7 @@ describe('карта medusa_03 «Шепот змей»', () => {
 
     expect(after.combat).toBeNull();
     expect(handIds(after, '1')).toEqual(['other']);
-    expect(player(after, '1').discard.cards.map(entry => entry.id)).toEqual([
-      'spare',
-      'batk',
-    ]);
+    expect(player(after, '1').discard.cards.map(entry => entry.id)).toEqual(['spare', 'batk']);
   });
 
   it('от обязательного сброса нельзя отказаться: кнопка неактивна', () => {
@@ -148,9 +139,7 @@ describe('карта medusa_03 «Шепот змей»', () => {
 
     // ничего не выбрано и отказаться нельзя — общая кнопка выключена
     expect(runUi(state, '1').controls.ok.enabled).toBe(false);
-    expect(() => runAction(state, { type: 'UI_OK', playerId: '1' })).toThrow(
-      /нельзя отказаться/,
-    );
+    expect(() => runAction(state, { type: 'UI_OK', playerId: '1' })).toThrow(/нельзя отказаться/);
 
     // выбрал карту — сброс обязателен и без дополнительных подтверждений
     const after = runAction(state, {
@@ -159,10 +148,7 @@ describe('карта medusa_03 «Шепот змей»', () => {
       id: 'spare_1',
       playerId: '1',
     });
-    expect(player(after, '1').discard.cards.map(entry => entry.id)).toEqual([
-      'spare',
-      'batk',
-    ]);
+    expect(player(after, '1').discard.cards.map(entry => entry.id)).toEqual(['spare', 'batk']);
   });
 
   it('если у врага нет карт в руке, эффект просто игнорируется', () => {

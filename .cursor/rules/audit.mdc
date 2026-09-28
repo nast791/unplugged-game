@@ -10,7 +10,7 @@ alwaysApply: false
 - [ ] **Ход:** MOVE, ATTACK, DEFEND, END_TURN, AP, pending (combat, movement, handDiscard, effectPrompt).
 - [ ] **Create/view:** `createGame`, `party.view`, hidePos на gameStart, seed не в view.
 - [ ] **Сценарии:** placement-to-combat, move-bonus — end-to-end через `runAction`.
-- [ ] Новый код в `phases/`, `actions-new/`, `helpers/` — unit-тест на каждый публичный контракт.
+- [ ] Новый код в `phases/`, `actions/`, `helpers/` — unit-тест на каждый публичный контракт.
 - [ ] Нет тестов «ради coverage» на тривиальные getter/setter.
 ## 2. Документация
 - [ ] `.cursor/rules/architecture.mdc` актуален относительно кода.
@@ -19,7 +19,7 @@ alwaysApply: false
 - [ ] Новые action types / поля state — отражены в internal-logic.
 - [ ] Публичный README (если есть) не противоречит architecture.
 ## 3. Мёртвый код и сокращение
-- [ ] Нет неиспользуемых export в `shared/actions/` после миграции на `actions-new/`.
+- [ ] Нет неиспользуемых export в `shared/actions/` и `shared/facts/`.
 - [ ] Нет дублирования placement-логики в старом `place.js` и новых phases.
 - [ ] `gameEngine.js` — только re-export или удалён после перехода на `core.js`.
 - [ ] Нет `lifecycle/index.js` и прочих агрегаторов без потребителей.
@@ -29,7 +29,7 @@ alwaysApply: false
 - [ ] **`core.runAction`:** `assertPlayer`, `assertTurn`, `assertPending` — каждый guard покрыт тестом на throw и не дублирует проверки handler/phases.
 - [ ] **gameStart:** PLACE / UI_OK / UI_BACK доступны любому игроку; turn-ходы — только `turn.playerId` (и исключения pending: DEFEND, DISCARD_CARDS, RESOLVE_EFFECT).
 - [ ] **Phases:** `active(state, playerId)` согласован с guards в `ok` / `back` / actions — нельзя обойти guard через UI или другой action type.
-- [ ] **Handlers / actions-new:** бизнес-проверки (locked hero, placementReady, hook) — явные throw с понятным message; нет «тихого» no-op там, где ожидается ошибка.
+- [ ] **Handlers / actions:** бизнес-проверки (locked hero, placementReady, hook) — явные throw с понятным message; нет «тихого» no-op там, где ожидается ошибка.
 - [ ] **Сервер:** `state.post` — id / playerId; create — validateCreate; guards не ослаблены относительно core.
 - [ ] **Новый action / phase** — добавлен guard (или обосновано, почему не нужен) и тест «отклоняет неверный контекст».
 ## 5. Баги и логические ошибки
@@ -45,11 +45,12 @@ alwaysApply: false
 ## 7. Несоответствие задуманной логике
 - [ ] Сверка с `internal-logic.mdc` по каждому lifecycle hook.
 - [ ] Team mode TODO — если включён mode 2v2, проверить attack/move/facts/winner.
-- [ ] Карты `@nast791/cards` — phase = hook, не смешивать combat hooks.
+- [ ] Фаззинг-бот (`pnpm test:bot`, 2000 партий) — без падений, тупиков и пустых действий.
 - [ ] View fields ⊆ `stateFields` / `playerFields`.
 ## 8. Сломано / не работает
-- [ ] `npm test` — все green.
-- [ ] `nuxt build` — без ошибок.
+- [ ] `pnpm test` — все green.
+- [ ] `pnpm build` — без ошибок.
+- [ ] `server/create.js` (домен) не тянет Nitro: его импортируют бот и тесты, HTTP-адаптер — только `api/game/create.post.js`.
 - [ ] Лобби → create → game → placement → turn — ручной smoke.
 - [ ] POST state с неверным gameId / playerId — корректные 400.
 - [ ] Regression: RESIGN (когда будет в core) → gameEnd.

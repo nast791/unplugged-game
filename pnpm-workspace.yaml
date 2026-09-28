@@ -4,9 +4,6 @@ allowBuilds:
   sharp: true
   vue-demi: true
 
-minimumReleaseAgeExclude:
-  - '@nast791/engine@0.3.0'
-
 # Engine peer pinned to 3.5.29; Nuxt 4.4.8 needs >=3.5.35
 peerDependencyRules:
   allowedVersions:

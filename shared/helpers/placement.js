@@ -1,10 +1,5 @@
-import {
-  findOwnedFighter,
-  findPlayer,
-  occupiedOwnCellIds,
-  playerHeroes,
-  seatIndex,
-} from '#shared/helpers/base.js';
+import { findOwnedFighter, findPlayer, playerHeroes, seatIndex } from '#shared/helpers/base.js';
+import { occupiedCellIds } from '#shared/helpers/turn.js';
 
 export const findNode = (partyState, cellId) => {
   const nodes = partyState.map?.nodes;
@@ -12,52 +7,42 @@ export const findNode = (partyState, cellId) => {
   return nodes.find(entry => String(entry.id) === String(cellId)) ?? null;
 };
 
-/** Id области клетки = первый цвет в node.areas (одинаковый цвет = одна область). */
-export const nodeAreaId = node => {
-  const areas = node?.areas;
-  if (!Array.isArray(areas) || areas.length === 0) return null;
-  return String(areas[0]);
+/**
+ * Стихии клетки. Обычно одна, но у двух- и трёхцветных клеток их несколько: такая клетка
+ * принадлежит сразу всем своим областям (стык зон, см. `docs/terrain.md`).
+ */
+export const nodeTerrains = node => {
+  const raw = node?.terrain;
+  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  return list.filter(terrain => terrain != null && terrain !== '').map(terrain => String(terrain));
 };
 
-/** Все области клетки: многоцветная клетка считается сразу во всех своих зонах. */
-export const nodeAreaIds = node => {
-  const areas = node?.areas;
-  if (!Array.isArray(areas)) return [];
-  return areas.map(String);
-};
+/** Основная стихия клетки — она и задаёт цвет заливки. */
+export const nodeTerrain = node => nodeTerrains(node)[0] ?? null;
 
-export const cellAreaIds = (partyState, cellId) => {
+export const cellTerrains = (partyState, cellId) => {
   if (cellId == null) return [];
-  return nodeAreaIds(findNode(partyState, cellId));
+  return nodeTerrains(findNode(partyState, cellId));
 };
 
-/** Общая область у двух клеток: многоцветная клетка совпадает по любой своей зоне. */
+export const cellTerrain = (partyState, cellId) => cellTerrains(partyState, cellId)[0] ?? null;
+
+/** Общая область у двух клеток: у них есть хотя бы одна общая стихия. */
 export const sharesArea = (partyState, leftCellId, rightCellId) => {
-  const left = cellAreaIds(partyState, leftCellId);
+  const left = cellTerrains(partyState, leftCellId);
   if (left.length === 0) return false;
-  const right = cellAreaIds(partyState, rightCellId);
-  return left.some(area => right.includes(area));
-};
-
-export const areaIdAtCell = (partyState, cellId) => {
-  if (cellId == null) return null;
-  return nodeAreaId(findNode(partyState, cellId));
-};
-
-/** Стартовая область: node.position === seatIndex + 1 */
-export const isStartAreaForPlayer = (node, seat) => {
-  if (node?.position == null || seat < 0) return false;
-  return Number(node.position) === Number(seat) + 1;
+  const right = cellTerrains(partyState, rightCellId);
+  return left.some(terrain => right.includes(terrain));
 };
 
 export const isNumberedCell = node => node?.heroStart === true;
 
-/** Номерная клетка (heroStart) в стартовой зоне игрока. */
+/** Номерная клетка игрока: `heroStart` с номером места (`position` = порядок игрока). */
 export const numberedCellId = (partyState, playerId) => {
   const seat = seatIndex(partyState, playerId);
+  if (seat < 0) return null;
   const node = (partyState.map?.nodes ?? []).find(
-    entry =>
-      isStartAreaForPlayer(entry, seat) && isNumberedCell(entry),
+    entry => isNumberedCell(entry) && Number(entry.position) === seat + 1,
   );
   return node?.id ?? null;
 };
@@ -67,13 +52,34 @@ export const numberedCell = (partyState, playerId) => {
   return cellId == null ? null : findNode(partyState, cellId);
 };
 
+/** Области номерной клетки героя: в них же расставляются его помощники. */
+export const playerPlacementTerrains = (partyState, playerId) =>
+  cellTerrains(partyState, numberedCellId(partyState, playerId));
+
+/**
+ * Клетки расстановки игрока: все клетки, у которых есть общая стихия с номерной клеткой героя.
+ * Герой стоит на номерной клетке, помощники — в той же области (двухцветные клетки считаются
+ * сразу в обеих своих областях).
+ */
+export const startAreaCellIds = (partyState, playerId) => {
+  const cellId = numberedCellId(partyState, playerId);
+  if (cellId == null || cellTerrains(partyState, cellId).length === 0) return [];
+  return (partyState.map?.nodes ?? [])
+    .filter(node => node?.id != null && sharesArea(partyState, cellId, node.id))
+    .map(node => String(node.id));
+};
+
+export const isPlacementAreaCell = (partyState, playerId, node) => {
+  const cellId = numberedCellId(partyState, playerId);
+  if (cellId == null || !node) return false;
+  return sharesArea(partyState, cellId, node.id);
+};
+
 export const hasHeroOnNumberedCell = (partyState, playerId) => {
   const cellId = numberedCellId(partyState, playerId);
   if (cellId == null) return false;
   const player = findPlayer(partyState, playerId);
-  return playerHeroes(player).some(
-    fighter => String(fighter.currentPosition) === String(cellId),
-  );
+  return playerHeroes(player).some(fighter => String(fighter.currentPosition) === String(cellId));
 };
 
 export const heroOnNumberedCell = (partyState, playerId) => {
@@ -81,9 +87,7 @@ export const heroOnNumberedCell = (partyState, playerId) => {
   if (cellId == null) return null;
   const player = findPlayer(partyState, playerId);
   return (
-    playerHeroes(player).find(
-      fighter => String(fighter.currentPosition) === String(cellId),
-    ) ?? null
+    playerHeroes(player).find(fighter => String(fighter.currentPosition) === String(cellId)) ?? null
   );
 };
 
@@ -91,29 +95,6 @@ export const isLockedHero = (fighter, partyState, playerId) => {
   const cellId = numberedCellId(partyState, playerId);
   if (cellId == null || fighter?.type !== 'hero') return false;
   return String(fighter.currentPosition) === String(cellId);
-};
-
-/** Цвет области расстановки = цвет номерной клетки игрока. */
-export const playerPlacementAreaId = (partyState, playerId) => {
-  const cellId = numberedCellId(partyState, playerId);
-  if (cellId == null) return null;
-  return areaIdAtCell(partyState, cellId);
-};
-
-/** Клетка в области расстановки: тот же цвет (areas[0]), что у номерной клетки. */
-export const isPlacementAreaCell = (partyState, playerId, node) => {
-  const areaId = playerPlacementAreaId(partyState, playerId);
-  if (areaId == null || !node) return false;
-  return nodeAreaId(node) === areaId;
-};
-
-/** Все клетки области расстановки (один цвет с номерной клеткой). */
-export const startAreaCellIds = (partyState, playerId) => {
-  const areaId = playerPlacementAreaId(partyState, playerId);
-  if (areaId == null) return [];
-  return (partyState.map?.nodes ?? [])
-    .filter(node => nodeAreaId(node) === areaId)
-    .map(node => node.id);
 };
 
 /** Почему героя нельзя поставить на номерную клетку (фаза pickNumHero); null — можно. */
@@ -132,7 +113,7 @@ export const numberPickRejection = (partyState, playerId, fighterId) => {
   return null;
 };
 
-/** Почему бойца нельзя поставить в область расстановки (фаза place); null — можно. */
+/** Почему бойца нельзя поставить в область героя (фаза place); null — можно. */
 export const placementRejection = (partyState, playerId, fighterId, cellId) => {
   const player = findPlayer(partyState, playerId);
   if (!player) return `игрок ${playerId} не найден`;
@@ -149,13 +130,14 @@ export const placementRejection = (partyState, playerId, fighterId, cellId) => {
   }
   if (!isPlacementAreaCell(partyState, playerId, node)) {
     const allowed = startAreaCellIds(partyState, playerId).join(', ') || '—';
-    return `клетки области расстановки: ${allowed}`;
+    return `клетки в одной области с героем: ${allowed}`;
   }
   if (String(fighter.currentPosition) === String(node.id)) {
     return 'боец уже на этой клетке';
   }
-  if (occupiedOwnCellIds(player, fighterId).has(String(node.id))) {
-    return `клетка ${node.id} уже занята вашим бойцом`;
+  // клетка одна на всех: две стороны расставляются в своих областях одновременно
+  if (occupiedCellIds(partyState, fighter.id).has(String(node.id))) {
+    return `клетка ${node.id} уже занята`;
   }
 
   return null;
@@ -167,10 +149,7 @@ export const clearHeroOnNumberedCell = (partyState, playerId) => {
   const player = findPlayer(partyState, playerId);
   if (!player) return partyState;
   player.fighters = (player.fighters ?? []).map(fighter => {
-    if (
-      fighter.type === 'hero' &&
-      String(fighter.currentPosition) === String(cellId)
-    ) {
+    if (fighter.type === 'hero' && String(fighter.currentPosition) === String(cellId)) {
       return { ...fighter, currentPosition: null, startPosition: null };
     }
     return fighter;
@@ -200,11 +179,7 @@ export const hasPickPreview = (partyState, playerId) => {
 };
 
 /** Подсветка клеток в phase place (нужен selectedFighterId в clientContext). */
-export const placePhaseHighlightedCellIds = (
-  partyState,
-  playerId,
-  selectedFighterId,
-) => {
+export const placePhaseHighlightedCellIds = (partyState, playerId, selectedFighterId) => {
   if (selectedFighterId == null) return [];
 
   const player = findPlayer(partyState, playerId);
@@ -216,12 +191,10 @@ export const placePhaseHighlightedCellIds = (
   if (!fighter || isLockedHero(fighter, partyState, playerId)) return [];
 
   const allowed = startAreaCellIds(partyState, playerId);
-  const blocked = occupiedOwnCellIds(player, fighter.id);
+  const blocked = occupiedCellIds(partyState, fighter.id);
   return allowed
     .filter(
-      cellId =>
-        !blocked.has(String(cellId)) &&
-        String(cellId) !== String(fighter.currentPosition),
+      cellId => !blocked.has(String(cellId)) && String(cellId) !== String(fighter.currentPosition),
     )
     .map(String);
 };

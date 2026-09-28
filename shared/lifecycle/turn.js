@@ -72,7 +72,8 @@ export default {
     - movement { playerId, origins, bonus, bonusUsed } — черновик перемещения; origins фиксирует старт бойца.
     - combat { stage, attackerPlayerId, defenderPlayerId, attackerFighterId, targetFighterId, attackCard,
       defenseCard, attackValue, defenseValue } — бой.
-    - targeting { playerId, source, candidates, required } — выбор цели (бывший legacy effectPrompt).
+    - targeting { playerId, source, candidates, required, auto } — выбор цели (бывший legacy effectPrompt).
+      `auto: true` значит «выбора нет»: кандидат один — движок отмечает его сам (runRules → autoPick).
     - lastCombat / lastBonus — итоги последнего действия для UI и лога; снимаются, когда объявляется
       следующее действие (SET_ACTIONS −1), поэтому результат боя виден и после передачи хода.
     Поля handDiscard нет: лимит руки — это факт HAND_OVER_LIMIT.

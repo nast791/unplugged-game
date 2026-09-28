@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { load, view } from '../../../server/party.js';
-import { createGame } from '../../../server/api/game/create.post.js';
+import { createGame } from '../../../server/create.js';
 import { sortPlayersByTeam } from '../../../server/builders.js';
+import { maps } from '../../../server/content/index.js';
 
 const validBody = {
   mapId: 'arena',
   mode: 'vs_ai',
   heroes: [
     { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
-    { heroId: 'beta', team: 'B', order: 2, control: 'ai' },
+    { heroId: 'tesla', team: 'B', order: 2, control: 'ai' },
   ],
 };
 
@@ -23,12 +24,10 @@ describe('POST /api/game/create', () => {
     expect(v.id).toBe('test_game');
     expect(v.settings.seed).toBeUndefined();
     expect(
-      v.players.find(p => p.id === 'beta').fighters.find(f => f.type === 'hero')
-        .currentPosition,
+      v.players.find(p => p.id === 'tesla').fighters.find(f => f.type === 'hero').currentPosition,
     ).toBeNull();
     expect(
-      v.players.find(p => p.id === 'medusa').fighters.find(f => f.type === 'hero')
-        .currentPosition,
+      v.players.find(p => p.id === 'medusa').fighters.find(f => f.type === 'hero').currentPosition,
     ).toBe(6);
     expect(state._enteredHooks?.gameStart).toBe(true);
     expect(v.ui?.phase).toBe('place');
@@ -40,7 +39,7 @@ describe('POST /api/game/create', () => {
         mapId: 'arena',
         heroes: [
           { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
-          { heroId: 'beta', team: 'B', order: 2, control: 'ai' },
+          { heroId: 'tesla', team: 'B', order: 2, control: 'ai' },
         ],
       },
       { testId: 'default_mode', testSeed: 1 },
@@ -55,7 +54,7 @@ describe('POST /api/game/create', () => {
         mode: 'vs_ai',
         heroes: [
           { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
-          { heroId: 'beta', team: 'B', order: 2, control: 'human' },
+          { heroId: 'tesla', team: 'B', order: 2, control: 'human' },
         ],
       }),
     ).toThrow(/vs_ai/);
@@ -78,7 +77,7 @@ describe('POST /api/game/create', () => {
         mode: 'hotseat',
         heroes: [
           { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
-          { heroId: 'beta', team: 'A', order: 2, control: 'human' },
+          { heroId: 'tesla', team: 'A', order: 2, control: 'human' },
         ],
       }),
     ).toThrow(/FFA/);
@@ -86,6 +85,36 @@ describe('POST /api/game/create', () => {
 
   it('невалидное тело → ошибка', () => {
     expect(() => createGame({ mapId: 'unknown', heroes: [] })).toThrow();
+  });
+
+  it('карта с клеткой без стихии или с чужой стихией не берётся в партию', () => {
+    maps.broken_missing = {
+      id: 'broken_missing',
+      name: 'Битая карта',
+      nodes: [
+        { id: 1, neighbors: [2], terrain: 'arcane', heroStart: true, position: 1 },
+        { id: 2, neighbors: [1], terrain: null },
+      ],
+      settings: { nodeSize: 120 },
+    };
+    maps.broken_unknown = {
+      id: 'broken_unknown',
+      name: 'Карта с чужой стихией',
+      nodes: [
+        { id: 1, neighbors: [2], terrain: 'arcane', heroStart: true, position: 1 },
+        { id: 2, neighbors: [1], terrain: ['arcane', 'нет-такой'] },
+      ],
+      settings: { nodeSize: 120 },
+    };
+    try {
+      expect(() => createGame({ ...validBody, mapId: 'broken_missing' })).toThrow(/нет стихии/);
+      expect(() => createGame({ ...validBody, mapId: 'broken_unknown' })).toThrow(
+        /неизвестная стихия/,
+      );
+    } finally {
+      delete maps.broken_missing;
+      delete maps.broken_unknown;
+    }
   });
 
   it('shuffle детерминирован при одном seed', () => {
@@ -100,31 +129,21 @@ describe('POST /api/game/create', () => {
     const playerSlots = sortPlayersByTeam([
       { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
       { heroId: 'alice', team: 'A', order: 2, control: 'human' },
-      { heroId: 'beta', team: 'B', order: 3, control: 'ai' },
+      { heroId: 'tesla', team: 'B', order: 3, control: 'ai' },
       { heroId: 'gamma', team: 'B', order: 4, control: 'ai' },
     ]);
     expect(playerSlots.map(slot => slot.team)).toEqual(['A', 'B', 'A', 'B']);
-    expect(playerSlots.map(slot => slot.heroId)).toEqual([
-      'medusa',
-      'beta',
-      'alice',
-      'gamma',
-    ]);
+    expect(playerSlots.map(slot => slot.heroId)).toEqual(['medusa', 'tesla', 'alice', 'gamma']);
     expect(playerSlots.map(slot => slot.order)).toEqual([1, 2, 3, 4]);
   });
 
   it('sortPlayersByTeam: уже чередуются — порядок внутри команд сохраняется', () => {
     const playerSlots = sortPlayersByTeam([
       { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
-      { heroId: 'beta', team: 'B', order: 2, control: 'ai' },
+      { heroId: 'tesla', team: 'B', order: 2, control: 'ai' },
       { heroId: 'alice', team: 'A', order: 3, control: 'human' },
       { heroId: 'gamma', team: 'B', order: 4, control: 'ai' },
     ]);
-    expect(playerSlots.map(slot => slot.heroId)).toEqual([
-      'medusa',
-      'beta',
-      'alice',
-      'gamma',
-    ]);
+    expect(playerSlots.map(slot => slot.heroId)).toEqual(['medusa', 'tesla', 'alice', 'gamma']);
   });
 });

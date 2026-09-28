@@ -65,10 +65,7 @@ describe('scenario: лимит руки в конце хода', () => {
 
   it('рука точно в лимите ход не задерживает', () => {
     let state = overLimitState();
-    player(state, '0').hand.cards = hand(player(state, '0')).slice(
-      0,
-      rules.maxHandSize - 1,
-    );
+    player(state, '0').hand.cards = hand(player(state, '0')).slice(0, rules.maxHandSize - 1);
 
     state = runAction(state, { type: 'PICK', kind: 'deck', playerId: '0' });
     state = runAction(state, { type: 'UI_OK', playerId: '0' });

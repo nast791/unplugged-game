@@ -6,10 +6,10 @@ import { createState, fighter, PHASES } from '../../fixtures/state.js';
 const arenaMap = {
   id: 'arena',
   nodes: [
-    { id: 1, neighbors: [6], position: 1, areas: ['#3B82F6'] },
-    { id: 6, neighbors: [1], position: 1, heroStart: true, areas: ['#3B82F6'] },
-    { id: 5, neighbors: [10], position: 2, areas: ['#EF4444'] },
-    { id: 10, neighbors: [5], position: 2, heroStart: true, areas: ['#EF4444'] },
+    { id: 1, neighbors: [6], terrain: 'arcane' },
+    { id: 6, neighbors: [1], terrain: 'arcane', heroStart: true, position: 1 },
+    { id: 5, neighbors: [10], terrain: 'lava' },
+    { id: 10, neighbors: [5], terrain: 'lava', heroStart: true, position: 2 },
   ],
 };
 
@@ -52,9 +52,9 @@ const placementState = () =>
 describe('core.runAction guards', () => {
   it('отклоняет неизвестный playerId', () => {
     const state = runLifecycle(placementState());
-    expect(() =>
-      runCoreAction(state, { type: 'UI_OK', playerId: 'missing' }),
-    ).toThrow(/нет в партии/);
+    expect(() => runCoreAction(state, { type: 'UI_OK', playerId: 'missing' })).toThrow(
+      /нет в партии/,
+    );
   });
 
   it('отклоняет move вне allow-list активной phase', () => {
@@ -87,8 +87,6 @@ describe('core.runAction guards', () => {
 
   it('отклоняет UI_BACK в place (back без onPress)', () => {
     const state = runLifecycle(placementState());
-    expect(() => runAction(state, { type: 'UI_BACK', playerId: '0' })).toThrow(
-      /UI_BACK/,
-    );
+    expect(() => runAction(state, { type: 'UI_BACK', playerId: '0' })).toThrow(/UI_BACK/);
   });
 });

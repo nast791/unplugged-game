@@ -8,16 +8,13 @@ import { createState, hand, player } from '../../fixtures/state.js';
 
 const overLimitState = (extra = 2) => {
   const state = createState({ actionsLeft: 0 });
-  player(state, '0').hand.cards = Array.from(
-    { length: rules.maxHandSize + extra },
-    (_, index) => ({
-      id: `x${index}`,
-      instanceId: `x${index}_0`,
-      type: 'effect',
-      value: 0,
-      bonus: 0,
-    }),
-  );
+  player(state, '0').hand.cards = Array.from({ length: rules.maxHandSize + extra }, (_, index) => ({
+    id: `x${index}`,
+    instanceId: `x${index}_0`,
+    type: 'effect',
+    value: 0,
+    bonus: 0,
+  }));
   return state;
 };
 
@@ -51,9 +48,7 @@ describe('phase handLimit', () => {
 
   it('подсказка считает, сколько сбросить; все карты playable', () => {
     const state = overLimitState(2);
-    expect(resolvePhaseHint(handLimit.hints, state, '0')).toContain(
-      'сбросьте ещё 2',
-    );
+    expect(resolvePhaseHint(handLimit.hints, state, '0')).toContain('сбросьте ещё 2');
 
     const ui = handLimit.ui(state, '0', {}, handLimit);
     expect(ui.playableCardIds).toHaveLength(rules.maxHandSize + 2);
@@ -78,8 +73,8 @@ describe('phase handLimit', () => {
 
   it('отклоняет клик не по карте', () => {
     const state = overLimitState();
-    expect(() =>
-      handLimit.moves.PICK(state, { kind: 'deck', playerId: '0' }),
-    ).toThrow(/клик по карте/);
+    expect(() => handLimit.moves.PICK(state, { kind: 'deck', playerId: '0' })).toThrow(
+      /клик по карте/,
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { SET_FIGHTER_CELL } from '#shared/actions-new/fighter.js';
+import { SET_FIGHTER_CELL } from '#shared/actions/fighter.js';
 import { findPlayer, playerHeroes, resolveOkBackControls } from '#shared/helpers/base.js';
 import {
   clearHeroOnNumberedCell,
@@ -13,8 +13,7 @@ export default {
   hints: {
     chooseHero: {
       active: (partyState, playerId) => !hasPickPreview(partyState, playerId),
-      text: () =>
-        'Выберите одного из героев, который будет размещен на номерной клетке поля',
+      text: () => 'Выберите одного из героев, который будет размещен на номерной клетке поля',
     },
     confirmHero: {
       active: (partyState, playerId) => hasPickPreview(partyState, playerId),
@@ -24,9 +23,7 @@ export default {
 
   active: (partyState, playerId) => {
     const player = findPlayer(partyState, playerId);
-    return (
-      playerHeroes(player).length > 1 && !player?.numberedHeroCommitted
-    );
+    return playerHeroes(player).length > 1 && !player?.numberedHeroCommitted;
   },
 
   enter: (partyState, playerId) => {
@@ -48,8 +45,7 @@ export default {
 
   ui(partyState, playerId, _clientContext, phase) {
     const cellId = numberedCellId(partyState, playerId);
-    const highlighted =
-      cellId == null ? [] : [String(cellId)];
+    const highlighted = cellId == null ? [] : [String(cellId)];
     return {
       modals: { pickNumHero: !hasPickPreview(partyState, playerId) },
       highlightedCellIds: highlighted,
@@ -87,11 +83,7 @@ export default {
         );
       }
 
-      const reason = numberPickRejection(
-        partyState,
-        action.playerId,
-        action.id,
-      );
+      const reason = numberPickRejection(partyState, action.playerId, action.id);
       if (reason) throw new Error(`PICK: ${reason}`);
 
       const state = clearHeroOnNumberedCell(partyState, action.playerId);
