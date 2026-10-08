@@ -3,7 +3,7 @@ import { SET_COMBAT } from '#shared/actions/combat.js';
 import { advanceCombat } from '#shared/cards/run.js';
 import { endGameIfFinished } from '#shared/helpers/turn.js';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import { movableFighterIds, movementDestinations } from '#shared/helpers/turn.js';
 import medusaCards from '../../../server/content/heroes/medusa/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
@@ -16,7 +16,7 @@ const lineMap = {
   nodes: [1, 2, 3, 4, 5, 6].map(id => ({
     id,
     neighbors: [id - 1, id + 1].filter(neighbor => neighbor >= 1 && neighbor <= 6),
-    terrain: 'arcane',
+    terrain: 'ice',
   })),
 };
 
@@ -60,7 +60,7 @@ const buildState = (role = 'attack') =>
         'Медуза',
         1,
         [
-          unit('medusa', 1, role === 'defense' ? 2 : 16, { attackType: 'ranged' }),
+          unit('medusa', 1, role === 'defense' ? 2 : 16, { attackRange: 3 }),
           unit('harpies_1', 5, 1, { type: 'assistant', group: 'harpies' }),
         ],
         [{ ...card, instanceId: 'medusa_06_1' }],
@@ -69,7 +69,7 @@ const buildState = (role = 'attack') =>
         '1',
         'Бета',
         2,
-        [unit('beta', 6, 13, { attackType: 'ranged' })],
+        [unit('beta', 4, 13, { attackRange: 3 })],
         [
           {
             id: 'beta_atk',
@@ -143,11 +143,11 @@ describe('карта medusa_06 «Ускорение»', () => {
     expect(runUi(paused, '0').highlightedFighterIds).toEqual(['medusa']);
     expect(movementDestinations(paused, '0', 'harpies_1')).toEqual([]);
 
-    // из клетки 1 Медуза достаёт 2, 3 и 4 — ровно три шага
-    expect(movementDestinations(paused, '0', 'medusa')).toEqual(['2', '3', '4']);
+    // из клетки 1 Медуза идёт до трёх шагов: 2 и 3 (4 занята Бетой, дальше неё пути нет)
+    expect(movementDestinations(paused, '0', 'medusa')).toEqual(['2', '3']);
 
-    const moved = step(paused, 'medusa', '4');
-    expect(positionOf(moved, 'medusa')).toBe('4');
+    const moved = step(paused, 'medusa', '3');
+    expect(positionOf(moved, 'medusa')).toBe('3');
   });
 
   it('ход можно передумать: из 2 обратно в 3 и на старт', () => {
@@ -155,7 +155,7 @@ describe('карта medusa_06 «Ускорение»', () => {
     const left = step(paused, 'medusa', '2');
 
     // радиус считается от исходной клетки, поэтому подсветка та же
-    expect(movementDestinations(left, '0', 'medusa')).toEqual(['1', '3', '4']);
+    expect(movementDestinations(left, '0', 'medusa')).toEqual(['1', '3']);
 
     const right = step(left, 'medusa', '3');
     expect(positionOf(right, 'medusa')).toBe('3');
@@ -166,14 +166,13 @@ describe('карта medusa_06 «Ускорение»', () => {
 
   it('можно отказаться: эффект закрывается, бой доигрывается', () => {
     const paused = playAsAttack();
-    const queue = paused.combat.effects;
 
     const finished = runAction(paused, { type: 'UI_OK', playerId: '0' });
 
     expect(finished.movement).toBeNull();
     expect(finished.combat).toBeNull();
     expect(positionOf(finished, 'medusa')).toBe(1);
-    expect(queue[0].status).toBe('declined');
+    expect(finished.lastCombat.effects[0].status).toBe('declined');
   });
 
   it('свой боец погиб в бою — двигать нечего, эффект сгорает без паузы', () => {

@@ -1,4 +1,5 @@
 import { findFighter } from '#shared/helpers/base.js';
+import { runDeathMoment } from '#shared/helpers/death.js';
 
 /**
  * id бойцов из параметров. Факты отдают объекты (FIGHTERS → { fighterId, … }), поэтому
@@ -52,6 +53,16 @@ export const SET_HEALTH = (partyState, action = {}) => {
     if (nextHp <= 0) {
       player.fighters.splice(index, 1);
       player.lost = [...(player.lost ?? []), { ...fighter, currentHp: 0, currentPosition: null }];
+
+      // Момент `lost`: правила умения владельца погибшего бойца («когда ворона погибает…») и правила
+      // карты, нанёсшей смертельный урон («погибает от этого эффекта»). Исполнителя даёт слой правил
+      // (`shared/helpers/death.js`), поэтому кирпич здоровья о правилах не знает: он лишь передаёт
+      // сведения об источнике, которые движок положил в каждое действие (`shared/rules/run.js`).
+      runDeathMoment(partyState, player, fighter, {
+        source: action.source ?? null,
+        playedCard: action.playedCard ?? null,
+        playerId: action.playerId ?? null,
+      });
       continue;
     }
 

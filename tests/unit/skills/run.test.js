@@ -237,6 +237,7 @@ describe('skills: runSkillMoment', () => {
       'immediately',
       'duringCombat',
       'afterCombat',
+      'lost',
       'turnEnd',
     ]);
     expect(isMoment('gameStart')).toBe(true);
@@ -246,6 +247,7 @@ describe('skills: runSkillMoment', () => {
     expect(isMoment('immediately')).toBe(true);
     expect(isMoment('duringCombat')).toBe(true);
     expect(isMoment('afterCombat')).toBe(true);
+    expect(isMoment('lost')).toBe(true);
     expect(isMoment('turnEnd')).toBe(true);
     expect(isMoment('skipped')).toBe(false);
   });

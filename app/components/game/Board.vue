@@ -4,7 +4,7 @@
     class="border-primary/15 relative h-full min-h-96 w-full overflow-hidden border bg-[#eef1f4]"
   >
     <ClientOnly>
-      <v-stage v-if="stageReady" :config="stageConfig">
+      <v-stage v-if="stageReady" ref="stageRef" :config="stageConfig">
         <v-layer>
           <!-- соединители идут под кружками: сквозь заливку их не видно -->
           <v-line v-for="(line, idx) in edgeLines" :key="`e-${idx}`" :config="line" />
@@ -12,18 +12,36 @@
           <v-group
             v-for="node in nodes"
             :key="`n-${node.id}`"
-            :config="{ x: node.x, y: node.y, listening: interactive }"
-            @click="onNodeClick(node.id, $event)"
-            @tap="onNodeClick(node.id, $event)"
+            :config="{
+              x: node.x,
+              y: node.y,
+              listening: interactive,
+              cellName: 'cell',
+              cellId: node.id,
+            }"
           >
             <!-- база даёт заливку и тень; сектора цветной клетки рисуются поверх -->
             <v-circle :config="nodeCircleConfig(node)" />
+            <!-- текстуры стихий: у цветной клетки своя текстура в каждом секторе, обрезанная по нему -->
             <template v-if="sectorsOf(node).length">
               <v-wedge
                 v-for="(sector, index) in sectorsOf(node)"
                 :key="`w-${index}`"
                 :config="sectorConfig(sector)"
               />
+            </template>
+            <template v-for="(pattern, index) in patternsOf(node)" :key="`p-${index}`">
+              <v-group :config="{ clipFunc: pattern.clipFunc, listening: false }">
+                <!-- лава, пустыня, горы: растровая плитка в секторе стихии -->
+                <v-rect v-if="pattern.tile" :config="pattern.tile" />
+                <v-path
+                  v-for="(layer, layerIndex) in pattern.layers"
+                  :key="`l-${layerIndex}`"
+                  :config="layer"
+                />
+              </v-group>
+            </template>
+            <template v-if="sectorsOf(node).length">
               <!-- тонкие чёрные полоски между секторами: светлые заливки иначе сливаются -->
               <v-line
                 v-for="(divider, index) in dividersOf(node)"
@@ -32,7 +50,8 @@
               />
               <v-circle :config="nodeOutlineConfig(node)" />
             </template>
-            <v-text :config="cellLabelConfig(node)" />
+            <!-- id клетки: по умолчанию скрыт, включается SHOW_CELL_IDS для отладки -->
+            <v-text v-if="SHOW_CELL_IDS" :config="cellLabelConfig(node)" />
           </v-group>
 
           <!-- маркеры стартовых клеток: маленькие кружки с номерами, только на расстановке -->
@@ -46,9 +65,14 @@
           <v-group
             v-for="token in placedFighters"
             :key="`f-${token.playerId}-${token.fighter.id}`"
-            :config="{ x: token.x, y: token.y, listening: interactive }"
-            @click="onFighterClick(token, $event)"
-            @tap="onFighterClick(token, $event)"
+            :config="{
+              x: token.x,
+              y: token.y,
+              listening: interactive,
+              cellName: 'fighter',
+              fighterId: token.fighter.id,
+              ownerId: token.playerId,
+            }"
           >
             <v-circle :config="fighterHaloConfig(token)" />
             <v-circle :config="fighterBodyConfig(token)" />
@@ -67,8 +91,14 @@
 import { terrainColor } from '#shared/constants/terrain.js';
 import {
   SHADOW,
+  SHOW_CELL_IDS,
   STROKE,
+  PATTERN_TILES,
   bendFor,
+  cellPatterns,
+  patternTileConfig,
+  tileClipFunc,
+  clickTarget,
   curvePoints,
   fieldBounds,
   nodeLabelConfig,
@@ -117,6 +147,39 @@ const nodeTerrains = node => {
 
 const sectorsOf = node => sectorWedges(nodeTerrains(node));
 const dividersOf = node => sectorDividers(nodeTerrains(node), radius.value);
+
+/**
+ * Растровые плитки стихий (лава, пустыня, горы): картинки грузим сами, чтобы видеть, загрузились ли
+ * они. До загрузки клетка остаётся обычной заливкой, без дыр.
+ */
+const tileImages = ref({});
+
+onMounted(() => {
+  for (const [terrain, tile] of Object.entries(PATTERN_TILES)) {
+    const image = new Image();
+    image.onload = () => {
+      tileImages.value = { ...tileImages.value, [terrain]: image };
+    };
+    image.src = tile.src;
+  }
+});
+
+/**
+ * Текстуры клетки: у лавы, пустыни и гор — растровая плитка в секторе стихии (под непрозрачной
+ * картинкой вектор не нужен), у остальных — векторные слои.
+ */
+const patternsOf = node =>
+  cellPatterns(nodeTerrains(node), radius.value).map(pattern => {
+    const spec = PATTERN_TILES[pattern.terrain];
+    const image = spec ? tileImages.value[pattern.terrain] : null;
+    if (!spec || !image) return { ...pattern, tile: null };
+    return {
+      ...pattern,
+      tile: patternTileConfig(radius.value, image, spec),
+      layers: [],
+      clipFunc: tileClipFunc(pattern.start, pattern.end, radius.value),
+    };
+  });
 
 const nodeById = computed(() => {
   const map = new Map();
@@ -298,20 +361,38 @@ const fighterLabelConfig = token => ({
   listening: false,
 });
 
-const onNodeClick = (nodeId, e) => {
-  if (e) e.cancelBubble = true;
+/**
+ * Клики обрабатывает сама сцена, а не слушатели на конва-компонентах: у них корень фрагментный,
+ * и Vue ругался «extraneous non-emits event listeners». Цель клика разбирает `clickTarget` —
+ * поднимается от фигуры к её клетке или фишке по атрибутам группы.
+ */
+const onStageClick = event => {
   if (!props.interactive) return;
-  emit('select-node', nodeId);
+  const pick = clickTarget(event?.target);
+  if (!pick) return;
+  if (pick.kind === 'fighter') {
+    emit('select-fighter', { fighterId: pick.fighterId, playerId: pick.playerId });
+    return;
+  }
+  emit('select-node', pick.cellId);
 };
 
-const onFighterClick = (token, e) => {
-  if (e) e.cancelBubble = true;
-  if (!props.interactive) return;
-  emit('select-fighter', {
-    fighterId: token.fighter.id,
-    playerId: token.playerId,
-  });
-};
+/** Сцена konva: на неё вешаем один обработчик клика/тапа вместо слушателей на каждой клетке. */
+const stageRef = ref(null);
+
+/**
+ * Подписываемся на саму ссылку, а не на `onMounted`: сцена появляется только после `stageReady = true`,
+ * то есть следующим рендером, и в `onMounted` ссылка ещё пуста — слушатель тогда не повисает вовсе,
+ * и доска молча перестаёт кликаться (ни расстановки, ни шага).
+ */
+watch(
+  stageRef,
+  (stage, previous) => {
+    previous?.getNode?.()?.off('click tap', onStageClick);
+    stage?.getNode?.()?.on('click tap', onStageClick);
+  },
+  { flush: 'post' },
+);
 
 const updateSize = () => {
   const el = wrapRef.value;
@@ -333,6 +414,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  stageRef.value?.getNode?.()?.off('click tap', onStageClick);
   resizeObserver?.disconnect();
 });
 </script>

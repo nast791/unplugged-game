@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="12 4 90 90" role="img">
+  <!--
+    Логотип UnPlugged. Собран бейкером tests/support/bake-brand.mjs — руками не правим,
+    правки теряются при пересборке.
+    Знак целиком, с улетевшими квадратами — для крупного размера (от ~48 px).
+    Прошлая версия знака (скруглённая U) — в app/svg/brand/legacy/.
+  -->
+  <title>UnPlugged</title>
+  <g fill="currentColor">
+    <path d="M12 12 H36 V36 H12 Z"/>
+    <path d="M12 41 H36 V65 H12 Z"/>
+    <path d="M12 70 H36 V94 H12 Z"/>
+    <path d="M41 70 H65 V94 H41 Z"/>
+    <path d="M70 70 H94 V94 H70 Z"/>
+    <path d="M70 41 H94 V65 H70 Z"/>
+    <path d="M86 4 H102 V20 H86 Z" opacity="0.9"/>
+    <path d="M94 22 H101 V29 H94 Z" opacity="0.5"/>
+  </g>
+</svg>

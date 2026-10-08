@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import medusaCards from '../../../server/content/heroes/medusa/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -9,8 +9,8 @@ const card = medusaCards.find(entry => entry.id === 'medusa_05');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1], terrain: 'ice' },
   ],
 };
 
@@ -63,7 +63,7 @@ const state = (enemyHand = []) =>
         'Медуза',
         1,
         [
-          unit('medusa', 1, 16, { attackType: 'ranged' }),
+          unit('medusa', 1, 16, { attackRange: 3 }),
           unit('harpies_1', 2, 1, { type: 'assistant', group: 'harpies' }),
         ],
         [{ ...card, instanceId: 'medusa_05_1' }],
@@ -72,7 +72,7 @@ const state = (enemyHand = []) =>
         '1',
         'Бета',
         2,
-        [unit('beta', 2, 13, { attackType: 'ranged' })],
+        [unit('beta', 2, 13, { attackRange: 3 })],
         [
           {
             id: 'beta_atk',

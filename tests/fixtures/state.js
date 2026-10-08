@@ -180,4 +180,4 @@ export const createState = (patch = {}) => {
 
 export const player = (state, id = '0') => state.players.find(p => String(p.id) === String(id));
 
-export { card, fighter, PHASES };
+export { card, fighter };

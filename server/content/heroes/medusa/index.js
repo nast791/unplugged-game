@@ -16,8 +16,8 @@ export default {
       type: 'hero',
       hp: 16,
       move: 3,
-      attackType: 'ranged',
-      attackRange: 1,
+      // дальник: дальность задаёт attackRange (прежний признак attackType убран)
+      attackRange: 3,
       size: 1,
     },
   ],
@@ -29,7 +29,6 @@ export default {
       count: 3,
       hp: 1,
       move: 3,
-      attackType: 'melee',
       attackRange: 1,
       size: 1,
     },

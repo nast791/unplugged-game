@@ -70,6 +70,43 @@ export const movementZoneIds = (nodes, originId, radius, blocked = null) => {
   return reach;
 };
 
+/**
+ * Клетки, которые боец проходит шагом from→to внутри радиуса перемещения, в порядке шага.
+ * Шаг в игре — «откуда → куда», поэтому маршрут достраивается кратчайшим путём по той же зоне, что и
+ * подсветка (`movementZoneIds`): по нему считается урон на проходе («Метель из осколков»). При равной
+ * длине путь выбирается по порядку соседей (карта сама задаёт его в `neighbors`).
+ * `[]` — шаг на месте, `null` — пути внутри радиуса нет.
+ */
+export const pathInRadius = (nodes, fromId, toId, originId, radius, blocked = null) => {
+  const from = String(fromId);
+  const to = String(toId);
+  if (from === to) return [];
+
+  const reach = movementZoneIds(nodes, originId, radius, blocked);
+  if (!reach.has(from) || !reach.has(to)) return null;
+
+  const byId = indexNodes(nodes);
+  const cameFrom = new Map([[from, null]]);
+  const queue = [from];
+
+  while (queue.length) {
+    const id = queue.shift();
+    for (const raw of byId.get(id)?.neighbors ?? []) {
+      const nextId = String(raw);
+      if (cameFrom.has(nextId) || !reach.has(nextId)) continue;
+      cameFrom.set(nextId, id);
+      queue.push(nextId);
+    }
+  }
+
+  if (!cameFrom.has(to)) return null;
+
+  // id клеток отдаём как в карте (не строками): их сравнивают с `from`/`to` шага
+  const path = [];
+  for (let id = to; id !== from; id = cameFrom.get(id)) path.push(byId.get(id)?.id ?? id);
+  return path.reverse();
+};
+
 /** Путь from→to только по клеткам радиуса перемещения (без лимита шагов). */
 export const canWalkInRadius = (nodes, fromId, toId, originId, radius, blocked = null) => {
   if (String(fromId) === String(toId)) return true;

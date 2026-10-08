@@ -49,25 +49,14 @@ export const useGameSession = () => {
 
   const hint = computed(() => ui.value?.hint || message.value || '');
   const placementPhase = computed(() => ui.value?.phase ?? null);
-  const highlightedCellIds = computed(() =>
-    (ui.value?.highlightedCellIds ?? []).map(String),
-  );
-  const highlightedFighterIds = computed(() =>
-    (ui.value?.highlightedFighterIds ?? []).map(String),
-  );
-  const framedFighterIds = computed(() =>
-    (ui.value?.framedFighterIds ?? []).map(String),
-  );
-  const playableCardIds = computed(() =>
-    (ui.value?.playableCardIds ?? []).map(String),
-  );
-  const disabledCardIds = computed(() =>
-    (ui.value?.disabledCardIds ?? []).map(String),
-  );
+  const highlightedCellIds = computed(() => (ui.value?.highlightedCellIds ?? []).map(String));
+  const highlightedFighterIds = computed(() => (ui.value?.highlightedFighterIds ?? []).map(String));
+  const framedFighterIds = computed(() => (ui.value?.framedFighterIds ?? []).map(String));
+  const playableCardIds = computed(() => (ui.value?.playableCardIds ?? []).map(String));
+  const disabledCardIds = computed(() => (ui.value?.disabledCardIds ?? []).map(String));
   const deckClickable = computed(() => ui.value?.deck?.clickable === true);
   const okControl = computed(
-    () =>
-      ui.value?.controls?.ok ?? { visible: false, enabled: false, label: null },
+    () => ui.value?.controls?.ok ?? { visible: false, enabled: false, label: null },
   );
   const backControl = computed(
     () =>
@@ -80,9 +69,7 @@ export const useGameSession = () => {
 
   const myFighters = computed(() => me.value?.fighters ?? []);
   const myHand = computed(() => me.value?.hand ?? []);
-  const myHeroes = computed(() =>
-    myFighters.value.filter(fighter => fighter.type === 'hero'),
-  );
+  const myHeroes = computed(() => myFighters.value.filter(fighter => fighter.type === 'hero'));
   const deckCount = computed(() => me.value?.deckCount ?? 0);
   const results = computed(() => ui.value?.results ?? null);
   const showPickNumHero = computed(() => Boolean(ui.value?.modals?.pickNumHero));
@@ -96,12 +83,36 @@ export const useGameSession = () => {
     })),
   );
 
+  /**
+   * Варианты открытого окна `kind: 'options'`, которое фаза не показывает в `ui.choices`
+   * (фаза объявления так открывает окно по чужим картам руки): список берём прямо у окна.
+   * Кандидатов видит только владелец окна — проекция сервера (`party.js`) отдаёт их лишь ему.
+   */
+  const showTargetingOptions = computed(
+    () =>
+      targeting.value?.kind === 'options' && String(targeting.value.playerId) === String(you.value),
+  );
+
+  const targetingChoices = computed(() =>
+    showTargetingOptions.value
+      ? (targeting.value.candidates ?? []).map(entry => ({
+          optionId: String(entry.optionId),
+          title: entry.title ?? String(entry.optionId),
+          disabled: entry.disabled === true,
+        }))
+      : [],
+  );
+
   const isCardPlayable = card => playableCardIds.value.includes(cardKey(card));
   const isCardDisabled = card => disabledCardIds.value.includes(cardKey(card));
 
-  /** Предметы игрока (у Теслы — катушки): их состояния читают свойства карт, поэтому показываем. */
+  /**
+   * Предметы игрока (пелена Анубиса, катушки Теслы): их состояния читают свойства карт, поэтому
+   * показываем. Подписи состояний предмет задаёт сам (`states`), иначе работает общий словарь.
+   */
   const myItems = computed(() => me.value?.items ?? []);
-  const itemStateLabel = state => {
+  const itemStateLabel = (item, state) => {
+    if (item?.states?.[state]) return item.states[state];
     if (state === 'active') return 'активна';
     if (state === 'inactive') return 'разряжена';
     return state == null ? '—' : String(state);
@@ -149,9 +160,7 @@ export const useGameSession = () => {
   const fighterLabel = id => {
     if (id == null) return '—';
     for (const entry of players.value ?? []) {
-      const fighter = (entry.fighters ?? []).find(
-        item => String(item.id) === String(id),
-      );
+      const fighter = (entry.fighters ?? []).find(item => String(item.id) === String(id));
       if (fighter) return `${fighter.name || fighter.id} (${entry.name ?? entry.id})`;
     }
     return String(id);
@@ -218,13 +227,10 @@ export const useGameSession = () => {
       selectedFighterId.value = null;
       return;
     }
-    if (
-      list.some(fighter => String(fighter.id) === String(selectedFighterId.value))
-    ) {
+    if (list.some(fighter => String(fighter.id) === String(selectedFighterId.value))) {
       return;
     }
-    const pick =
-      list.find(fighter => fighter.currentPosition != null) ?? list[0];
+    const pick = list.find(fighter => fighter.currentPosition != null) ?? list[0];
     selectedFighterId.value = pick ? String(pick.id) : null;
   };
 
@@ -238,7 +244,14 @@ export const useGameSession = () => {
     ensureSelection();
   };
 
-  /** Кто должен смотреть на экран: владелец паузы эффекта, защитник в бою, владелец выбора цели или активный игрок. */
+  /** Есть ли в партии слоты компьютера: по ним `syncHotseat` понимает, что передавать экран некому. */
+  const hasAiSeats = computed(() =>
+    (view.value?.settings?.heroes ?? []).some(slot => String(slot.control) === 'ai'),
+  );
+
+  /**
+   * Кто должен смотреть на экран: владелец паузы эффекта, защитник в бою, владелец выбора цели или активный игрок.
+   */
   const hotseatTarget = () => {
     const current = view.value;
     if (!current) return null;
@@ -255,6 +268,13 @@ export const useGameSession = () => {
   };
 
   const syncHotseat = async () => {
+    // режим против компьютера: за часть слотов играет клиент (`app/composables/useGameAi.js`),
+    // «передать экран» там некому — смотрим всегда своими глазами
+    if (hasAiSeats.value) {
+      ensureSelection();
+      return;
+    }
+
     const target = hotseatTarget();
     if (target != null && String(playerId.value) !== String(target)) {
       await switchViewer(target);
@@ -287,14 +307,16 @@ export const useGameSession = () => {
     return pick({ kind: 'card', id: cardKey(card) });
   };
 
-  const onFinishAction = () =>
-    send({ type: 'UI_OK' });
+  const onFinishAction = () => send({ type: 'UI_OK' });
 
-  /** Отметка варианта свойства: PICK kind 'option'. Недоступный вариант клик не отправляет. */
+  /**
+   * Отметка варианта свойства: PICK kind 'option'. Вариант ищем и среди `ui.choices`, и среди
+   * кандидатов открытого окна (окно по чужим картам руки фаза в `ui.choices` не отдаёт).
+   * Недоступный вариант клик не отправляет.
+   */
   const onChoiceClick = optionId => {
-    const choice = choices.value.find(
-      entry => String(entry.optionId) === String(optionId),
-    );
+    const list = [...choices.value, ...targetingChoices.value];
+    const choice = list.find(entry => String(entry.optionId) === String(optionId));
     if (!choice) {
       message.value = 'Такого варианта нет';
       return undefined;
@@ -312,8 +334,7 @@ export const useGameSession = () => {
   const onResign = () =>
     run(async () => {
       const confirmed =
-        typeof window === 'undefined' ||
-        window.confirm('Сдаться? Партия для вас завершится.');
+        typeof window === 'undefined' || window.confirm('Сдаться? Партия для вас завершится.');
       if (!confirmed) return;
       await sendAction({ type: 'RESIGN' });
       await syncHotseat();
@@ -369,10 +390,7 @@ export const useGameSession = () => {
       return undefined;
     }
 
-    if (
-      isPlacement.value ||
-      highlightedCellIds.value.includes(String(cellId))
-    ) {
+    if (isPlacement.value || highlightedCellIds.value.includes(String(cellId))) {
       return pick({
         kind: 'cell',
         id: cellId,
@@ -409,6 +427,7 @@ export const useGameSession = () => {
     ui,
     placementPhase,
     isPlacement,
+    hasAiSeats,
     combat,
     movement,
     targeting,
@@ -419,6 +438,7 @@ export const useGameSession = () => {
     deckCount,
     results,
     choices,
+    targetingChoices,
     myItems,
     itemStateLabel,
     pickCandidates,

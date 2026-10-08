@@ -1,6 +1,13 @@
 import { SET_CARDS } from '#shared/actions/cards.js';
 import { SET_HEALTH } from '#shared/actions/health.js';
-import { findCardInZone, findFighter, findPlayer, takeCardFromZone } from '#shared/helpers/base.js';
+import {
+  findCardInZone,
+  findFighter,
+  findPlayer,
+  setZoneCards,
+  takeCardFromZone,
+  zoneCards,
+} from '#shared/helpers/base.js';
 import {
   cardBonus,
   cardKey,
@@ -15,7 +22,10 @@ import {
   attackTargets,
   buildCombatEffects,
   combatOutcome,
+  consumedEffectKeys,
+  defenseCardIds,
   isCombatParticipant,
+  restoreConsumedEffects,
 } from '#shared/helpers/combat.js';
 
 const playerIdOf = (partyState, action) => action.playerId ?? partyState.turn?.playerId;
@@ -60,6 +70,9 @@ const openCombat = (partyState, action) => {
     attackCard: card,
     defenseCard: null,
     attackValue: cardValue(card),
+    // «замена защиты»: защитник обязан выложить другую карту (ставит op replaceDefense)
+    defenseRequired: false,
+    defenseReplaced: false,
   };
 
   return attackerFighterId ? chooseTargetOrDefense(partyState, partyState.combat) : partyState;
@@ -143,9 +156,13 @@ const setDefense = (partyState, action) => {
   const defender = findPlayer(partyState, defenderId);
   if (!defender) throw new Error(`SET_COMBAT: игрок ${defenderId} не найден`);
 
+  // очередь могли пересобрать при замене защиты: уже отработавшие шаги повторять нельзя
+  const previousEffects = combat.effects ?? [];
+
   combat.defendedWithCard = false;
   combat.defenseCard = null;
   combat.defenseValue = 0;
+  combat.defenseRequired = false;
 
   if (action.cardId != null) {
     const card = findCardInZone(defender.hand, action.cardId);
@@ -173,8 +190,67 @@ const setDefense = (partyState, action) => {
   }
 
   combat.stage = 'reveal';
-  // обе карты известны: строим очередь эффектов, которую дальше разыгрывает cards/run.js
-  combat.effects = buildCombatEffects(combat);
+  // обе карты известны: строим очередь эффектов, которую дальше разыгрывает cards/run.js.
+  // После замены защиты очередь собирается заново — под новую карту: то, что уже отработало, помечаем.
+  combat.effects = restoreConsumedEffects(
+    buildCombatEffects(combat),
+    consumedEffectKeys(previousEffects),
+  );
+  return partyState;
+};
+
+/**
+ * Замена защиты («Амат разрывает»): защитник сбрасывает выложенную карту и защищается другой.
+ * Экшен делает всё сам, чтобы правило карты осталось одной строкой: старую защиту — в сброс,
+ * число обнулить, посмотреть, есть ли у защитника чем меняться.
+ * Есть — бой возвращается на шаг защиты (`stage: 'defense'`), и фаза `defense` ждёт клика защитника
+ * (окно обязательное: пасовать нельзя, пока есть карта). Нет — защиты нет, бой идёт дальше с нулём.
+ * Очередь эффектов пересобирается с сохранением отработавших шагов.
+ */
+const replaceDefense = (partyState, action) => {
+  const combat = combatAt(partyState, 'reveal');
+
+  // замена в бою одна: очередь пересобирается, и то же правило попадёт в неё снова — второй раз молчим
+  if (combat.defenseReplaced === true) return partyState;
+
+  const playerId = playerIdOf(partyState, action);
+  if (playerId == null || String(playerId) !== String(combat.attackerPlayerId)) {
+    throw new Error('SET_COMBAT: замену защиты объявляет атакующий');
+  }
+
+  const previousEffects = combat.effects ?? [];
+  const replacedCard = combat.defenseCard;
+
+  // выложенная карта уходит в сброс владельца (не в руку): её уже видели, второй раз она не сыграет
+  if (replacedCard) {
+    const discard = zoneCards(findPlayer(partyState, combat.defenderPlayerId).discard);
+    discard.push(replacedCard);
+    setZoneCards(findPlayer(partyState, combat.defenderPlayerId), 'discard', discard);
+  }
+
+  // снимок вскрытия, открытый заменённой картой, снимается вместе с ней: иначе карта с тем же
+  // свойством («Раскройте верхнюю карту колоды противника») упрётся в «колода уже раскрыта»
+  if (replacedCard && partyState.reveal != null) {
+    const replacedKey = String(cardKey(replacedCard));
+    const rest = (partyState.reveal ?? []).filter(
+      entry => String(entry?.source ?? '') !== replacedKey,
+    );
+    partyState.reveal = rest.length > 0 ? rest : null;
+  }
+
+  combat.defenseCard = null;
+  combat.defenseValue = 0;
+  combat.defendedWithCard = false;
+  combat.defenseReplaced = true;
+
+  const canReplace = defenseCardIds(partyState, combat.defenderPlayerId).length > 0;
+  combat.defenseRequired = canReplace;
+  combat.stage = canReplace ? 'defense' : 'reveal';
+  combat.effects = restoreConsumedEffects(
+    buildCombatEffects(combat),
+    consumedEffectKeys(previousEffects),
+  );
+
   return partyState;
 };
 
@@ -546,9 +622,13 @@ const resolveCombat = partyState => {
   return partyState;
 };
 
-/** Разыгранные карты боя уходят в сброс владельцев. */
+/**
+ * Разыгранные карты боя уходят в сброс владельцев.
+ * Возвращённую карту (например, «Вечный огонь» ифрита: `RECALL_PLAYED_CARD` в окне «после битвы»)
+ * закрытие боя не сбрасывает — она уже ушла в руку владельца, и в бою помечена как `recalled`.
+ */
 const discardCombatCards = (partyState, combat) => {
-  if (combat.attackCard) {
+  if (combat.attackCard && combat.recalled?.attackCard !== true) {
     SET_CARDS(partyState, {
       playerId: combat.attackerPlayerId,
       op: 'put',
@@ -556,7 +636,7 @@ const discardCombatCards = (partyState, combat) => {
       cards: [combat.attackCard],
     });
   }
-  if (combat.defenseCard) {
+  if (combat.defenseCard && combat.recalled?.defenseCard !== true) {
     SET_CARDS(partyState, {
       playerId: combat.defenderPlayerId,
       op: 'put',
@@ -571,6 +651,14 @@ const closeCombat = partyState => {
   const combat = combatAt(partyState, 'close');
 
   discardCombatCards(partyState, combat);
+  // Отчёт боя: разрешённая очередь свойств остаётся в `lastCombat` — видно, что сработало, что отменили
+  // и от чего отказались. `combat` дальше снимается, поэтому статусы шагов сохраняем здесь.
+  if (partyState.lastCombat) {
+    partyState.lastCombat = {
+      ...partyState.lastCombat,
+      effects: (combat.effects ?? []).map(step => ({ ...step })),
+    };
+  }
   partyState.combat = null;
   // раскрытые карты — публичный снимок этой битвы: бой кончился, снимок снимается
   partyState.reveal = null;
@@ -608,6 +696,7 @@ export const SET_COMBAT = (partyState, action = {}) => {
   if (op === 'attacker') return pickCombatAttacker(partyState, action);
   if (op === 'target') return pickCombatTarget(partyState, action);
   if (op === 'defense') return setDefense(partyState, action);
+  if (op === 'replaceDefense') return replaceDefense(partyState, action);
   if (op === 'reveal') return revealCombat(partyState);
   if (op === 'value') return setCombatValue(partyState, action);
   if (op === 'cancelEffects') return cancelCombatEffects(partyState, action);
@@ -618,7 +707,7 @@ export const SET_COMBAT = (partyState, action = {}) => {
   if (op === 'close') return closeCombat(partyState);
   if (op === 'cancel') return cancelCombat(partyState, action);
   throw new Error(
-    `SET_COMBAT: op "${op}" (нужны open | attacker | target | defense | reveal | value | cancelEffects | choice | pick | skip | resolve | close | cancel)`,
+    `SET_COMBAT: op "${op}" (нужны open | attacker | target | defense | replaceDefense | reveal | value | cancelEffects | choice | pick | skip | resolve | close | cancel)`,
   );
 };
 

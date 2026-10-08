@@ -80,8 +80,11 @@ describe('phase choose', () => {
       fighters: null,
       optional: false,
       throughEnemies: false,
+      damageOnPass: null,
+      damagedFighterIds: [],
       moves: [],
       source: null,
+      playedCard: null,
     });
     expect(hand(player(state, '0'))).toHaveLength(before + 1);
     expect(deck(player(state, '0'))).toHaveLength(1);
@@ -287,7 +290,7 @@ describe('phase movement', () => {
   it('усилить можно только карту с bonus', () => {
     const state = openMovement();
     player(state, '0').hand.cards.push({
-      id: 'arcane',
+      id: 'ice',
       instanceId: 'plain_0',
       type: 'effect',
       value: 0,

@@ -24,3 +24,8 @@ logs
 *.env
 .refs
 TODO
+# данные обучения (регенерируются экспортом: node bot/learn/export.js)
+trainer/data/
+trainer/__pycache__/
+*.pyc
+.workbuddy

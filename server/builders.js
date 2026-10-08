@@ -133,3 +133,59 @@ export const sortPlayersByTeam = players => {
 
   return interleaved.map((player, index) => ({ ...player, order: index + 1 }));
 };
+
+/** Боец для страницы героя: числа, которые игрок видит на карточке, без служебных полей пака. */
+const summaryFighter = (fighter, type) => ({
+  id: fighter.id,
+  name: fighter.name ?? fighter.id,
+  type,
+  hp: Number(fighter.hp) || 0,
+  move: Number(fighter.move) || 0,
+  attackRange: Number(fighter.attackRange) || 1,
+  count: type === 'assistant' ? Number(fighter.count) || 1 : 1,
+});
+
+/**
+ * Карточка героя для страницы `/heroes/{id}`: только то, что видит игрок — числа, умение, помощники,
+ * предметы и **тексты** карт. Правила карт (`rules`) наружу не отдаём: движок и контент и так уезжают
+ * в браузер целиком, но странице они не нужны, а путаницы добавляют.
+ */
+export const buildHeroSummary = pack => {
+  if (!pack) return null;
+  const cards = (pack.cards ?? []).map(card => ({
+    id: card.id,
+    name: card.name ?? card.id,
+    type: card.type ?? 'attack',
+    value: Number(card.value) || 0,
+    bonus: Number(card.bonus) || 0,
+    text: card.text ?? '',
+    quantity: Number(card.quantity) || 1,
+    fighter: card.fighter ?? null,
+  }));
+
+  return {
+    id: pack.id,
+    name: pack.name ?? pack.id,
+    color: pack.color ?? null,
+    // Портрет появится вместе с артом (`public/art/heroes/{id}/portrait.webp`, docs/ui-plan.md §10);
+    // пока его нет, страница и модалка показывают аватар-заглушку в цвете героя.
+    portrait: null,
+    terrainAffinity: pack.terrainAffinity ?? [],
+    skill: pack.skill ? { title: pack.skill.title ?? 'Умение', text: pack.skill.text ?? '' } : null,
+    fighters: [
+      ...(pack.heroes ?? []).map(fighter => summaryFighter(fighter, 'hero')),
+      ...(pack.assistants ?? []).map(fighter => summaryFighter(fighter, 'assistant')),
+    ],
+    items: (pack.items ?? []).map(item => ({
+      id: item.id,
+      name: item.name ?? item.id,
+      count: Number(item.count) || 1,
+      icon: item.icon ?? null,
+      color: item.color ?? null,
+      states: item.states ?? null,
+      condition: item.condition ?? '',
+    })),
+    cards,
+    deckSize: cards.reduce((sum, card) => sum + card.quantity, 0),
+  };
+};

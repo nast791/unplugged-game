@@ -36,11 +36,15 @@ pnpm install
 ## Стек
 
 - **Nuxt 4** + Vue 3
-- **Свой движок партии** — `shared/core.js` (`runLifecycle` / `runAction` / `runUi` / `runFact`)
+- **Свой движок партии** — `shared/core.js` (`runLifecycle` / `runAction` / `runUi` / `runFact`),
+  вход для клиента и сервера — `shared/publicApi.js`
 - **Tailwind CSS 4** (`@tailwindcss/vite`)
 - **Konva** / **vue-konva** — canvas-сцена
 - **@nuxt/image**, **@nuxt/icon**, **@peterbud/nuxt-query**
-- **Onest** (`@fontsource-variable/onest`)
+- **Manrope** — шрифт интерфейса: вариативные WOFF2 лежат в проекте (`public/fonts/`, лицензия OFL),
+  подключаются `@font-face` в `app/assets/styles.css`, прелоадятся и кэшируются из `nuxt.config.ts`;
+  метрика заглавной для знака в логотипе считается `node tests/support/font-metrics.mjs`
+  (`docs/ui-plan.md` §9.3)
 
 Версии в `package.json` зафиксированы без `^`.
 

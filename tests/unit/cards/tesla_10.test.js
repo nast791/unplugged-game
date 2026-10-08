@@ -1,20 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction } from '#shared/gameEngine.js';
+import { movementDestinations } from '#shared/helpers/turn.js';
+import { runAction } from '#shared/publicApi.js';
 import teslaCards from '../../../server/content/heroes/tesla/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
 const card = teslaCards.find(entry => entry.id === 'tesla_10');
 
-/** Тесла в 1, её напарник в 5, бойцы соперников — в 2, 3 и 4. */
+/** Тесла в 1, её напарник в 4, Бета в 2, её помощник в 5, Гамма в 3, клетка 6 свободна. */
 const map = {
   id: 'square',
   nodes: [
-    { id: 1, neighbors: [2, 5], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2, 4], terrain: 'arcane' },
-    { id: 4, neighbors: [3, 5], terrain: 'arcane' },
-    { id: 5, neighbors: [1, 4], terrain: 'arcane' },
+    { id: 1, neighbors: [2, 5], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3, 6], terrain: 'ice' },
+    { id: 3, neighbors: [2, 4], terrain: 'ice' },
+    { id: 4, neighbors: [3, 5], terrain: 'ice' },
+    { id: 5, neighbors: [1, 4], terrain: 'ice' },
+    // свободная клетка: у бойцов соперника должно быть куда идти, иначе окно не откроется
+    { id: 6, neighbors: [2], terrain: 'ice' },
   ],
 };
 
@@ -62,7 +65,7 @@ const state = ({ teamMode = false, withOthers = true } = {}) => {
     '0',
     'Тесла',
     1,
-    [unit('tesla', 1, 14, { attackType: 'ranged', startHp: 14 })],
+    [unit('tesla', 1, 14, { attackRange: 3, startHp: 14 })],
     [{ ...card, instanceId: 'tesla_10_1' }],
     [],
     coilsOf(),
@@ -73,7 +76,7 @@ const state = ({ teamMode = false, withOthers = true } = {}) => {
     ? teamMode
       ? [
           // напарник: его бойцы дружественные — их двигать нельзя
-          slot('1', 'Напарник', 2, [unit('ally', 5, 12, { attackType: 'ranged' })], [], [], [], {
+          slot('1', 'Напарник', 2, [unit('ally', 4, 12, { attackRange: 3 })], [], [], [], {
             team: 'red',
           }),
           slot(
@@ -81,21 +84,23 @@ const state = ({ teamMode = false, withOthers = true } = {}) => {
             'Бета',
             3,
             [
-              unit('beta', 2, 13, { attackType: 'ranged' }),
-              unit('beta_ally', 3, 5, { type: 'assistant', group: 'beta' }),
+              unit('beta', 2, 13, { attackRange: 3 }),
+              // помощник соперника заперт (клетки 1, 3 и 4 заняты) — ему двигаться некуда
+              unit('beta_ally', 5, 5, { type: 'assistant', group: 'beta' }),
             ],
             [],
             [],
             [],
             { team: 'blue' },
           ),
-          slot('3', 'Гамма', 4, [unit('gamma', 4, 12, { attackType: 'ranged' })], [], [], [], {
+          // гамма стоит на 3, её соседи 2 и 4 свободны после сдвига напарника
+          slot('3', 'Гамма', 4, [unit('gamma', 3, 12, { attackRange: 3 })], [], [], [], {
             team: 'blue',
           }),
         ]
       : [
-          slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackType: 'ranged' })]),
-          slot('2', 'Гамма', 3, [unit('gamma', 4, 12, { attackType: 'ranged' })]),
+          slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackRange: 3 })]),
+          slot('2', 'Гамма', 3, [unit('gamma', 4, 12, { attackRange: 3 })]),
         ]
     : [slot('1', 'Бета', 2, [unit('beta', null, 13)])];
 
@@ -157,6 +162,9 @@ describe('карта tesla_10 «Волновое воздействие»', () =
     expect(played.movement.fighters.sort()).toEqual(['beta', 'beta_ally', 'gamma']);
     expect(played.movement.fighters).not.toContain('ally');
     expect(played.movement.fighters).not.toContain('tesla');
+    // «некуда идти» проверяется по шагам, а не по списку: помощник Беты заперт,
+    // но окно открыто из-за остальных — двигать его просто не получится
+    expect(movementDestinations(played, '0', 'beta_ally')).toEqual([]);
   });
 
   it('бойцов двигают до 2 клеток, затем возвращается действие', () => {

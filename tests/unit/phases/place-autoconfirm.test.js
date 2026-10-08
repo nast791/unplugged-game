@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../../../server/create.js';
 import { load } from '../../../server/party.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import { startAreaCellIds, numberedCellId } from '#shared/helpers/placement.js';
 import { player } from '../../fixtures/state.js';
 
 const create = () => {
   createGame(
     {
-      mapId: 'arena',
+      mapId: 'generated',
       mode: 'hotseat',
       heroes: [
         { heroId: 'medusa', team: 'A', order: 1, control: 'human' },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import { view } from '../../../server/party.js';
 import medusaCards from '../../../server/content/heroes/medusa/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
@@ -11,9 +11,9 @@ const card = medusaCards.find(entry => entry.id === 'medusa_10');
 const zoneMap = {
   id: 'zones',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2, 4], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3], terrain: 'ice' },
+    { id: 3, neighbors: [2, 4], terrain: 'ice' },
     { id: 4, neighbors: [3], terrain: 'lava' },
   ],
 };
@@ -55,13 +55,13 @@ const state = ({ medusaAlive = true } = {}) =>
         'Медуза',
         1,
         [
-          unit('medusa', 1, medusaAlive ? 16 : 0, { attackType: 'ranged' }),
+          unit('medusa', 1, medusaAlive ? 16 : 0, { attackRange: 3 }),
           unit('harpies_1', 2, 1, { type: 'assistant', group: 'harpies' }),
         ],
         [{ ...card, instanceId: 'medusa_10_1' }],
       ),
       slot('1', 'Бета', 2, [
-        unit('beta', 3, 13, { attackType: 'ranged' }),
+        unit('beta', 3, 13, { attackRange: 3 }),
         unit('beta_pet', 4, 7, { type: 'assistant' }),
       ]),
     ],

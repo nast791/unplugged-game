@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeSweep, failuresOf, runSweep, showReport } from '../support/duel-sweep.js';
+import { describeSweep, failuresOf, runSweep, showReport } from '../../bot/tools/sweep.js';
 
 /**
  * Фаззинг дуэли Медуза против Теслы: бот играет партии сам и ищет баги.

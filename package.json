@@ -19,31 +19,35 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:bot": "node tests/support/bot-sweep.js",
+    "test:bot": "node bot/tools/run.js",
+    "test:matrix": "node bot/tools/matrix.js",
     "convert-to-webp": "node scripts/convert-to-webp.mjs",
     "contain:fix": "node scripts/apply-contain.mjs"
   },
   "dependencies": {
-    "@fontsource-variable/onest": "5.2.11",
     "@nuxt/icon": "2.3.1",
     "@nuxt/image": "2.0.0",
     "@peterbud/nuxt-query": "1.9.0",
     "@tailwindcss/vite": "4.3.2",
+    "clsx": "2.1.1",
     "konva": "10.3.0",
     "nuxt": "4.4.8",
     "prettier": "3.9.5",
     "prettier-plugin-tailwindcss": "0.8.0",
+    "reka-ui": "2.10.5",
+    "tailwind-merge": "3.6.0",
     "vite-svg-loader": "5.1.1",
     "vue": "3.5.39",
     "vue-konva": "3.4.0",
     "vue-router": "5.1.0"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.140",
     "@nuxt/test-utils": "4.0.3",
     "@vue/test-utils": "2.4.11",
-    "happy-dom": "20.10.6",
-    "vitest": "4.1.10",
     "fast-glob": "3.3.3",
-    "sharp": "0.34.5"
+    "happy-dom": "20.10.6",
+    "sharp": "0.34.5",
+    "vitest": "4.1.10"
   }
 }

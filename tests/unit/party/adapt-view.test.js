@@ -7,7 +7,7 @@ import { view } from '../../../server/party.js';
 const duel = () =>
   createGame(
     {
-      mapId: 'arena',
+      mapId: 'generated',
       mode: 'hotseat',
       heroes: [
         { heroId: 'medusa', team: 'A', order: 1, control: 'human' },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runUi } from '#shared/core.js';
-import { runAction } from '#shared/gameEngine.js';
+import { runAction } from '#shared/publicApi.js';
 import { ap, createState, hand, player, PHASES } from '../fixtures/state.js';
 
 const lineMap = {
@@ -30,7 +30,7 @@ const turnState = () => {
   return state;
 };
 
-describe('scenario: ход через gameEngine.runAction', () => {
+describe('scenario: ход через publicApi.runAction', () => {
   it('перемещение → атака → защита → передача хода', () => {
     let state = turnState();
 
@@ -47,8 +47,11 @@ describe('scenario: ход через gameEngine.runAction', () => {
       fighters: null,
       optional: false,
       throughEnemies: false,
+      damageOnPass: null,
+      damagedFighterIds: [],
       moves: [],
       source: null,
+      playedCard: null,
     });
     expect(hand(player(state, '0'))).toHaveLength(4);
     expect(runUi(state, '0').phase).toBe('movement');

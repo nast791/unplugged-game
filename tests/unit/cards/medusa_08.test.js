@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SET_COMBAT } from '#shared/actions/combat.js';
 import { advanceCombat } from '#shared/cards/run.js';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction } from '#shared/gameEngine.js';
+import { runAction } from '#shared/publicApi.js';
 import medusaCards from '../../../server/content/heroes/medusa/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -11,9 +11,9 @@ const card = medusaCards.find(entry => entry.id === 'medusa_08');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3], terrain: 'ice' },
+    { id: 3, neighbors: [2], terrain: 'ice' },
   ],
 };
 
@@ -74,14 +74,14 @@ const defenseState = () =>
         '0',
         'Медуза',
         1,
-        [unit('medusa', 1, 16, { attackType: 'ranged' })],
+        [unit('medusa', 1, 16, { attackRange: 3 })],
         [{ ...card, instanceId: 'medusa_08_1' }],
       ),
       slot(
         '1',
         'Бета',
         2,
-        [unit('beta', 3, 13, { attackType: 'ranged' })],
+        [unit('beta', 3, 13, { attackRange: 3 })],
         [enemyCard('beta_atk', 'attack', 3, 'medusa')],
       ),
     ],
@@ -99,14 +99,14 @@ const attackState = () =>
         '0',
         'Медуза',
         1,
-        [unit('medusa', 1, 16, { attackType: 'ranged' })],
+        [unit('medusa', 1, 16, { attackRange: 3 })],
         [{ ...card, instanceId: 'medusa_08_1' }],
       ),
       slot(
         '1',
         'Бета',
         2,
-        [unit('beta', 3, 13, { attackType: 'ranged' })],
+        [unit('beta', 3, 13, { attackRange: 3 })],
         [enemyCard('beta_def', 'defense', 3, 'medusa')],
       ),
     ],

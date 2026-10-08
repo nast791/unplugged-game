@@ -14,7 +14,7 @@ export default {
           component: () => import('@/pages/index.vue'),
           meta: {
             seo: {
-              title: 'Лобби',
+              title: 'UnPlugged: Лобби',
             },
           },
         },
@@ -24,7 +24,7 @@ export default {
           component: () => import('@/pages/game.vue'),
           meta: {
             seo: {
-              title: 'Партия',
+              title: 'UnPlugged: Партия',
             },
           },
         },

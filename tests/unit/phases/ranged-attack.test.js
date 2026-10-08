@@ -1,22 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { attackCandidates, attackTargets } from '#shared/helpers/combat.js';
 import { cellTerrain, sharesArea } from '#shared/helpers/placement.js';
-import { runAction } from '#shared/gameEngine.js';
+import { runAction } from '#shared/publicApi.js';
 import { createState, fighter, PHASES } from '../../fixtures/state.js';
 
 /**
- * Карта из трёх стихий (область = стихия клетки):
- *   1(plain) — 2(plain) — 3(lava) — 4(plain)
- *   5(swamp) — граничит с 2 и 3
+ * Дальность боя задаёт только `attackRange` — признака `attackType` в игре нет,
+ * и «своя стихия» дальности не даёт (решение владельца).
+ *
+ * Карта: 1(лёд) — 2(лёд) — 3(лава) — 4(лёд) — 6(лёд), плюс 5(вода) рядом с 2 и 3.
+ * Расстояния от 1: до 4 — три шага, до 6 — четыре; 1, 2, 4 и 6 — одна стихия (лёд).
  */
 const zoneMap = {
   id: 'terrain',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3, 5], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3, 5], terrain: 'ice' },
     { id: 3, neighbors: [2, 4, 5], terrain: 'lava' },
-    { id: 4, neighbors: [3], terrain: 'arcane' },
-    { id: 5, neighbors: [2, 3], terrain: 'swamp' },
+    { id: 4, neighbors: [3, 6], terrain: 'ice' },
+    { id: 5, neighbors: [2, 3], terrain: 'water' },
+    { id: 6, neighbors: [4], terrain: 'ice' },
   ],
 };
 
@@ -33,7 +36,7 @@ const slot = (id, name, order, fighters, hand = []) => ({
   fighters,
 });
 
-const shooter = (id, cell, attackType) =>
+const shooter = (id, cell, attackRange) =>
   fighter({
     id,
     name: id,
@@ -41,19 +44,7 @@ const shooter = (id, cell, attackType) =>
     currentPosition: cell,
     currentHp: 10,
     move: 2,
-    attackRange: 1,
-    attackType,
-  });
-
-const target = (id, cell) =>
-  fighter({
-    id,
-    name: id,
-    type: 'hero',
-    currentPosition: cell,
-    currentHp: 10,
-    move: 2,
-    attackRange: 1,
+    attackRange,
   });
 
 const attackCard = () => ({
@@ -83,45 +74,60 @@ const targetIds = (state, fighterId) =>
 const candidateIds = state =>
   attackCandidates(state, '0', attackCard()).map(entry => entry.fighterId);
 
-describe('стихии и дальний бой', () => {
+describe('дальность боя по attackRange', () => {
   it('область — это стихия: общая область только у клеток одной стихии', () => {
-    const state = boardState(shooter('medusa', 5, 'ranged'), target('beta', 4));
-    expect(cellTerrain(state, 5)).toBe('swamp');
+    const state = boardState(shooter('medusa', 5, 3), shooter('beta', 4, 1));
+
+    expect(cellTerrain(state, 5)).toBe('water');
     expect(sharesArea(state, 2, 1)).toBe(true);
     expect(sharesArea(state, 2, 4)).toBe(true);
+    expect(sharesArea(state, 2, 6)).toBe(true);
+    // вода и лава — соседи льда, но не его область
     expect(sharesArea(state, 5, 2)).toBe(false);
     expect(sharesArea(state, 5, 3)).toBe(false);
     expect(sharesArea(state, 2, 3)).toBe(false);
-    expect(sharesArea(state, 1, 3)).toBe(false);
   });
 
-  it('дальний боец бьёт цель в своей зоне на любом расстоянии', () => {
-    const state = boardState(shooter('medusa', 1, 'ranged'), target('beta', 4));
-    // 1 и 4 — разные клетки одной синей зоны, между ними три шага
+  it('дальность 3: цель в трёх клетках достаёт, хотя между ними стихии', () => {
+    // 1 — лёд, 4 — лёд: три шага и общая область
+    const state = boardState(shooter('medusa', 1, 3), shooter('beta', 4, 1));
+
     expect(targetIds(state, 'medusa')).toEqual(['beta']);
     expect(candidateIds(state)).toEqual(['medusa']);
   });
 
-  it('ближний боец на том же расстоянии не достаёт', () => {
-    const state = boardState(shooter('alpha', 1, 'melee'), target('beta', 4));
+  it('дальность 3: цель в четырёх клетках не достаёт, хотя это та же стихия', () => {
+    // 1 и 6 — обе клетки льда, но четыре шага: общая область дальности больше не даёт
+    const state = boardState(shooter('medusa', 1, 3), shooter('beta', 6, 1));
+
+    expect(sharesArea(state, 1, 6)).toBe(true);
+    expect(targetIds(state, 'medusa')).toEqual([]);
+    expect(candidateIds(state)).toEqual([]);
+  });
+
+  it('дальность 2: цель в трёх клетках уже не достаёт', () => {
+    const state = boardState(shooter('medusa', 1, 2), shooter('beta', 4, 1));
+
+    expect(targetIds(state, 'medusa')).toEqual([]);
+  });
+
+  it('дальность 1 — ближний бой: цель в трёх клетках не достаёт', () => {
+    const state = boardState(shooter('alpha', 1, 1), shooter('beta', 4, 1));
+
     expect(targetIds(state, 'alpha')).toEqual([]);
     expect(candidateIds(state)).toEqual([]);
   });
 
-  it('дальний боец в чужой зоне цель не достаёт, если она не рядом', () => {
-    const state = boardState(shooter('medusa', 1, 'ranged'), target('beta', 3));
-    // 1 (#blue) и 3 (#red): общей зоны нет, расстояние 2 больше attackRange
-    expect(targetIds(state, 'medusa')).toEqual([]);
-  });
+  it('дальник бьёт соседнюю цель из чужой стихии: дальность считает клетки, а не область', () => {
+    // 2 — лёд, 3 — лава: соседи, дальность 3 проходит
+    const state = boardState(shooter('medusa', 2, 3), shooter('beta', 3, 1));
 
-  it('дальний боец всё равно бьёт соседнюю цель из другой зоны', () => {
-    const state = boardState(shooter('medusa', 2, 'ranged'), target('beta', 3));
-    // соседняя клетка: ближний предел attackRange = 1 сохраняется
+    expect(sharesArea(state, 2, 3)).toBe(false);
     expect(targetIds(state, 'medusa')).toEqual(['beta']);
   });
 
-  it('цель в одной зоне доступна объявлением боя', () => {
-    const state = boardState(shooter('medusa', 1, 'ranged'), target('beta', 4));
+  it('цель в пределах дальности доступна объявлением боя', () => {
+    const state = boardState(shooter('medusa', 1, 3), shooter('beta', 4, 1));
 
     const opened = runAction(state, {
       type: 'PICK',

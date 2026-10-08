@@ -1,138 +1,108 @@
 <template>
-  <main class="flex flex-1 flex-col items-center justify-center gap-6 p-8">
-    <div class="flex flex-col items-center gap-2 text-center">
-      <h1 class="text-32 font-semibold tracking-tight">UnPlugged</h1>
-      <p class="text-16 opacity-60">Лобби</p>
-    </div>
+  <div class="lobby-root bg-app text-ink relative flex h-dvh w-full flex-col overflow-hidden">
+    <div class="lobby-backdrop pointer-events-none absolute inset-0" aria-hidden="true" />
 
-    <section class="flex w-full max-w-140 flex-col gap-4 text-16">
-      <p v-if="setupError" class="border border-red-300 bg-red-50 p-3 text-14 text-red-700">
-        {{ setupError }}
-      </p>
+    <ALoader v-if="!ready" class="absolute inset-0 z-30" />
 
-      <label class="flex flex-col gap-2">
-        <span class="opacity-70">Карта</span>
-        <select v-model="mapId" class="border border-primary/20 bg-white px-3 py-2">
-          <option v-for="map in maps" :key="map.id" :value="map.id">
-            {{ map.name }}
-          </option>
-        </select>
-      </label>
+    <template v-else>
+      <header class="relative z-10 flex items-start justify-between gap-24 p-24">
+        <NuxtLink to="/" class="inline-flex" aria-label="UnPlugged — на главную">
+          <BrandLogo class="h-32 w-auto" />
+        </NuxtLink>
+        <ProfileBar
+          :nick="nick"
+          :avatar="avatar"
+          :currency="currency"
+          @profile="onProfileAction('profile')"
+          @settings="onProfileAction('settings')"
+          @exit="onProfileAction('exit')"
+        />
+      </header>
 
-      <div class="flex flex-col gap-3 border border-primary/15 p-4">
-        <p class="font-medium">Игроки (hotseat: играем и за первого, и за второго)</p>
-        <label class="flex flex-col gap-2">
-          <span class="opacity-70">Первый игрок</span>
-          <select v-model="heroA" class="border border-primary/20 bg-white px-3 py-2">
-            <option v-for="hero in heroes" :key="hero.id" :value="hero.id">
-              {{ hero.name }} · {{ hero.health }} hp · бойцов {{ hero.fighters }}
-            </option>
-          </select>
-        </label>
-        <label class="flex flex-col gap-2">
-          <span class="opacity-70">Второй игрок</span>
-          <select v-model="heroB" class="border border-primary/20 bg-white px-3 py-2">
-            <option v-for="hero in heroes" :key="hero.id" :value="hero.id">
-              {{ hero.name }} · {{ hero.health }} hp · бойцов {{ hero.fighters }}
-            </option>
-          </select>
-        </label>
-        <p v-if="heroA === heroB" class="text-12 text-red-600">
-          Герои должны быть разными.
-        </p>
-      </div>
+      <main class="relative z-10 flex flex-1 items-center justify-center p-24">
+        <Menu :season="SEASON" @select="onSelect" />
+      </main>
 
-      <label class="flex flex-col gap-2">
-        <span class="opacity-70">Смотреть глазами</span>
-        <select v-model="asHeroId" class="border border-primary/20 bg-white px-3 py-2">
-          <option :value="heroA">{{ heroName(heroA) }}</option>
-          <option :value="heroB">{{ heroName(heroB) }}</option>
-        </select>
-      </label>
+      <Footer />
+    </template>
 
-      <p v-if="error" class="text-14 text-red-600">{{ error }}</p>
+    <ProfileModal :nick="profile?.nick ?? ''" :avatar="avatar" @save="saveProfile" />
+    <TableSetupModal :content="content" />
 
-      <button
-        type="button"
-        class="bg-primary px-4 py-3 text-white disabled:opacity-40"
-        :disabled="pending || !canStart"
-        @click="onStart"
-      >
-        {{ pending ? 'Создание…' : 'Начать' }}
-      </button>
+    <ExitScreen v-if="exited" @back="exited = false" />
 
-      <p class="text-12 opacity-60">
-        Пока доступен только hotseat на двоих: ИИ и другие режимы — в TODO. Внутри партии смотреть
-        глазами игроков можно кнопками в панели «Hotseat».
-      </p>
-    </section>
-  </main>
+    <p
+      v-if="toast"
+      class="rounded-4 border-line bg-surface text-16 pointer-events-none absolute bottom-96 left-1/2 z-50 -translate-x-1/2 border-2 px-20 py-10"
+      role="status"
+      aria-live="polite"
+    >
+      {{ toast }}
+    </p>
+  </div>
 </template>
 
 <script setup>
-const { data: content } = await useFetch('/api/content/setup');
+import BrandLogo from '~/svg/brand/logo.svg';
+import { useLobbyBoot } from '~/composables/useLobbyBoot';
+import { useProfile } from '~/composables/useProfile';
+import { useSeoTitle } from '~/composables/useSeoTitle';
+import { openModal } from '~/composables/ui/useModal';
 
-const maps = computed(() => content.value?.maps ?? []);
-const heroes = computed(() => content.value?.heroes ?? []);
-const setupError = computed(() => (content.value ? '' : 'Не удалось загрузить контент'));
+/** Лобби (`docs/ui-plan.md` §2). Композаблы импортированы явно — см. `AGENTS.md` §12. */
+useSeoTitle('Лобби');
 
-const mapId = ref('');
-const heroA = ref('');
-const heroB = ref('');
-const asHeroId = ref('');
-const pending = ref(false);
-const error = ref('');
+const { ready, content, boot } = useLobbyBoot();
+const { profile, nick, currency, avatar, setNick, setAvatar } = useProfile();
 
-watch(
-  [maps, heroes],
-  () => {
-    if (!mapId.value) mapId.value = maps.value[0]?.id ?? '';
-    if (!heroA.value) heroA.value = heroes.value[0]?.id ?? '';
-    if (!heroB.value) {
-      heroB.value = heroes.value.find(hero => hero.id !== heroA.value)?.id ?? '';
-    }
-    asHeroId.value = heroA.value;
-  },
-  { immediate: true },
-);
+onMounted(boot);
 
-const heroName = id =>
-  heroes.value.find(hero => hero.id === id)?.name ?? String(id ?? '');
+/** Сезон — динамика, поэтому пропом; пока его не отдаёт контент, подпись стоит здесь. */
+const SEASON = 'Сезон 1 · Остановившаяся зима';
 
-const canStart = computed(
-  () => Boolean(mapId.value) && Boolean(heroA.value) && heroA.value !== heroB.value,
-);
+const exited = ref(false);
+const toast = ref('');
+let toastTimer = null;
 
-const { seed } = useGameView();
+const notify = message => {
+  toast.value = message;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.value = '';
+  }, 2400);
+};
 
-const onStart = async () => {
-  error.value = '';
-  if (!canStart.value) {
-    error.value = 'Выберите карту и двух разных героев';
+onBeforeUnmount(() => clearTimeout(toastTimer));
+
+/** Пункт меню = режим или раздел: экранов пока нет, поэтому честный тост вместо пустой ссылки. */
+const onSelect = item => {
+  if (item.id === 'table') {
+    openModal('table');
     return;
   }
-  pending.value = true;
-  try {
-    const body = {
-      mapId: mapId.value,
-      // hotseat: оба слота играет человек, поэтому control — human у обоих
-      mode: 'hotseat',
-      heroes: [
-        { heroId: heroA.value, team: 'A', order: 1, control: 'human' },
-        { heroId: heroB.value, team: 'B', order: 2, control: 'human' },
-      ],
-      playerId: asHeroId.value || heroA.value,
-    };
-    const res = await $fetch('/api/game/create', { method: 'POST', body });
-    seed(res.host, body.playerId);
-    await navigateTo({
-      path: '/game',
-      query: { gameId: res.id, playerId: body.playerId },
-    });
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    pending.value = false;
+  if (item.id === 'exit') {
+    exited.value = true;
+    return;
   }
+  notify(`«${item.title}» — экран в разработке`);
+};
+
+/** Меню профиля: профиль и выход работают, настройки появятся вместе с экраном настроек (§6). */
+const onProfileAction = action => {
+  if (action === 'profile') {
+    openModal('profile');
+    return;
+  }
+  if (action === 'exit') {
+    exited.value = true;
+    return;
+  }
+  notify('«Настройки» — экран в разработке');
+};
+
+const saveProfile = values => {
+  setNick(values.nick);
+  setAvatar(values.avatar);
+  notify('Профиль сохранён');
 };
 </script>

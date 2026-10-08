@@ -32,4 +32,20 @@ export const randomPick = (partyState, list) => {
   return list[randomValue(partyState) % list.length];
 };
 
+/**
+ * Перемешать список по сиду, без состояния партии: раскладки **до** партии — «Хаос» в лобби (случайные
+ * герои и места). Тот же генератор, что у партии, поэтому «тот же сид — тот же стол» работает и здесь:
+ * поле собирает сервер по сиду, а роли раздаёт лобби по тому же числу.
+ */
+export const shuffleBySeed = (list, seed) => {
+  const out = Array.isArray(list) ? [...list] : [];
+  let value = nextValue(Number(seed) || 1);
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    value = nextValue(value);
+    const j = value % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+};
+
 export default randomPick;

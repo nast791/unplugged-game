@@ -162,3 +162,88 @@ describe('runFact / runFacts', () => {
     expect(isPlayerAlive(state, player(state, '0'))).toBe(true);
   });
 });
+
+describe('COMBAT: открытый бой и итог', () => {
+  /** Бой идёт: итога ещё нет, но бойцы и стороны известны. */
+  const openCombat = {
+    stage: 'reveal',
+    attackerPlayerId: '0',
+    defenderPlayerId: '1',
+    attackerFighterId: 'alpha',
+    targetFighterId: 'beta',
+  };
+
+  /** Тот же бой после расчёта: `winner` появляется только здесь. */
+  const finishedCombat = {
+    attackerPlayerId: '0',
+    defenderPlayerId: '1',
+    attackerFighterId: 'alpha',
+    targetFighterId: 'beta',
+    winner: 'attacker',
+    winnerPlayerId: '0',
+  };
+
+  const stateFor = patch => createState(patch);
+
+  it('во время битвы select видит бойцов: раньше отдавал пусто', () => {
+    const state = stateFor({ combat: openCombat, lastCombat: null });
+
+    expect(runFact(state, 'COMBAT', { select: 'self' }, { playerId: '0' }).value).toEqual([
+      'alpha',
+    ]);
+    expect(runFact(state, 'COMBAT', { select: 'opponent' }, { playerId: '0' }).value).toEqual([
+      'beta',
+    ]);
+    expect(runFact(state, 'COMBAT', { select: 'target' }, { playerId: '0' }).value).toEqual([
+      'beta',
+    ]);
+  });
+
+  it('исход открытого боя неизвестен: winner и loser молчат, а не угадывают', () => {
+    const state = stateFor({ combat: openCombat, lastCombat: null });
+
+    expect(runFact(state, 'COMBAT', { select: 'winner' }, { playerId: '0' }).ok).toBe(false);
+    expect(runFact(state, 'COMBAT', { select: 'loser' }, { playerId: '0' }).ok).toBe(false);
+  });
+
+  it('после боя winner и loser — по итогу, а не по открытому бою', () => {
+    const state = stateFor({
+      combat: { ...openCombat, stage: 'close' },
+      lastCombat: finishedCombat,
+    });
+
+    expect(runFact(state, 'COMBAT', { select: 'winner' }, { playerId: '0' }).value).toEqual([
+      'alpha',
+    ]);
+    expect(runFact(state, 'COMBAT', { select: 'loser' }, { playerId: '0' }).value).toEqual([
+      'beta',
+    ]);
+  });
+
+  it('победил защитник — winner и loser не меняются местами', () => {
+    const state = stateFor({
+      combat: { ...openCombat, stage: 'close' },
+      lastCombat: { ...finishedCombat, winner: 'defender', winnerPlayerId: '1' },
+    });
+
+    expect(runFact(state, 'COMBAT', { select: 'winner' }, { playerId: '0' }).value).toEqual([
+      'beta',
+    ]);
+    expect(runFact(state, 'COMBAT', { select: 'loser' }, { playerId: '0' }).value).toEqual([
+      'alpha',
+    ]);
+  });
+
+  it('факт без параметров — про завершённый бой, а не про идущий', () => {
+    expect(runFact(stateFor({ combat: openCombat, lastCombat: null }), 'COMBAT', {}).ok).toBe(
+      false,
+    );
+    expect(
+      runFact(
+        stateFor({ combat: { ...openCombat, stage: 'close' }, lastCombat: finishedCombat }),
+        'COMBAT',
+        {},
+      ).ok,
+    ).toBe(true);
+  });
+});

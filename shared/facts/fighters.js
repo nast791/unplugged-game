@@ -28,7 +28,8 @@ const sideMatches = (state, side, ownerId, player) => {
 
 /**
  * Бойцы на поле по фильтру.
- * params: { side, of, type, group, fighterIds, alive, placed, areaOf, terrain, reachableTo, adjacentTo }
+ * params: { side, of, type, group, fighterIds, alive, placed, areaOf, terrain, reachableTo, adjacentTo,
+ *           movedThisTurn, frozen }
  * side: 'any' — все, 'self' — свои, 'opponent' — бойцы ВСЕХ врагов (в команде — всех чужих команд),
  * 'teammate' — союзники без себя;
  * of — бойцы одного игрока (id), например противника в этой битве: `COMBAT { player: 'opponent' }` → `of: '$enemy'`;
@@ -37,7 +38,8 @@ const sideMatches = (state, side, ownerId, player) => {
  * areaOf — в одной области с указанным бойцом (область = стихия клетки, `docs/terrain.md`);
  * terrain — бойцы, стоящие на клетке с этой стихией (двухцветная клетка считается в обеих);
  * reachableTo — кто дотягивается до него своей attackRange;
- * adjacentTo — кто стоит ровно на соседней с ним клетке (своя клетка не считается).
+ * adjacentTo — кто стоит ровно на соседней с ним клетке (своя клетка не считается);
+ * movedThisTurn — двигался ли боец в этом ходу; frozen — стоит ли на нём статус «заморожен».
  */
 export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
   const ownerId = ownerPlayerId == null ? null : String(ownerPlayerId);
@@ -85,9 +87,21 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
       if (params.group != null && String(fighter.group ?? '') !== String(params.group)) {
         continue;
       }
+      // «двигался в этом ходу» — флаг бойца (ставит SET_FIGHTER_CELL, снимает начало хода)
+      if (params.movedThisTurn != null && Boolean(fighter.movedThisTurn) !== params.movedThisTurn) {
+        continue;
+      }
+      // «заморожен» — статус бойца (ставит SET_STATUS, снимает конец хода)
+      if (params.frozen != null && Boolean(fighter.frozen) !== params.frozen) {
+        continue;
+      }
       if (
         params.fighterIds != null &&
         !(Array.isArray(params.fighterIds) ? params.fighterIds : [params.fighterIds])
+          // значение приходит и строкой, и объектом факта (`FIGHTERS` → `{ fighterId }`)
+          .map(entry =>
+            entry != null && typeof entry === 'object' ? (entry.fighterId ?? entry.id) : entry,
+          )
           .map(String)
           .includes(String(fighter.id))
       ) {
@@ -128,12 +142,13 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
   return out;
 };
 
-/** FIGHTERS — бойцы по фильтру; params.min — минимальный размер списка. */
+/** FIGHTERS — бойцы по фильтру; params.min — минимальный размер списка, params.max — максимальный. */
 export const FIGHTERS = (ctx, params = {}) => {
   const ownerPlayerId = ctx.player?.id ?? ctx.state?.turn?.playerId;
   const list = queryFighters(ctx.state, params, { ownerPlayerId });
   const min = params.min ?? 0;
-  return { ok: list.length >= min, value: list };
+  const max = params.max == null ? Infinity : Number(params.max);
+  return { ok: list.length >= min && list.length <= max, value: list };
 };
 
 export default FIGHTERS;

@@ -45,13 +45,25 @@ export const takeCardFromZone = (zone, cardId) => {
 
 export const findCardInHand = (player, cardId) => findCardInZone(player?.hand, cardId);
 
-/** Боец на поле у любого игрока. */
+/**
+ * id бойца из значения факта: строка, один элемент списка или объект `FIGHTERS` (`{ fighterId }`).
+ * Факты отдают списки объектов, а `areaOf`/`adjacentTo` ждут одного бойца: без разбора
+ * `CELLS { areaOf: '$heroes' }` молча получал `[object Object]` и не находил никого.
+ */
+const fighterRef = value => {
+  if (value == null) return null;
+  const entry = Array.isArray(value) ? value[0] : value;
+  if (entry == null) return null;
+  if (typeof entry === 'object') return entry.fighterId ?? entry.id ?? null;
+  return entry;
+};
+
+/** Боец на поле у любого игрока (id бойца, элемент списка факта или объект `FIGHTERS`). */
 export const findFighter = (partyState, fighterId) => {
-  if (fighterId == null) return { player: null, fighter: null, index: -1 };
+  const ref = fighterRef(fighterId);
+  if (ref == null) return { player: null, fighter: null, index: -1 };
   for (const player of partyState.players ?? []) {
-    const index = (player.fighters ?? []).findIndex(
-      entry => String(entry.id) === String(fighterId),
-    );
+    const index = (player.fighters ?? []).findIndex(entry => String(entry.id) === String(ref));
     if (index >= 0) {
       return { player, fighter: player.fighters[index], index };
     }
@@ -131,6 +143,51 @@ export const resolveOkBackControls = (phase, partyState, playerId) => ({
     label: phase?.back?.label ?? null,
   },
 });
+
+/**
+ * Враг ли игрок владельцу — та же роль, что у факта `FIGHTERS { side: 'opponent' }` и у боя
+ * (`shared/helpers/combat.js`). Союзник — тот, у кого та же команда; там, где команд нет,
+ * враг любой другой игрок.
+ */
+export const isEnemyPlayer = (partyState, playerId, other) => {
+  if (other == null || String(other.id) === String(playerId)) return false;
+  const owner = findPlayer(partyState, playerId);
+  if (owner?.team != null && other.team != null && String(owner.team) === String(other.team)) {
+    return false;
+  }
+  return true;
+};
+
+/** Роли, которые можно писать в параметре «чей это игрок», вместо id. */
+const PLAYER_ROLES = ['self', 'opponent', 'enemy'];
+
+/**
+ * Игрок по ссылке действия: id, `'self'` | `'opponent'` | `'enemy'`.
+ *
+ * Роль нужна правилам момента `picked`: переменные условий (`var: 'enemy'`) в другое правило
+ * не переносятся — правила независимы, — поэтому «противник» называют ролью, а не `$enemy`.
+ * Сторону берём из открытого боя (в нём у каждой стороны ровно один противник), а вне боя —
+ * ходящего игрока: в FFA другой противник неразличим, и роль отвечает на «тот, кто напротив».
+ * Незнакомая строка возвращается как есть: это id игрока.
+ */
+export const playerByRole = (partyState, actingPlayerId, ref) => {
+  if (ref == null || Array.isArray(ref)) return ref;
+  const key = String(ref);
+  if (!PLAYER_ROLES.includes(key)) return ref;
+  if (key !== 'self' && actingPlayerId == null) return ref;
+
+  const selfId = actingPlayerId == null ? partyState.turn?.playerId : actingPlayerId;
+  if (key === 'self') return selfId;
+
+  const combat = partyState.combat ?? null;
+  if (combat != null) {
+    if (String(combat.attackerPlayerId) === String(selfId)) return combat.defenderPlayerId;
+    if (String(combat.defenderPlayerId) === String(selfId)) return combat.attackerPlayerId;
+  }
+
+  const other = (partyState.players ?? []).find(entry => isEnemyPlayer(partyState, selfId, entry));
+  return other?.id ?? ref;
+};
 
 export const occupiedOwnCellIds = (player, exceptFighterId) => {
   const blocked = new Set();

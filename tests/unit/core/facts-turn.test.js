@@ -83,6 +83,18 @@ describe('facts хода', () => {
     expect(runFact(state, 'HAND', {}, { playerId: '0' }).value).toHaveLength(3);
   });
 
+  it('DECK: цена топливом из колоды проверяется', () => {
+    const state = createState();
+    expect(runFact(state, 'DECK', {}, { playerId: '0' }).value).toBe(2);
+    expect(runFact(state, 'DECK', { min: 1 }, { playerId: '0' }).ok).toBe(true);
+    expect(runFact(state, 'DECK', { min: 3 }, { playerId: '0' }).ok).toBe(false);
+
+    // пустая колода: платить нечем, свойство «сбросьте верхнюю карту» не срабатывает
+    player(state, '0').deck = { visibility: [], cards: [] };
+    expect(runFact(state, 'DECK', { min: 1 }, { playerId: '0' }).ok).toBe(false);
+    expect(runFact(state, 'DECK', { max: 0 }, { playerId: '0' }).ok).toBe(true);
+  });
+
   it('HAND_OVER_LIMIT: лимит руки', () => {
     const state = createState();
     const inLimit = runFact(state, 'HAND_OVER_LIMIT', {}, { playerId: '0' });
@@ -124,8 +136,8 @@ describe('facts хода', () => {
   it('FIGHTERS: areaOf — бойцы одной области', () => {
     const state = createState();
     state.map.nodes = [
-      { id: 8, neighbors: [9], terrain: 'arcane' },
-      { id: 9, neighbors: [8, 10], terrain: 'arcane' },
+      { id: 8, neighbors: [9], terrain: 'ice' },
+      { id: 9, neighbors: [8, 10], terrain: 'ice' },
       { id: 10, neighbors: [9], terrain: 'lava' },
     ];
     const same = runFact(state, 'FIGHTERS', { areaOf: 'alpha' });

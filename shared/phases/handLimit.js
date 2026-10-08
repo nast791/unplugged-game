@@ -1,7 +1,7 @@
 import { SET_CARDS } from '#shared/actions/cards.js';
-import { rules } from '#shared/constants/rules.js';
 import {
   handCardIds,
+  handLimitFor,
   hasActions,
   hasMoment,
   isActivePlayer,
@@ -16,7 +16,7 @@ export default {
     discardCards: {
       active: () => true,
       text: (partyState, playerId) =>
-        `Рука больше ${rules.maxHandSize} карт: сбросьте ещё ${mustDiscardCount(partyState, playerId)}`,
+        `Рука больше ${handLimitFor(partyState, playerId)} карт: сбросьте ещё ${mustDiscardCount(partyState, playerId)}`,
     },
   },
 

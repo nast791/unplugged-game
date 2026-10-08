@@ -6,31 +6,16 @@ import {
   runCombatPicked,
   waitingCombatCard,
 } from '#shared/cards/run.js';
-import { findFighter, resolveOkBackControls } from '#shared/helpers/base.js';
-import { cardChoices, cardKey, fighterMatchesCard, isDefenseCard } from '#shared/helpers/cards.js';
+import { resolveOkBackControls } from '#shared/helpers/base.js';
+import { cardChoices } from '#shared/helpers/cards.js';
+import { defenseCardIds } from '#shared/helpers/combat.js';
 import {
   combatChoiceOf,
   endGameIfFinished,
   handCardIds,
-  handCards,
   isMomentMine,
   isTargetingMine,
 } from '#shared/helpers/turn.js';
-
-/**
- * Карты руки, которыми можно защититься: тип подходит и карта — за того бойца, которого атакуют
- * (карту Гарпии нельзя сыграть, когда бьют Медузу). Карта без привязки подходит всегда.
- */
-const defenseCardIds = (partyState, playerId) => {
-  const target = partyState.combat?.targetFighterId;
-  const found = target == null ? null : findFighter(partyState, target);
-  const defender = found?.fighter ?? null;
-
-  return handCards(partyState, playerId)
-    .filter(isDefenseCard)
-    .filter(card => fighterMatchesCard(defender, card))
-    .map(cardKey);
-};
 
 const isDefender = (partyState, playerId) =>
   partyState.combat?.stage === 'defense' &&
@@ -42,11 +27,35 @@ const choiceOf = (partyState, playerId) => {
   return choice && choice.effect !== 'movement' ? choice : null;
 };
 
+/** Окно выбора, открытое картой боя и принадлежащее этому игроку: вариант, боец или клетка. */
+const cardWindowOf = (partyState, playerId) =>
+  isTargetingMine(partyState, playerId) ? partyState.targeting : null;
+
 /** Окно выбора варианта эффекта (например, «активировать катушки» или «деактивировать»). */
-const optionWindowOf = (partyState, playerId) =>
-  isTargetingMine(partyState, playerId) && partyState.targeting?.kind === 'options'
-    ? partyState.targeting
-    : null;
+const optionWindowOf = (partyState, playerId) => {
+  const window = cardWindowOf(partyState, playerId);
+  return window?.kind === 'options' ? window : null;
+};
+
+/** Окно бойцов и клеток, открытое картой боя: вариант ведёт своя ветка, здесь — только эти два вида. */
+const targetWindowOf = (partyState, playerId) => {
+  const window = cardWindowOf(partyState, playerId);
+  return window && window.kind !== 'options' ? window : null;
+};
+
+/** Подсветка окна: бойцы окна `fighters` (у окна клеток подсвечиваются клетки). */
+const windowFighterIds = (partyState, playerId) => {
+  const window = cardWindowOf(partyState, playerId);
+  if (!window || window.kind === 'cells') return [];
+  return (window.candidates ?? []).map(entry => String(entry.fighterId ?? entry.id));
+};
+
+/** Подсветка окна клеток, открытого картой боя. */
+const windowCellIds = (partyState, playerId) => {
+  const window = cardWindowOf(partyState, playerId);
+  if (!window || window.kind !== 'cells') return [];
+  return (window.candidates ?? []).map(entry => String(entry.cellId ?? entry.id));
+};
 
 /**
  * Ответ в окне вариантов: отметка варианта, правила карты в моменте picked делают остальное,
@@ -54,6 +63,29 @@ const optionWindowOf = (partyState, playerId) =>
  */
 const answerOption = (partyState, playerId, optionId) => {
   let state = SET_TARGETING(partyState, { op: 'pick', playerId, optionId });
+  state = runCombatPicked(state);
+  state = SET_TARGETING(state, { op: 'close', playerId });
+  state = advanceCombat(state);
+
+  return endGameIfFinished(state);
+};
+
+/**
+ * Цель отмечена в окне, которое открыла карта боя (`fighters` или `cells`): клик по бойцу или клетке.
+ * Так работают «Плата пеплом» (какого духа сжечь) и первое действие «Счёта ударов» (кого добить
+ * в области Ифрита): правила карты в моменте `picked` доигрывают эффект, окно закрывается,
+ * бой продолжается.
+ */
+const answerTargeting = (partyState, playerId, action) => {
+  const window = cardWindowOf(partyState, playerId);
+  const wantCell = window?.kind === 'cells';
+  const expected = wantCell ? 'cell' : 'fighter';
+  if (action.kind !== expected) {
+    throw new Error(`PICK: в окне выбора карты ждут "${expected}" (пришло "${action.kind}")`);
+  }
+
+  const pick = wantCell ? { cellId: action.id } : { fighterId: action.id };
+  let state = SET_TARGETING(partyState, { op: 'pick', playerId, ...pick });
   state = runCombatPicked(state);
   state = SET_TARGETING(state, { op: 'close', playerId });
   state = advanceCombat(state);
@@ -99,13 +131,55 @@ const answerChoice = (partyState, action, op) => {
   return endGameIfFinished(state);
 };
 
+/**
+ * Кнопка завершения окна или паузы свойства: одна общая «Закончить эффект» — вопросов «выбрать или нет»
+ * в интерфейсе нет. Кнопка видна, когда шаг есть чем закончить (от свойства можно отказаться,
+ * `required: false`, или выбор уже сделан); у обязательного окна её нет, пока цель не отмечена.
+ */
+const effectControls = canFinish => ({
+  ok: {
+    visible: canFinish,
+    enabled: canFinish,
+    label: canFinish ? 'Закончить эффект' : null,
+  },
+  back: { visible: false, enabled: false, label: null },
+});
+
+/**
+ * Подсказка окна: необязательное окно называет оба пути — выбор подсвеченной цели и кнопку завершения.
+ * Обязательное окно зовёт только выбирать.
+ */
+const windowHint = (window, pick, mandatory) =>
+  window?.required === true ? mandatory : `${pick} — или закончите эффект без выбора`;
+
 export default {
   name: 'defense',
 
   hints: {
     effectOption: {
       active: (partyState, playerId) => Boolean(optionWindowOf(partyState, playerId)),
-      text: () => 'Выберите один из вариантов эффекта карты',
+      text: (partyState, playerId) =>
+        windowHint(
+          optionWindowOf(partyState, playerId),
+          'Выберите вариант свойства',
+          'Выберите один из вариантов эффекта карты',
+        ),
+    },
+    effectTarget: {
+      active: (partyState, playerId) =>
+        Boolean(cardWindowOf(partyState, playerId)) && !optionWindowOf(partyState, playerId),
+      text: (partyState, playerId) =>
+        partyState.targeting?.kind === 'cells'
+          ? windowHint(
+              targetWindowOf(partyState, playerId),
+              'Выберите подсвеченную клетку',
+              'Выберите клетку среди подсвеченных',
+            )
+          : windowHint(
+              targetWindowOf(partyState, playerId),
+              'Выберите подсвеченного бойца',
+              'Выберите цель среди подсвеченных бойцов',
+            ),
     },
     combatChoice: {
       active: (partyState, playerId) => Boolean(choiceOf(partyState, playerId)),
@@ -113,7 +187,7 @@ export default {
         const choice = choiceOf(partyState, playerId);
         return choice?.effect === 'movement'
           ? 'Передвиньте бойцов по подсвеченным клеткам'
-          : 'Выберите карту для эффекта или нажмите кнопку, ничего не выбирая';
+          : 'Выберите карту для эффекта — или закончите эффект без выбора';
       },
     },
     noDefenseCards: {
@@ -123,7 +197,10 @@ export default {
     },
     defend: {
       active: (partyState, playerId) => Boolean(isDefender(partyState, playerId)),
-      text: () => 'Защититесь картой defense|hybrid или закончите действие без карты',
+      text: (partyState, playerId) =>
+        partyState.combat?.defenseRequired === true
+          ? 'Защиту съели: выложите другую карту защиты или гибрид'
+          : 'Защититесь картой defense|hybrid или закончите действие без карты',
     },
   },
 
@@ -131,12 +208,16 @@ export default {
     isMomentMine(partyState, playerId, 'combat') &&
     (isDefender(partyState, playerId) ||
       Boolean(choiceOf(partyState, playerId)) ||
-      Boolean(optionWindowOf(partyState, playerId))),
+      Boolean(cardWindowOf(partyState, playerId))),
 
   ui(partyState, playerId, _clientContext, phase) {
     const combat = partyState.combat;
     const choice = choiceOf(partyState, playerId);
     const options = optionWindowOf(partyState, playerId);
+    const target = targetWindowOf(partyState, playerId);
+    // окно, открытое картой боя: подсвечиваем его кандидатов — по ним игрок и кликает
+    const windowFighters = windowFighterIds(partyState, playerId);
+    const windowCells = windowCellIds(partyState, playerId);
 
     const playable = choice
       ? choice.candidates.map(entry => String(entry.cardId))
@@ -146,9 +227,14 @@ export default {
 
     return {
       deck: { clickable: false },
-      highlightedCellIds: [],
+      highlightedCellIds: windowCells,
       highlightedFighterIds:
-        combat?.attackerFighterId == null ? [] : [String(combat.attackerFighterId)],
+        windowFighters.length > 0
+          ? windowFighters
+          : combat?.attackerFighterId == null
+            ? []
+            : [String(combat.attackerFighterId)],
+      pickFighters: windowFighters.length > 0,
       framedFighterIds: combat?.targetFighterId == null ? [] : [String(combat.targetFighterId)],
       // варианты свойства: тексты берём с самой карты (card.options)
       choices: cardChoices(waitingCombatCard(partyState), options?.candidates ?? []),
@@ -157,26 +243,15 @@ export default {
         cardId => !playable.includes(cardId),
       ),
       controls: options
-        ? {
-            // необязательное свойство можно пропустить общей кнопкой, обязательное — нет
-            ok: {
-              visible: options.required !== true,
-              enabled: options.required !== true,
-              label: 'Отказаться от свойства',
-            },
-            back: { visible: false, enabled: false, label: null },
-          }
+        ? effectControls(options.required !== true)
         : choice
-          ? {
-              // одна общая кнопка: ничего не выбрано — отказ, выбрано — эффект заканчивается
-              ok: {
-                visible: true,
-                enabled: canFinishChoice(choice),
-                label: choice.used > 0 ? 'Закончить эффект' : 'Пропустить эффект',
-              },
-              back: { visible: false, enabled: false, label: null },
-            }
-          : resolveOkBackControls(phase, partyState, playerId),
+          ? // одна общая кнопка: ничего не выбрано — отказ, выбрано — эффект заканчивается
+            effectControls(canFinishChoice(choice))
+          : target
+            ? // окно цели: от необязательного свойства («можете убить духа») можно отказаться,
+              // обязательное закрывается только выбором — кнопка выключена
+              effectControls(target.required !== true)
+            : resolveOkBackControls(phase, partyState, playerId),
     };
   },
 
@@ -185,13 +260,26 @@ export default {
     enabled: (partyState, playerId) => {
       const options = optionWindowOf(partyState, playerId);
       if (options) return options.required !== true;
+      const target = targetWindowOf(partyState, playerId);
+      if (target) return target.required !== true;
       const choice = choiceOf(partyState, playerId);
       if (choice) return canFinishChoice(choice);
+      // замену защиты пасовать нельзя: карта есть — защитник обязан выложить другую
+      if (partyState.combat?.defenseRequired === true) return false;
       return isDefender(partyState, playerId);
     },
     onPress: (partyState, action) => {
       const options = optionWindowOf(partyState, action.playerId);
       if (options) return declineOption(partyState, action.playerId);
+
+      const target = targetWindowOf(partyState, action.playerId);
+      if (target) {
+        if (target.required === true) {
+          throw new Error('UI_OK: обязательное свойство карты закрывается только выбором цели');
+        }
+        return declineOption(partyState, action.playerId);
+      }
+
       return choiceOf(partyState, action.playerId)
         ? answerChoice(partyState, action, 'skip')
         : answerDefense(partyState, { playerId: action.playerId, cardId: null });
@@ -210,6 +298,11 @@ export default {
           throw new Error(`PICK: в окне эффекта выбирают вариант (пришло "${action.kind}")`);
         }
         return answerOption(partyState, action.playerId, action.id);
+      }
+
+      // окно цели, открытое картой боя: клик по бойцу или клетке из подсвеченных
+      if (cardWindowOf(partyState, action.playerId)) {
+        return answerTargeting(partyState, action.playerId, action);
       }
 
       if (choiceOf(partyState, action.playerId)) {
@@ -252,6 +345,10 @@ export default {
     кнопка не закрывает, необязательное («вы можете») — закрывает и помечает шаг declined. Отметка варианта
     (PICK kind: 'option') прогоняет правила карты в моменте picked — там ветки правил проверяют выбранное
     через PICKED { is: '...' } — затем окно закрывается и бой доигрывается.
+ 5b. выбор цели картой боя (kind: 'fighters' | 'cells'): так «Плата пеплом» спрашивает, какого духа сжечь,
+    а «Счёт ударов» — кого добить в области Ифрита. Клик по подсвеченному бойцу или клетке (PICK) прогоняет
+    picked, окно закрывается и бой доигрывается; у необязательного окна общая кнопка помечает шаг declined,
+    обязательное закрывается только выбором.
  6. Если после урона и эффектов живой сторон осталось не больше одной — партия завершается (hook = gameEnd,
     winner). Проверка победы откладывается, пока бой не закрыт: действие доигрывается до конца, эффекты обеих
     карт срабатывают, и только потом объявляется итог (если погибли все герои — побеждает активный игрок).

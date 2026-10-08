@@ -87,13 +87,21 @@ export const bonusCardIds = (partyState, playerId) =>
     .filter(card => cardBonus(card) > 0)
     .map(cardKey);
 
+/**
+ * Лимит руки игрока: общий `rules.maxHandSize`, если герой не поменял его правилом
+ * `SET_HAND_LIMIT` (например, «Вечная мерзлота» Снежной королевы держит врагов на пяти картах).
+ * Значение живёт на игроке (`player.handLimit`), его ставит и снимает само правило.
+ */
+export const handLimitFor = (partyState, playerId) =>
+  Number(findPlayer(partyState, playerId)?.handLimit ?? rules.maxHandSize);
+
 /** Лимит руки касается только тех, кто ещё в партии: у сдавшегося руки как бы нет. */
 export const isHandOverLimit = (partyState, playerId) =>
   !findPlayer(partyState, playerId)?.resigned &&
-  handCards(partyState, playerId).length > rules.maxHandSize;
+  handCards(partyState, playerId).length > handLimitFor(partyState, playerId);
 
 export const mustDiscardCount = (partyState, playerId) =>
-  Math.max(0, handCards(partyState, playerId).length - rules.maxHandSize);
+  Math.max(0, handCards(partyState, playerId).length - handLimitFor(partyState, playerId));
 
 /** Герои игрока — цель истощения; помощники урон не получают. */
 export const heroFighterIds = player =>
@@ -117,7 +125,9 @@ export const movableFighterIds = (partyState, playerId) => {
   // список из правила важнее владельца: принудительное перемещение двигает чужих бойцов
   return (movement.fighters ?? []).map(String).filter(fighterId => {
     const fighter = findFighter(partyState, fighterId)?.fighter;
-    return fighter != null && fighter.currentPosition != null;
+    if (fighter == null || fighter.currentPosition == null) return false;
+    // замороженный в списке есть, но шаг ему закрыт — подсвечивать его нельзя (см. movementDestinations)
+    return movementFighterRejection(partyState, movement, playerId, fighterId) == null;
   });
 };
 
@@ -205,6 +215,11 @@ export const movementFighterRejection = (partyState, movement, playerId, fighter
   if (!movement) return 'перемещение не открыто';
   if (fighterId == null) return 'нужен боец';
 
+  // «заморожен» — это про бойца, а не про владельца: двигать его нельзя ни своим ходом, ни чужим эффектом
+  if (findFighter(partyState, fighterId)?.fighter?.frozen === true) {
+    return `боец ${fighterId} заморожен`;
+  }
+
   if (movement.fighters == null) {
     return findOwnedFighter(partyState, playerId, fighterId).fighter
       ? null
@@ -234,6 +249,11 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
   const fighter = draftFighter(partyState, movement, playerId, fighterId);
   if (!fighter || fighter.currentPosition == null) return [];
 
+  // Подсветка не имеет права звать туда, куда движок не пустит: `movementRejection` первым делом
+  // спрашивает то же самое, и «заморожен» закрывает шаг. Без этой проверки бойцу со статусом
+  // подсвечивались клетки, а клик по ним падал («PICK: боец … заморожен»).
+  if (movementFighterRejection(partyState, movement, playerId, fighterId)) return [];
+
   const budget = movementBudget(fighter, movement);
   if (budget <= 0) return [];
 
@@ -246,10 +266,11 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
   );
   const occupied = occupiedCellIds(partyState, fighterId);
 
-  return [...reach]
+  const cells = [...reach]
     .map(String)
-    .filter(cellId => cellId !== String(fighter.currentPosition) && !occupied.has(cellId))
-    .sort(byCellId);
+    .filter(cellId => cellId !== String(fighter.currentPosition) && !occupied.has(cellId));
+
+  return [...new Set(cells)].sort(byCellId);
 };
 
 /** Почему шаг невозможен; null — можно. */

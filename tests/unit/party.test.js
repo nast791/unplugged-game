@@ -9,7 +9,10 @@ const heroes = [
 ];
 
 const makeGame = (id, seed, heroList = heroes) => {
-  createGame({ mapId: 'arena', mode: 'hotseat', heroes: heroList }, { testId: id, testSeed: seed });
+  createGame(
+    { mapId: 'generated', mode: 'hotseat', heroes: heroList },
+    { testId: id, testSeed: seed },
+  );
   return load(id);
 };
 

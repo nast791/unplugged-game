@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SET_COMBAT } from '#shared/actions/combat.js';
 import { advanceCombat } from '#shared/cards/run.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import { buildCombatEffects } from '#shared/helpers/combat.js';
 import { endGameIfFinished } from '#shared/helpers/turn.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
@@ -9,8 +9,8 @@ import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1], terrain: 'ice' },
   ],
 };
 
@@ -318,7 +318,6 @@ describe('окна эффектов боя', () => {
     // предел задаёт правило: без max окно ждёт игрока, пока есть карты
     expect(paused.combat.choice.max).toBeNull();
     expect(paused.combat.choice.candidates).toHaveLength(2);
-    const queue = paused.combat.effects;
 
     const first = runAction(paused, {
       type: 'PICK',
@@ -338,8 +337,8 @@ describe('окна эффектов боя', () => {
     expect(finished.combat).toBeNull();
     expect(finished.lastCombat.attackValue).toBe(4);
     expect(finished.lastCombat.combatDamage).toBe(4);
-    expect(queue[0].status).toBe('applied');
-    expect(queue[0].cards).toEqual(['quiet_1']);
+    expect(finished.lastCombat.effects[0].status).toBe('applied');
+    expect(finished.lastCombat.effects[0].cards).toEqual(['quiet_1']);
   });
 
   it('шаг эффекта, которому нечего применять, помечается skipped', () => {

@@ -23,6 +23,7 @@ const normalizeCandidates = (candidates, kind = 'fighters') => {
         const optionId = typeof entry === 'object' ? (entry.optionId ?? entry.id) : entry;
         if (optionId == null) return null;
         return {
+          ...(typeof entry === 'object' ? entry : {}),
           optionId: String(optionId),
           title: (typeof entry === 'object' && entry.title) || null,
           // вариант, который сейчас нельзя выбрать: клиент рисует его неактивным
@@ -56,10 +57,13 @@ const openTargeting = (partyState, action) => {
     throw new Error(`SET_TARGETING: игрок ${playerId} не найден`);
   }
 
-  /** Сколько целей нужно отметить. Пока поддержана ровно одна цель — окно закрывается по клику. */
-  const count = Number(action.count ?? 1);
+  /** Сколько целей нужно отметить (`max` — тот же счёт, если правило написано через него).
+   * Пока поддержана ровно одна цель — окно закрывается по клику. */
+  const count = Number(action.count ?? action.max ?? 1);
   if (count !== 1) {
-    throw new Error(`SET_TARGETING: пока поддерживается ровно одна цель (count: ${action.count})`);
+    throw new Error(
+      `SET_TARGETING: пока поддерживается ровно одна цель (нужно 1, пришло ${count})`,
+    );
   }
 
   const kind = action.kind ?? 'fighters';
@@ -138,6 +142,7 @@ const closeTargeting = (partyState, action) => {
  * Движок открывает окно (`open` с кандидатами и `count`), отмечает клик (`pick`) и закрывает окно (`close`).
  * Эффект применяет тот, кто открыл выбор, а не сам выбор.
  * params: { op: 'open' | 'pick' | 'close', playerId?, source?, candidates?, count?, required?, auto?, fighterId? }
+ * `count` (`max` — синоним) — сколько целей отметить; сейчас поддержана ровно одна.
  * `auto: true` — выбора нет: если кандидат ровно один, движок отмечает его сам и окна игрок не видит.
  */
 export const SET_TARGETING = (partyState, action = {}) => {

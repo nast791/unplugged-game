@@ -5,7 +5,8 @@ export default [
     title: 'Взгляд смерти',
     type: 'attack',
     value: 2,
-    bonus: 4,
+    // бонус 4 в колоде один — у «Роковой встречи» (правило `docs/hero-algorithm.md` §6)
+    bonus: 3,
     quantity: 3,
     fighter: 'medusa',
     text: 'ПОСЛЕ БИТВЫ: В случае вашей победы нанесите 8 урона атакованному бойцу.',

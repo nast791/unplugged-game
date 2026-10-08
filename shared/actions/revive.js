@@ -4,18 +4,28 @@ import { findNode } from '#shared/helpers/placement.js';
 import { occupiedCellIds } from '#shared/helpers/turn.js';
 /**
  * REVIVE_FIGHTER — вернуть убитого бойца на поле: боец берётся из `player.lost`, получает полное
- * здоровье и встаёт на свободную клетку. Так работает «воскресите убитую Гарпию» (`medusa_11`).
- * params: { playerId, group, cellId }
- * Привязка `group` — id/группа бойца (как `card.fighter`), чтобы не поднять не того, кого нужно.
- * params: { playerId, group, cellId }
+ * здоровье и встаёт на свободную клетку. Так работает «воскресите убитую Гарпию» (`medusa_11`)
+ * и общая «Подмога».
+ * params: { playerId, group, groups, cellId }
+ * Привязка `group` — id/группа бойца (как `card.fighter`), чтобы не поднять не того, кого нужно;
+ * `groups` — список привязок (можно прямо объекты факта LOST `{ fighterId, group }`): подходит любой.
  */
 export const REVIVE_FIGHTER = (partyState, action = {}) => {
   const playerId = action.playerId ?? partyState.turn?.playerId;
   const player = findPlayer(partyState, playerId);
   if (!player) throw new Error(`REVIVE_FIGHTER: игрок ${playerId} не найден`);
 
+  const raw = action.groups ?? action.group;
+  const bindings = (Array.isArray(raw) ? raw : [raw]).map(entry => {
+    if (entry == null) return null;
+    if (typeof entry === 'object') return entry.fighterId ?? entry.group ?? entry.id ?? null;
+    return entry;
+  });
+
   const lost = player.lost ?? [];
-  const index = lost.findIndex(fighter => fighterMatchesBinding(fighter, action.group ?? null));
+  const index = lost.findIndex(fighter =>
+    bindings.some(binding => fighterMatchesBinding(fighter, binding)),
+  );
   if (index < 0) {
     throw new Error(`REVIVE_FIGHTER: у игрока ${playerId} нет убитого бойца "${action.group}"`);
   }

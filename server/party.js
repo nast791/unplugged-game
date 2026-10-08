@@ -1,7 +1,7 @@
 import { stacks } from '#shared/constants/deck.js';
 import { playerFields, stateFields } from '#shared/constants/state.js';
 import { runUi } from '#shared/core.js';
-import { runLifecycle } from '#shared/gameEngine.js';
+import { runLifecycle } from '#shared/publicApi.js';
 const MAX_PARTIES = 32;
 const parties = new Map();
 
@@ -185,7 +185,13 @@ const projectPlayer = (player, state, you) => {
         return { ...fighter };
       });
     } else if (key === 'items') {
-      out.items = structuredClone(player.items ?? []);
+      // Копии в «скрытых» состояниях наружу не отдаём: у Снежной королевы так спрятан пул осколков —
+      // игрок и противник видят только собранные (`docs/heroes/snow-queen/passport.md` §5).
+      const items = (player.items ?? []).filter(item => {
+        const hidden = item.hiddenStates ?? [];
+        return !hidden.map(String).includes(String(item.state));
+      });
+      out.items = structuredClone(items);
     } else {
       out[key] = player[key];
     }

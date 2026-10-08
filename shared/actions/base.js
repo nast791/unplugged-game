@@ -31,7 +31,16 @@ export const SET_ACTIONS = (partyState, action = {}) => {
     partyState.lastBonus = null;
   }
 
-  partyState.turn = { ...partyState.turn, actionsLeft: left + delta };
+  partyState.turn = {
+    ...partyState.turn,
+    actionsLeft: left + delta,
+    // выданное сверх лимита действие растёт и в общем счёте хода: на него смотрит факт AP
+    // (`spentMin`/`spentMax`) — «какое по счёту действие объявляют сейчас»
+    actionsTotal:
+      delta > 0
+        ? (Number(partyState.turn?.actionsTotal) || 0) + delta
+        : partyState.turn?.actionsTotal,
+  };
   return partyState;
 };
 

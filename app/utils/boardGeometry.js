@@ -1,5 +1,16 @@
 import { seatSide } from '#shared/constants/seats.js';
-import { terrainColor, terrainLabelColor } from '#shared/constants/terrain.js';
+import {
+  isTerrainId,
+  terrainColor,
+  terrainLabelColor,
+  terrainPattern,
+  terrainPatternColor,
+} from '#shared/constants/terrain.js';
+import {
+  PATTERN_BAKE_RADIUS,
+  PATTERN_TEXTURE_EXTENT,
+  PATTERN_TEXTURES,
+} from './patternTextures.js';
 
 /**
  * Геометрия доски: размер кружка, обрезка и изгиб соединителей, сектора цветных клеток,
@@ -119,6 +130,143 @@ export const sectorWedges = terrains => {
 };
 
 /**
+ * Сектора клетки для узора: у одноцветной узор лежит на всём кружке, у цветной — своя текстура
+ * в каждом секторе, обрезанная по его границам (иначе узор одной стихии заезжал бы в чужой цвет).
+ * Углы — те же, что у `sectorWedges`: радианы в системе canvas, где 0 — «вправо», отсчёт по часовой.
+ */
+export const patternSectors = (terrains, radius) => {
+  const list = (Array.isArray(terrains) ? terrains : []).filter(Boolean);
+  if (!list.length) return [];
+  const sectors = sectorWedges(list);
+  if (!sectors.length) return [{ terrain: list[0], whole: true, start: 0, end: Math.PI * 2 }];
+  return sectors.map(sector => ({
+    terrain: sector.terrain,
+    whole: false,
+    start: (sector.rotation * Math.PI) / 180,
+    end: ((sector.rotation + sector.angle) * Math.PI) / 180,
+  }));
+};
+
+/** Обрезка узора по сектору: холст рисует «кусок пирога» — дуга плюс два радиуса к центру. */
+export const sectorClipFunc =
+  ({ start, end, radius }) =>
+  ctx => {
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, start, end);
+    ctx.lineTo(0, 0);
+    ctx.closePath();
+  };
+
+/**
+ * Обрезка растровой плитки: на полштриха меньше радиуса клетки, иначе плитка съедает внутреннюю
+ * половину обводки и граница клетки с плиткой выглядит тоньше, чем у остальных.
+ */
+export const tileClipFunc = (start, end, radius) =>
+  sectorClipFunc({ start, end, radius: radius - STROKE.cell / 2 });
+
+/**
+ * Лава: плитка кинцуги (`lava-veins`) — коричнево-красный фон с золотыми жилами; прежний вариант —
+ * прозрачные гранж-трещины по яркой заливке (`lava-cracks`). Переключается одной строкой,
+ * обе плитки пересобираются `tests/support/bake-tiles.mjs`.
+ */
+const LAVA_TILE = 'kintsugi';
+
+/**
+ * Растровые плитки стихий: владелец выбрал их такими — векторные версии вышли беднее.
+ * Плитка кладётся на клетку целиком, без смещения, и обрезается сектором стихии.
+ *
+ * Формат — WebP, сторона 512 (у каменной осыпи 256: при 512 её мелкая фактура смазывается).
+ * Клетка на экране занимает 88–161 px (радиус до 64 при diameter 1.05), то есть плитка почти
+ * всегда уменьшается и остаётся резкой. `pixels` — сторона картинки, по ней считается масштаб узора.
+ */
+export const PATTERN_TILES = {
+  ice: { src: '/patterns/ice-snowflakes.webp', diameter: 1.05, pixels: 512 },
+  lava: {
+    src: LAVA_TILE === 'kintsugi' ? '/patterns/lava-veins.webp' : '/patterns/lava-cracks-gold.webp',
+    diameter: 1.05,
+    pixels: 512,
+  },
+  forest: { src: '/patterns/forest-canopy.webp', diameter: 1.05, pixels: 512 },
+  desert: { src: '/patterns/desert-sand.webp', diameter: 1.05, pixels: 512 },
+  mountains: { src: '/patterns/mountain-stones.webp', diameter: 1.05, pixels: 256 },
+  water: { src: '/patterns/water-marble.webp', diameter: 1.05, pixels: 512 },
+};
+
+/** Прямоугольник с плиткой для клетки: без смещения, привязан к её центру. */
+export const patternTileConfig = (radius, image, tile) => {
+  const side = radius * 2;
+  const scale = (side * tile.diameter) / tile.pixels;
+  return {
+    x: -side / 2,
+    y: -side / 2,
+    width: side,
+    height: side,
+    fillPatternImage: image ?? undefined,
+    fillPatternRepeat: 'repeat',
+    fillPatternScaleX: scale,
+    fillPatternScaleY: scale,
+    listening: false,
+  };
+};
+
+/**
+ * Текстура стихии для доски: слои запечённой геометрии (сейчас это лёд).
+ * Запечённые пути записаны в единицах `PATTERN_BAKE_RADIUS`, поэтому узел на доске сам масштабирует
+ * их (scaleX/scaleY), а толщина штриха делится на этот масштаб — на экране она остаётся пиксельной.
+ * `null`, если у стихии текстуры нет.
+ */
+export const terrainTexture = (terrain, radius) => {
+  if (!(radius > 0)) return null;
+  const pattern = terrainPattern(terrain);
+  const baked = PATTERN_TEXTURES[pattern] ?? [];
+  const color = terrainPatternColor(terrain);
+  const scale = radius / PATTERN_BAKE_RADIUS;
+
+  const layers = [
+    ...baked.map(layer => ({
+      data: layer.d,
+      fill: layer.mode === 'fill' ? color : undefined,
+      stroke: layer.mode === 'stroke' ? color : undefined,
+      strokeWidth: layer.mode === 'stroke' ? (layer.width ?? 3) / scale : 0,
+      opacity: layer.opacity,
+      scaleX: scale,
+      scaleY: scale,
+      lineJoin: 'round',
+      lineCap: 'round',
+      listening: false,
+    })),
+  ];
+
+  return {
+    color,
+    extent: PATTERN_TEXTURE_EXTENT[terrainPattern(terrain)] ?? { x: 1, y: 1 },
+    layers,
+  };
+};
+
+/**
+ * Текстуры клетки для отрисовки: по одной на сектор, каждая со своей обрезкой. У одноцветной клетки
+ * сектор один — весь кружок, поэтому на доске узел всегда один и тот же: группа с `clipFunc`
+ * и по пути на каждый слой текстуры. У стихии-плитки слоёв нет — доска подставит её картинку.
+ */
+export const cellPatterns = (terrains, radius) => {
+  const list = (Array.isArray(terrains) ? terrains : []).filter(Boolean).map(String);
+  return patternSectors(list, radius)
+    .map(sector => {
+      const texture = terrainTexture(sector.terrain, radius);
+      if (!texture) return null;
+      return {
+        terrain: sector.terrain,
+        start: sector.start,
+        end: sector.end,
+        layers: texture.layers,
+        clipFunc: sectorClipFunc({ ...sector, radius }),
+      };
+    })
+    .filter(Boolean);
+};
+
+/**
  * Разделители между секторами цветной клетки: тонкая чёрная полоска от центра к краю
  * по каждой границе сектора. Без неё светлые заливки сливаются друг с другом.
  */
@@ -135,6 +283,12 @@ export const sectorDividers = (terrains, radius) => {
     };
   });
 };
+
+/**
+ * Показывать id клеток на доске. Сейчас выключено: на поле важнее стихия, текстура и номер героя,
+ * а цифры шумят. Для отладки (сверять клетки с данными карты) поставь true — подписи вернутся.
+ */
+export const SHOW_CELL_IDS = false;
 
 /** Подпись внутри клетки — её id, мелко и тихо: на доске важнее стихия и номер героя. */
 export const nodeLabel = node => ({
@@ -154,11 +308,17 @@ export const nodeLabelColor = node => {
 /** Параметры подписи для konva: центрируем по ширине кружка. */
 export const nodeLabelConfig = (node, radius) => {
   const label = nodeLabel(node);
+  const raw = node?.terrain;
+  const primary = Array.isArray(raw) ? raw[0] : raw;
   return {
     text: label.text,
     fontSize: label.fontSize,
     fontStyle: label.bold ? 'bold' : 'normal',
     fill: nodeLabelColor(node),
+    // номер клетки читается и поверх узора: тонкий ободок цветом заливки отделяет цифру от фигур
+    stroke: primary ? terrainColor(primary) : undefined,
+    strokeWidth: primary ? 3 : 0,
+    fillAfterStrokeEnabled: true,
     width: radius * 2,
     align: 'center',
     x: -radius,
@@ -296,6 +456,28 @@ export const placementOngoing = players =>
 /** Маркеры стартовых клеток на доске: есть, только пока расстановка не закончена у всех. */
 export const placementMarkers = (nodes, radius, players) =>
   startMarkers(nodes, radius, { show: placementOngoing(players) });
+
+/**
+ * Что выбрал клик по доске: поднимаемся от фигуры к её группе и читаем атрибуты клетки или фишки.
+ * Клики вешает сцена, а не каждая клетка (у конва-компонентов корень фрагментный, и Vue ругается
+ * на слушателей), поэтому разбор цели живёт здесь — отдельно от компонента и под тестом.
+ */
+export const clickTarget = node => {
+  let current = node;
+  while (current && typeof current.getAttr === 'function') {
+    const kind = current.getAttr('cellName');
+    if (kind === 'fighter') {
+      return {
+        kind: 'fighter',
+        fighterId: current.getAttr('fighterId'),
+        playerId: current.getAttr('ownerId'),
+      };
+    }
+    if (kind === 'cell') return { kind: 'cell', cellId: current.getAttr('cellId') };
+    current = typeof current.getParent === 'function' ? current.getParent() : null;
+  }
+  return null;
+};
 
 /**
  * Границы поля: край поля с каждой стороны — **самая крайняя клетка** вместе с её обводкой,

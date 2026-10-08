@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SET_ITEM } from '#shared/actions/items.js';
 import { isMoment } from '#shared/constants/moments.js';
 import { runFact } from '#shared/facts/run.js';
-import { runAction, runLifecycle } from '#shared/gameEngine.js';
+import { runAction, runLifecycle } from '#shared/publicApi.js';
 import { movableFighterIds, movementDestinations } from '#shared/helpers/turn.js';
 import { buildPlayer } from '../../../server/builders.js';
 import tesla from '../../../server/content/heroes/tesla/index.js';
@@ -17,10 +17,10 @@ const coilStates = (state, playerId = '0') => coils(state, playerId).map(item =>
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2, 4], terrain: 'arcane' },
-    { id: 4, neighbors: [3], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3], terrain: 'ice' },
+    { id: 3, neighbors: [2, 4], terrain: 'ice' },
+    { id: 4, neighbors: [3], terrain: 'ice' },
   ],
 };
 
@@ -62,7 +62,7 @@ const teslaState = ({ coilStates: states = ['inactive', 'inactive'], foeCell = 3
         '0',
         'Тесла',
         1,
-        [unit('tesla', 2, 14, { attackType: 'ranged' })],
+        [unit('tesla', 2, 14, { attackRange: 3 })],
         states.map((state, index) => ({
           id: `coil_${index + 1}`,
           group: 'coil',
@@ -71,7 +71,7 @@ const teslaState = ({ coilStates: states = ['inactive', 'inactive'], foeCell = 3
           state,
         })),
       ),
-      slot('1', 'Бета', 2, [unit('beta', foeCell, 13, { attackType: 'ranged' })]),
+      slot('1', 'Бета', 2, [unit('beta', foeCell, 13, { attackRange: 3 })]),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
     // в хук turn ещё не входили: правила способности момента turnStart прогоняет turn.enter
@@ -84,12 +84,14 @@ const withSkill = (state, playerId = '0') => {
 };
 
 describe('Никола Тесла: пак и катушки', () => {
-  it('герой описан по карте: 14 здоровья, дальняя атака, перемещение 2, без помощников', () => {
+  it('герой описан по карте: 14 здоровья, дальность 3, перемещение 2, без помощников', () => {
     const hero = tesla.heroes[0];
     expect(tesla.assistants).toEqual([]);
     expect(hero.hp).toBe(14);
     expect(hero.move).toBe(2);
-    expect(hero.attackType).toBe('ranged');
+    // дальность задаёт attackRange: признака attackType в игре нет
+    expect(hero.attackRange).toBe(3);
+    expect(hero.attackType).toBeUndefined();
     expect(tesla.items).toHaveLength(1);
     expect(tesla.items[0]).toMatchObject({
       id: 'coil',
@@ -261,7 +263,7 @@ describe('Никола Тесла: перенапряжение', () => {
           '0',
           'Тесла',
           1,
-          [unit('tesla', 2, 14, { attackType: 'ranged' })],
+          [unit('tesla', 2, 14, { attackRange: 3 })],
           ['active', 'active'].map((value, index) => ({
             id: `coil_${index + 1}`,
             group: 'coil',
@@ -270,8 +272,8 @@ describe('Никола Тесла: перенапряжение', () => {
             state: value,
           })),
         ),
-        slot('1', 'Бета', 2, [unit('beta', 3, 13, { attackType: 'ranged' })]),
-        slot('2', 'Гамма', 3, [unit('gamma', 1, 9, { attackType: 'ranged' })]),
+        slot('1', 'Бета', 2, [unit('beta', 3, 13, { attackRange: 3 })]),
+        slot('2', 'Гамма', 3, [unit('gamma', 1, 9, { attackRange: 3 })]),
       ],
       turn: { index: 1, playerId: '0', actedRound: ['0'] },
       _enteredHooks: { gameStart: true },

@@ -1,13 +1,17 @@
 /**
- * Универсальный движок игры.
+ * Универсальный движок игры: хуки → фазы → действия.
  * Конкретика: lifecycle/registry.js, phases/*, actions/*.
  *
- * Публичный API: runLifecycle, runAction, runPhase, runUi, runFact, runFacts.
+ * Дверь наружу — `shared/publicApi.js` (проверки контракта действия и ре-экспорт поверхности);
+ * отсюда напрямую берут то, что фасад не меняет: `runUi`, `runFact(s)` (клиент, сервер, тесты)
+ * и сам движок в тестах его внутренностей (`tests/unit/core/*`).
  */
 import { lifecycle } from '#shared/constants/hooks.js';
 import { commonMoves } from '#shared/actions/moves.js';
 import { runFact, runFacts } from '#shared/facts/run.js';
 import { findPlayer, resolvePhaseHint } from '#shared/helpers/base.js';
+import { forkState } from '#shared/helpers/fork.js';
+import { syncAllShardItems } from '#shared/helpers/shards.js';
 import { lifecycleHooks } from '#shared/lifecycle/registry.js';
 import { activePhaseOf, runPhase as runHookPhase } from '#shared/phases/run.js';
 
@@ -92,10 +96,14 @@ export const runAction = (partyState, action) => {
     throw new Error(`move "${action.type}" недоступен в фазе "${phase?.name ?? '—'}"`);
   }
 
-  let state = moveHandler(partyState, action);
+  // Ход считается на форке: кирпичи правят вложенные объекты на месте, а входное состояние
+  // обязано остаться прежним (`shared/helpers/fork.js`, инвариант — `tests/unit/core/immutability.test.js`)
+  let state = moveHandler(forkState(partyState), action);
   state = runPhase(state, action.playerId);
   state = runLifecycle(state);
-  return state;
+  // табло осколков (предмет `shard`) — зеркало сброса: обновляем на выходе действия, чтобы панель
+  // показывала то же, что видят правила (`shared/helpers/shards.js`)
+  return syncAllShardItems(state);
 };
 
 export default {

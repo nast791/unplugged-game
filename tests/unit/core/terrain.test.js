@@ -16,16 +16,16 @@ import { createState } from '../../fixtures/state.js';
 
 /**
  * Миникарта со стихиями (герой встаёт на номерную клетку, помощники — в его области):
- *   1(forest, номерная игрока 0) — 2(forest+swamp, двухцветная) — 3(swamp) — 4(swamp)
+ *   1(forest, номерная игрока 0) — 2(forest+water, двухцветная) — 3(water) — 4(water)
  *   5(lava, номерная игрока 1)
  */
 const terrainMap = {
   id: 'terrain-test',
   nodes: [
     { id: 1, neighbors: [2, 3], terrain: 'forest', heroStart: true, position: 1 },
-    { id: 2, neighbors: [1, 3], terrain: ['forest', 'swamp'] },
-    { id: 3, neighbors: [2, 4], terrain: 'swamp' },
-    { id: 4, neighbors: [3, 5], terrain: 'swamp' },
+    { id: 2, neighbors: [1, 3], terrain: ['forest', 'water'] },
+    { id: 3, neighbors: [2, 4], terrain: 'water' },
+    { id: 4, neighbors: [3, 5], terrain: 'water' },
     { id: 5, neighbors: [4], terrain: 'lava', heroStart: true, position: 2 },
   ],
 };
@@ -42,7 +42,7 @@ const terrainState = () => {
 
 describe('стихии: палитра', () => {
   it('шесть стихий, у каждой свой цвет и свой узор', () => {
-    expect(TERRAIN_IDS).toEqual(['arcane', 'forest', 'mountains', 'lava', 'desert', 'swamp']);
+    expect(TERRAIN_IDS).toEqual(['ice', 'forest', 'mountains', 'lava', 'desert', 'water']);
     const colors = new Set(TERRAIN_IDS.map(terrainColor));
     expect(colors.size).toBe(TERRAIN_IDS.length);
     for (const id of TERRAIN_IDS) expect(terrainPattern(id), id).toBeTruthy();
@@ -60,10 +60,10 @@ describe('стихии: данные клеток', () => {
   it('у обычной клетки одна стихия, у цветной — две, первая задаёт заливку', () => {
     const state = terrainState();
     expect(nodeTerrains(terrainMap.nodes[0])).toEqual(['forest']);
-    expect(nodeTerrains(terrainMap.nodes[1])).toEqual(['forest', 'swamp']);
+    expect(nodeTerrains(terrainMap.nodes[1])).toEqual(['forest', 'water']);
     expect(nodeTerrain(terrainMap.nodes[1])).toBe('forest');
 
-    expect(cellTerrains(state, 2)).toEqual(['forest', 'swamp']);
+    expect(cellTerrains(state, 2)).toEqual(['forest', 'water']);
     expect(cellTerrain(state, 2)).toBe('forest');
     expect(cellTerrains(state, 99)).toEqual([]);
     expect(cellTerrain(state, 99)).toBeNull();
@@ -72,7 +72,7 @@ describe('стихии: данные клеток', () => {
   it('двухцветная клетка состоит в обеих своих областях', () => {
     const state = terrainState();
     expect(sharesArea(state, 2, 1)).toBe(true); // общий лес
-    expect(sharesArea(state, 2, 3)).toBe(true); // общее болото
+    expect(sharesArea(state, 2, 3)).toBe(true); // общая вода
     expect(sharesArea(state, 1, 3)).toBe(false); // лес против болота
     expect(sharesArea(state, 1, 5)).toBe(false);
     expect(sharesArea(state, 4, 3)).toBe(true);
@@ -108,7 +108,7 @@ describe('стихии: расстановка в области героя', ()
 describe('стихии: факты CELLS и FIGHTERS', () => {
   it('CELLS: фильтр по стихии видит и двухцветные клетки', () => {
     const state = terrainState();
-    expect(runFact(state, 'CELLS', { terrain: 'swamp', free: false }).value).toEqual([
+    expect(runFact(state, 'CELLS', { terrain: 'water', free: false }).value).toEqual([
       '2',
       '3',
       '4',
@@ -118,9 +118,9 @@ describe('стихии: факты CELLS и FIGHTERS', () => {
 
   it('FIGHTERS: фильтр по стихии и поле terrain в ответе', () => {
     const state = terrainState();
-    const swamp = runFact(state, 'FIGHTERS', { terrain: 'swamp' });
-    expect(swamp.value.map(entry => entry.fighterId)).toEqual(['pawn']);
-    expect(swamp.value[0].terrain).toBe('forest');
+    const water = runFact(state, 'FIGHTERS', { terrain: 'water' });
+    expect(water.value.map(entry => entry.fighterId)).toEqual(['pawn']);
+    expect(water.value[0].terrain).toBe('forest');
 
     const lava = runFact(state, 'FIGHTERS', { terrain: 'lava' });
     expect(lava.value.map(entry => entry.fighterId)).toEqual(['beta']);

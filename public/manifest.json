@@ -2,8 +2,8 @@
   "name": "UnPlugged",
   "short_name": "UnPlugged",
   "start_url": "/",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "background_color": "#12161b",
+  "theme_color": "#12161b",
   "display": "standalone",
   "icons": [
     {

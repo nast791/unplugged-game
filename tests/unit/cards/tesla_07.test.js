@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import teslaCards from '../../../server/content/heroes/tesla/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -9,8 +9,8 @@ const card = teslaCards.find(entry => entry.id === 'tesla_07');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1], terrain: 'ice' },
   ],
 };
 
@@ -78,7 +78,7 @@ const betaAttacks = () =>
         '0',
         'Тесла',
         1,
-        [unit('tesla', 1, 14, { attackType: 'ranged', startHp: 14 })],
+        [unit('tesla', 1, 14, { attackRange: 3, startHp: 14 })],
         [{ ...card, instanceId: 'tesla_07_1' }],
         [],
         coilsOf(),
@@ -87,7 +87,7 @@ const betaAttacks = () =>
         '1',
         'Бета',
         2,
-        [unit('beta', 2, 13, { attackType: 'ranged' })],
+        [unit('beta', 2, 13, { attackRange: 3 })],
         [
           {
             id: 'beta_atk',
@@ -116,7 +116,7 @@ const state = (coilStates = ['active', 'active']) =>
         '0',
         'Тесла',
         1,
-        [unit('tesla', 1, 14, { attackType: 'ranged', startHp: 14 })],
+        [unit('tesla', 1, 14, { attackRange: 3, startHp: 14 })],
         [{ ...card, instanceId: 'tesla_07_1' }],
         [],
         coilsOf(coilStates),
@@ -125,7 +125,7 @@ const state = (coilStates = ['active', 'active']) =>
         '1',
         'Бета',
         2,
-        [unit('beta', 2, 13, { attackType: 'ranged' })],
+        [unit('beta', 2, 13, { attackRange: 3 })],
         [betaCard()],
         [deckCard(0), deckCard(1)],
       ),
@@ -162,7 +162,9 @@ const choose = (pause, optionId) =>
 const coilStates = state => player(state, '0').items.map(item => item.state);
 const handSize = (state, playerId) => player(state, playerId).hand.cards.length;
 const betaHp = state => player(state, '1').fighters[0].currentHp;
-const stepOf = (state, moment) => state.combat.effects.find(entry => entry.moment === moment);
+/** Шаг очереди свойств из отчёта боя: после закрытия боя очередь живёт в `lastCombat`. */
+const stepOf = (state, moment) =>
+  (state.lastCombat?.effects ?? []).find(entry => entry.moment === moment);
 
 describe('карта tesla_07 «Фазовый резонанс»', () => {
   it('описана правилами, моменты — из списка', () => {
@@ -185,11 +187,10 @@ describe('карта tesla_07 «Фазовый резонанс»', () => {
 
   it('первая ступень: свойства карты Беты не действуют, её защита остаётся', () => {
     const paused = battlePause();
-    const spy = stepOf(paused, 'afterCombat');
 
     const after = choose(paused, 'resonance1');
 
-    expect(spy.status).toBe('cancelled');
+    expect(stepOf(after, 'afterCombat').status).toBe('cancelled');
     // карта Беты ушла в слот защиты, а добор от её свойства отменён
     expect(handSize(after, '1')).toBe(0);
     expect(coilStates(after)).toEqual(['inactive', 'active']);
@@ -200,11 +201,10 @@ describe('карта tesla_07 «Фазовый резонанс»', () => {
 
   it('вторая ступень: свойства не действуют и значение карты Беты становится 0', () => {
     const paused = battlePause();
-    const spy = stepOf(paused, 'afterCombat');
 
     const after = choose(paused, 'resonance2');
 
-    expect(spy.status).toBe('cancelled');
+    expect(stepOf(after, 'afterCombat').status).toBe('cancelled');
     expect(after.lastCombat.attackValue).toBe(3);
     expect(after.lastCombat.defenseValue).toBe(0);
     expect(after.lastCombat.combatDamage).toBe(3);
@@ -214,11 +214,10 @@ describe('карта tesla_07 «Фазовый резонанс»', () => {
 
   it('отказ: карта Беты работает как обычно — защита 5 и добор', () => {
     const paused = battlePause();
-    const spy = stepOf(paused, 'afterCombat');
 
     const declined = runAction(paused, { type: 'UI_OK', playerId: '0' });
 
-    expect(spy.status).toBe('applied');
+    expect(stepOf(declined, 'afterCombat').status).toBe('applied');
     expect(handSize(declined, '1')).toBe(1);
     expect(declined.lastCombat.defenseValue).toBe(5);
     expect(coilStates(declined)).toEqual(['active', 'active']);

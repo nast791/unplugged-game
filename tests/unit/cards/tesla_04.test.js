@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import teslaCards from '../../../server/content/heroes/tesla/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -19,8 +19,8 @@ const attackCard = (value = 5) => ({
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1], terrain: 'ice' },
   ],
 };
 
@@ -76,18 +76,12 @@ const state = (coilStates = ['active', 'active'], teslaHp = 14, attackValue = 5)
         '0',
         'Тесла',
         1,
-        [unit('tesla', 1, teslaHp, { attackType: 'ranged', startHp: 14 })],
+        [unit('tesla', 1, teslaHp, { attackRange: 3, startHp: 14 })],
         [{ ...card, instanceId: 'tesla_04_1' }],
         [deckCard(0), deckCard(1), deckCard(2), deckCard(3)],
         coilsOf(coilStates),
       ),
-      slot(
-        '1',
-        'Бета',
-        2,
-        [unit('beta', 2, 13, { attackType: 'ranged' })],
-        [attackCard(attackValue)],
-      ),
+      slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackRange: 3 })], [attackCard(attackValue)]),
     ],
     turn: { index: 1, playerId: '1', actedRound: ['1'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -187,14 +181,13 @@ describe('карта tesla_04 «Научный прорыв»', () => {
   it('отказ: катушки не тратятся, базовая карта остаётся в руке', () => {
     const paused = battlePause(state(['active', 'active']));
     // в моменте два шага: базовый добор и окно ступеней — отказ помечает шаг окна
-    const queue = paused.combat.effects;
-    const window = queue.find(entry => entry.status === 'waiting');
+    const windowIndex = paused.combat.effects.findIndex(entry => entry.status === 'waiting');
 
     const declined = runAction(paused, { type: 'UI_OK', playerId: '0' });
 
     expect(coilStates(declined)).toEqual(['active', 'active']);
     expect(handSize(declined)).toBe(1);
-    expect(window.status).toBe('declined');
+    expect(declined.lastCombat.effects[windowIndex].status).toBe('declined');
     expect(declined.targeting).toBeNull();
     expect(declined.combat).toBeNull();
   });

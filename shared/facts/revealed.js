@@ -1,14 +1,19 @@
 /**
  * REVEALED — раскрытые карты: снимок, который положил SET_REVEAL («Раскройте» = показать всем).
  * params: { of, select: 'cards' | 'bonus', min?, max? }
- * `of` — чья колода раскрыта: id игрока или $переменная (в бою это противник: `COMBAT { player: 'opponent' }`).
+ * `of` — чья колода раскрыта: id игрока, `'self'` (владелец правила) или `$переменная`
+ * (в бою это противник: `COMBAT { player: 'opponent' }`).
  * `select: 'cards'` — список раскрытых карт (`cardId`, `name`, `value`, `bonus`), `min`/`max` — по их числу;
  * `select: 'bonus'` — сумма их бонусов числом (её подставляют прямо в параметр действия:
  * `SET_COMBAT { op: 'value', delta: '$bonus' }`), `min`/`max` — по самому числу.
  */
 export const REVEALED = (ctx, params = {}) => {
+  const ownerId =
+    params.of === 'self'
+      ? (ctx.player?.id ?? ctx.playerId ?? ctx.state?.turn?.playerId)
+      : params.of;
   const reveal = (ctx.state?.reveal ?? []).find(
-    entry => String(entry.playerId) === String(params.of),
+    entry => String(entry.playerId) === String(ownerId),
   );
   const cards = (reveal?.cards ?? []).map(card => ({ ...card }));
 

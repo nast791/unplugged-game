@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import tesla from '../../../server/content/heroes/tesla/index.js';
 import teslaCards from '../../../server/content/heroes/tesla/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
@@ -11,9 +11,9 @@ const card = teslaCards.find(entry => entry.id === 'tesla_01');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3], terrain: 'ice' },
+    { id: 3, neighbors: [2], terrain: 'ice' },
   ],
 };
 
@@ -61,11 +61,11 @@ const state = (coilStates = ['inactive', 'inactive'], teslaHp = 14) =>
         '0',
         'Тесла',
         1,
-        [unit('tesla', 1, teslaHp, { attackType: 'ranged', startHp: 14 })],
+        [unit('tesla', 1, teslaHp, { attackRange: 3, startHp: 14 })],
         [{ ...card, instanceId: 'tesla_01_1' }],
         coilsOf(coilStates),
       ),
-      slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackType: 'ranged' })]),
+      slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackRange: 3 })]),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
     _enteredHooks: { gameStart: true, turn: true },

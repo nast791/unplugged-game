@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import teslaCards from '../../../server/content/heroes/tesla/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -10,10 +10,10 @@ const card = teslaCards.find(entry => entry.id === 'tesla_08');
 const map = {
   id: 'square',
   nodes: [
-    { id: 1, neighbors: [2, 3], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 4], terrain: 'arcane' },
-    { id: 3, neighbors: [1, 4], terrain: 'arcane' },
-    { id: 4, neighbors: [2, 3], terrain: 'arcane' },
+    { id: 1, neighbors: [2, 3], terrain: 'ice' },
+    { id: 2, neighbors: [1, 4], terrain: 'ice' },
+    { id: 3, neighbors: [1, 4], terrain: 'ice' },
+    { id: 4, neighbors: [2, 3], terrain: 'ice' },
   ],
 };
 
@@ -73,7 +73,7 @@ const state = (
         '0',
         'Тесла',
         1,
-        [unit('tesla', 1, 14, { attackType: 'ranged', startHp: 14 })],
+        [unit('tesla', 1, 14, { attackRange: 3, startHp: 14 })],
         [{ ...card, instanceId: 'tesla_08_1' }],
         [],
         coilsOf(coilStates),
@@ -82,7 +82,7 @@ const state = (
         '1',
         'Бета',
         2,
-        [unit('beta', 2, betaHp, { attackType: 'ranged' })],
+        [unit('beta', 2, betaHp, { attackRange: 3 })],
         betaHand.map(id => handCard(id)),
       ),
     ],

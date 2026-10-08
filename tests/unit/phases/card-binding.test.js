@@ -1,21 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { SET_CARDS } from '#shared/actions/cards.js';
+import { SET_MOVEMENT } from '#shared/actions/movement.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import { attackCandidates, attackRejection } from '#shared/helpers/combat.js';
 import { cardFighterId, fighterMatchesCard, hasFighterForCard } from '#shared/helpers/cards.js';
+import { bonusCardIds } from '#shared/helpers/turn.js';
+import dorothyCards from '../../../server/content/heroes/dorothy/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3], terrain: 'ice' },
+    { id: 3, neighbors: [2], terrain: 'ice' },
   ],
 };
 
 const zone = cards => ({ visibility: [], cards });
 
-const unit = (id, cell, hp, { type = 'hero', group = null, attackType = 'melee' } = {}) => ({
+const unit = (id, cell, hp, { type = 'hero', group = null, ...extra } = {}) => ({
   ...fighter({
     id,
     name: id,
@@ -26,7 +30,7 @@ const unit = (id, cell, hp, { type = 'hero', group = null, attackType = 'melee' 
     attackRange: 1,
   }),
   group,
-  attackType,
+  ...extra,
 });
 
 const card = (id, type, value, binding) => ({
@@ -69,7 +73,7 @@ const state = (harpiesAlive = true, turnPlayerId = '0') =>
         'Медуза',
         1,
         [
-          unit('medusa', 1, 16, { attackType: 'ranged' }),
+          unit('medusa', 1, 16, { attackRange: 3 }),
           unit('harpies_1', 2, harpiesAlive ? 4 : 0, {
             type: 'assistant',
             group: 'harpies',
@@ -85,7 +89,7 @@ const state = (harpiesAlive = true, turnPlayerId = '0') =>
         '1',
         'Бета',
         2,
-        [unit('beta', 3, 13, { attackType: 'ranged' })],
+        [unit('beta', 3, 13, { attackRange: 3 })],
         [card('beta_atk', 'attack', 3, 'beta')],
       ),
     ],
@@ -132,7 +136,7 @@ describe('привязка карты к бойцу', () => {
 
   it('несколько Гарпий достают врага: атакующего выбирает игрок', () => {
     const two = state();
-    two.map.nodes.push({ id: 4, neighbors: [3], terrain: 'arcane' });
+    two.map.nodes.push({ id: 4, neighbors: [3], terrain: 'ice' });
     two.map.nodes.find(node => node.id === 3).neighbors.push(4);
     player(two, '0').fighters.push(
       unit('harpies_2', 4, 4, { type: 'assistant', group: 'harpies' }),
@@ -213,5 +217,108 @@ describe('привязка карты к бойцу', () => {
         playerId: '0',
       }),
     ).toThrow(/не для бойца, которого атакуют/);
+  });
+});
+
+/**
+ * Карта убитого помощника остаётся в колоде топливом: объявить её нельзя (атака, эффект, защита),
+ * а сбросить и усилить (`bonus`) — можно. Дороти (игрок 0) без Тото, он лежит в `lost`.
+ */
+describe('карта убитого помощника: объявить нельзя, топливом — можно', () => {
+  const dorothyCard = id => dorothyCards.find(entry => entry.id === id);
+
+  /** Дороти на 1, Тото убит в `lost`, Бета на 3; в руке — две карты Тото и карта без привязки. */
+  const deadTotoState = () => {
+    const state = createState({
+      phase: PHASES.turn,
+      map: lineMap,
+      players: [
+        slot(
+          '0',
+          'Дороти',
+          1,
+          [unit('dorothy', 1, 12)],
+          [
+            { ...dorothyCard('dorothy_06'), instanceId: 'dorothy_06_1' },
+            { ...dorothyCard('dorothy_07'), instanceId: 'dorothy_07_1' },
+            { ...dorothyCard('dorothy_09'), instanceId: 'dorothy_09_1' },
+            // эффект, привязанный к Тото: проверяем гейт объявления, а не розыгрыш
+            card('toto_fx', 'effect', null, 'toto'),
+          ],
+        ),
+        slot('1', 'Бета', 2, [unit('beta', 3, 13, { attackRange: 3 })]),
+      ],
+      turn: { index: 1, playerId: '0', actedRound: ['0'] },
+      _enteredHooks: { gameStart: true, turn: true },
+    });
+    state.players[0].lost = [unit('toto', null, 0, { type: 'assistant', group: 'toto' })];
+    return state;
+  };
+
+  it('привязка мертва, а карта без привязки играется как обычно', () => {
+    const state = deadTotoState();
+
+    expect(hasFighterForCard(state, '0', handCardOf(state, 'dorothy_06'))).toBe(false);
+    expect(hasFighterForCard(state, '0', handCardOf(state, 'dorothy_07'))).toBe(false);
+    expect(hasFighterForCard(state, '0', handCardOf(state, 'toto_fx'))).toBe(false);
+    // «любой боец» привязки не имеет: Дороти на поле — карта играется
+    expect(hasFighterForCard(state, '0', handCardOf(state, 'dorothy_09'))).toBe(true);
+
+    const ui = runUi(state, '0');
+    expect(ui.playableCardIds).toEqual(['dorothy_09_1']);
+    expect(ui.disabledCardIds).toEqual(['dorothy_06_1', 'dorothy_07_1', 'toto_fx_1']);
+  });
+
+  it('атаку картой Тото объявить нельзя', () => {
+    const state = deadTotoState();
+
+    expect(attackCandidates(state, '0', handCardOf(state, 'dorothy_06'))).toEqual([]);
+    expect(attackRejection(state, '0', 'dorothy_06_1')).toMatch(/нет на поле/);
+    expect(() =>
+      runAction(state, { type: 'PICK', kind: 'card', id: 'dorothy_06_1', playerId: '0' }),
+    ).toThrow(/нет на поле/);
+  });
+
+  it('эффект картой Тото объявить нельзя', () => {
+    const state = deadTotoState();
+
+    expect(() =>
+      runAction(state, { type: 'PICK', kind: 'card', id: 'toto_fx_1', playerId: '0' }),
+    ).toThrow(/привязана к бойцу/);
+  });
+
+  it('в усиление перемещения карта Тото годится: уходит в сброс и даёт свой bonus', () => {
+    const state = deadTotoState();
+    expect(bonusCardIds(state, '0')).toEqual([
+      'dorothy_06_1',
+      'dorothy_07_1',
+      'dorothy_09_1',
+      'toto_fx_1',
+    ]);
+
+    SET_MOVEMENT(state, { op: 'open', playerId: '0' });
+    SET_MOVEMENT(state, { op: 'bonus', playerId: '0', cardId: 'dorothy_06_1' });
+
+    expect(state.movement.bonus).toBe(1);
+    expect(state.movement.bonusUsed).toBe(true);
+    expect(player(state, '0').discard.cards.map(entry => entry.id)).toEqual(['dorothy_06']);
+    expect(player(state, '0').hand.cards.map(entry => entry.id)).toEqual([
+      'dorothy_07',
+      'dorothy_09',
+      'toto_fx',
+    ]);
+  });
+
+  it('сброс по эффекту карту Тото не блокирует', () => {
+    const state = deadTotoState();
+
+    SET_CARDS(state, { playerId: '0', op: 'discard', cardIds: ['dorothy_07_1'] });
+
+    expect(player(state, '0').discard.cards.map(entry => entry.id)).toEqual(['dorothy_07']);
+    expect(player(state, '0').hand.cards.map(entry => entry.id)).toEqual([
+      'dorothy_06',
+      'dorothy_09',
+      'toto_fx',
+    ]);
   });
 });

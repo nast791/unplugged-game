@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import { movementDestinations, movementRejection } from '#shared/helpers/turn.js';
 import medusaCards from '../../../server/content/heroes/medusa/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
@@ -14,12 +14,12 @@ const card = medusaCards.find(entry => entry.id === 'medusa_11');
 const zoneMap = {
   id: 'zones',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2, 4], terrain: 'arcane' },
-    { id: 4, neighbors: [3, 5], terrain: 'arcane' },
-    { id: 5, neighbors: [4, 6], terrain: 'arcane' },
-    { id: 6, neighbors: [5, 7], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3], terrain: 'ice' },
+    { id: 3, neighbors: [2, 4], terrain: 'ice' },
+    { id: 4, neighbors: [3, 5], terrain: 'ice' },
+    { id: 5, neighbors: [4, 6], terrain: 'ice' },
+    { id: 6, neighbors: [5, 7], terrain: 'ice' },
     { id: 7, neighbors: [6], terrain: 'lava' },
   ],
 };
@@ -68,13 +68,13 @@ const state = ({ lost = [deadHarpy()] } = {}) =>
         'Медуза',
         1,
         [
-          unit('medusa', 2, 16, { attackType: 'ranged' }),
+          unit('medusa', 2, 16, { attackRange: 3 }),
           unit('harpies_1', 5, 1, { type: 'assistant', group: 'harpies' }),
         ],
         [{ ...card, instanceId: 'medusa_11_1' }],
         lost,
       ),
-      slot('1', 'Бета', 2, [unit('beta', 3, 13, { attackType: 'ranged' })]),
+      slot('1', 'Бета', 2, [unit('beta', 3, 13, { attackRange: 3 })]),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
     _enteredHooks: { gameStart: true, turn: true },

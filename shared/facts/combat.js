@@ -1,3 +1,5 @@
+import { cardBonus } from '#shared/helpers/cards.js';
+
 /**
  * COMBAT — снимок lastCombat: проверка победителя и выбор бойца.
  *
@@ -16,6 +18,13 @@
  * params.effects (значение — число правил карты этой стороны, необязательно):
  * - 'self' | 'opponent' — карта владельца правила и карта противника;
  * - 'attacker' | 'defender' — сторона боя. С `min` читается как «у карты есть эффекты».
+ *
+ * params.bonus (значение — усиление карты стороны, необязательно): та же четвёрка сторон,
+ * `value` — число усиления (0, если усиления нет), `ok` — была ли карта. Так «Саван» берёт
+ * усиление карты, которой напали: `COMBAT { bonus: 'opponent' }, var: 'bonus'`.
+ *
+ * params.role (проверка, необязательно): 'attacker' | 'defender' — роль ctx.player в этой битве.
+ * Нужна свойствам, которые отличают удар от защиты: «в защиту значение карты противника −1».
  *
  * params.select (значение → список fighterId, необязательно):
  * - 'attacker' — attackerFighterId
@@ -79,19 +88,25 @@ const otherFighterId = (lastCombat, ctx) => {
   return null;
 };
 
-const fighterIdForSelect = (lastCombat, select, ctx) => {
+const fighterIdForSelect = (battle, select, ctx) => {
   const key = String(select);
-  if (key === 'attacker') return lastCombat.attackerFighterId;
-  if (key === 'target') return lastCombat.targetFighterId;
-  if (key === 'self') return ownFighterId(lastCombat, ctx);
-  if (key === 'opponent') return otherFighterId(lastCombat, ctx);
+  if (key === 'attacker') return battle.attackerFighterId;
+  if (key === 'target') return battle.targetFighterId;
+  if (key === 'self') return ownFighterId(battle, ctx);
+  if (key === 'opponent') return otherFighterId(battle, ctx);
 
-  const winnerIsAttacker = String(lastCombat.winner) === 'attacker';
+  // Исход боя: у открытого боя (`state.combat`) поля `winner` ещё нет — его пишет только расчёт,
+  // в `lastCombat`. Пока исхода нет, «победивший» и «проигравший» неизвестны: молчим, а не отдаём
+  // бойца наугад (иначе winner и loser менялись бы местами).
+  const winner = battle.winner ?? ctx.state?.lastCombat?.winner ?? null;
+  if (winner == null) return null;
+
+  const winnerIsAttacker = String(winner) === 'attacker';
   if (key === 'winner') {
-    return winnerIsAttacker ? lastCombat.attackerFighterId : lastCombat.targetFighterId;
+    return winnerIsAttacker ? battle.attackerFighterId : battle.targetFighterId;
   }
   if (key === 'loser') {
-    return winnerIsAttacker ? lastCombat.targetFighterId : lastCombat.attackerFighterId;
+    return winnerIsAttacker ? battle.targetFighterId : battle.attackerFighterId;
   }
 
   throw new Error(
@@ -154,6 +169,26 @@ const effectsCountFor = (state, ctx, side) => {
 };
 
 /**
+ * Усиление карты стороны в открытом бою. Значение — число (усиление карты), `ok` — была ли карта.
+ * Стороны те же, что у `effects`: `self` | `opponent` | `attacker` | `defender`.
+ * Так работает «Саван»: его значение становится равным усилению карты, которой напали.
+ */
+const bonusCardFor = (combat, side, ctx) => {
+  const key = String(side);
+  if (key === 'attacker') return combat.attackCard ?? null;
+  if (key === 'defender') return combat.defenseCard ?? null;
+
+  const ownKey = ownCardKey(combat, ctx);
+  if (ownKey == null) return null;
+  if (key === 'self') return combat[ownKey] ?? null;
+  if (key === 'opponent') {
+    return combat[ownKey === 'attackCard' ? 'defenseCard' : 'attackCard'] ?? null;
+  }
+
+  throw new Error(`fact COMBAT: неизвестный bonus "${key}" (self|opponent|attacker|defender)`);
+};
+
+/**
  * Источник сторон боя: открытый бой (итога ещё нет, но участники известны) — для правил «во время битвы»
  * с `params.player`; иначе итог последнего боя. Итог без победителя сторонами не считается.
  */
@@ -171,6 +206,14 @@ export const COMBAT = (ctx, params = {}) => {
     return { ok: params.min == null || count >= Number(params.min), value: count };
   }
 
+  // усиление карты боя: значение — число, которое подставляют в `SET_COMBAT { op: 'value', to: '$bonus' }`
+  if (params.bonus != null && params.bonus !== '') {
+    const combat = ctx.state?.combat ?? null;
+    if (!combat) return { ok: false, value: 0 };
+    const card = bonusCardFor(combat, params.bonus, ctx);
+    return { ok: card != null, value: cardBonus(card ?? {}) };
+  }
+
   // победитель — свойство завершённого боя: его читаем из итога, а не из открытого боя
   if (params.winner != null && params.winner !== '') {
     const lastCombat = ctx.state?.lastCombat;
@@ -181,8 +224,34 @@ export const COMBAT = (ctx, params = {}) => {
 
   // Участники: у эффекта «во время битвы» итога ещё нет, но открытый бой знает свои стороны —
   // «противник» здесь тот, чей боец стоит против меня в этой битве (в 2v2 — не его напарник).
-  const battle = battleFor(ctx.state, params.player != null && params.player !== '');
+  // Открытый бой нужен формам, которые спрашивают бойцов и стороны (`select`, `player`): раньше
+  // `select` читал только итог, а тот сбрасывается объявлением атаки — свойства «во время битвы»
+  // не видели бойцов. Проверка «бой вообще был» (факт без параметров) по-прежнему смотрит на итог.
+  const wantsCurrent =
+    (params.player != null && params.player !== '') ||
+    (params.select != null && params.select !== '') ||
+    (params.role != null && params.role !== '');
+  const battle = battleFor(ctx.state, wantsCurrent);
   if (!battle) return { ok: false, value: null };
+
+  // роль владельца правила в бою: «в защиту одно свойство, в атаку другое» (карта «Счёт ударов»)
+  if (params.role != null && params.role !== '') {
+    const wanted = String(params.role);
+    if (wanted !== 'attacker' && wanted !== 'defender') {
+      throw new Error(`fact COMBAT: неизвестный role "${wanted}" (нужны attacker | defender)`);
+    }
+    const selfId = ctx.player?.id ?? ctx.playerId ?? null;
+    if (selfId == null) return { ok: false, value: null };
+
+    const role =
+      String(battle.attackerPlayerId) === String(selfId)
+        ? 'attacker'
+        : String(battle.defenderPlayerId) === String(selfId)
+          ? 'defender'
+          : null;
+
+    return { ok: role === wanted, value: role };
+  }
 
   if (params.player != null && params.player !== '') {
     const playerId = playerIdForSide(battle, params.player, ctx);

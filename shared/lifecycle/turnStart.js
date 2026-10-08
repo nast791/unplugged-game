@@ -19,6 +19,14 @@ export default {
     const playerId = String(nextPlayerId);
     state.turn = { ...state.turn, playerId };
 
+    // «двигался в этом ходу» — флаг живёт ровно один ход: в начале хода он снят у всех бойцов
+    state.players = (state.players ?? []).map(player => ({
+      ...player,
+      fighters: (player.fighters ?? []).map(fighter =>
+        fighter.movedThisTurn ? { ...fighter, movedThisTurn: false } : fighter,
+      ),
+    }));
+
     const alivePlayers = queryPlayers(state, { alive: true }, {});
     const { finished, winner } = finishedSides(state);
     if (finished) {

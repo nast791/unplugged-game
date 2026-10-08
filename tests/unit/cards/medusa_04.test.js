@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import {
   movableFighterIds,
   movementDestinations,
@@ -17,13 +17,13 @@ const lineMap = {
   nodes: [1, 2, 3, 4, 5, 6, 7, 8].map(id => ({
     id,
     neighbors: [id - 1, id + 1].filter(neighbor => neighbor >= 1 && neighbor <= 8),
-    terrain: 'arcane',
+    terrain: 'ice',
   })),
 };
 
 const zone = cards => ({ visibility: [], cards });
 
-const unit = (id, cell, hp, { type = 'hero', group = null, attackType = 'melee' } = {}) => ({
+const unit = (id, cell, hp, { type = 'hero', group = null, ...extra } = {}) => ({
   ...fighter({
     id,
     name: id,
@@ -34,7 +34,7 @@ const unit = (id, cell, hp, { type = 'hero', group = null, attackType = 'melee' 
     attackRange: 1,
   }),
   group,
-  attackType,
+  ...extra,
 });
 
 const cardOf = (id, type, value, binding) => ({
@@ -72,7 +72,7 @@ const state = () =>
         'Медуза',
         1,
         [
-          unit('medusa', 1, 16, { attackType: 'ranged' }),
+          unit('medusa', 1, 16, { attackRange: 3 }),
           unit('harpies_1', 2, 1, { type: 'assistant', group: 'harpies' }),
           unit('harpies_2', 8, 1, { type: 'assistant', group: 'harpies' }),
         ],
@@ -82,7 +82,7 @@ const state = () =>
         '1',
         'Бета',
         2,
-        [unit('beta', 3, 13, { attackType: 'ranged' })],
+        [unit('beta', 3, 13, { attackRange: 3 })],
         [cardOf('beta_atk', 'attack', 3, 'beta')],
       ),
     ],
@@ -191,7 +191,6 @@ describe('карта medusa_04 «Зов стаи»', () => {
 
   it('подвинули — эффект сработал, и бой закрывается сам', () => {
     const paused = answerDefense();
-    const queue = paused.combat.effects;
     const moved = step(step(paused, 'harpies_2', '7'), 'harpies_2', '6');
 
     const finished = runAction(moved, { type: 'UI_OK', playerId: '0' });
@@ -199,7 +198,7 @@ describe('карта medusa_04 «Зов стаи»', () => {
     expect(finished.movement).toBeNull();
     expect(finished.combat).toBeNull();
     expect(positions(finished).harpies_2).toBe('6');
-    expect(queue[0].status).toBe('applied');
+    expect(finished.lastCombat.effects[0].status).toBe('applied');
   });
 
   it('без живых Гарпий двигать некого: эффект не срабатывает', () => {

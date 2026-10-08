@@ -1,5 +1,7 @@
 import { CELLS } from './cells.js';
+import { CARDS } from './cards.js';
 import { COMBAT } from './combat.js';
+import { DEATH } from './death.js';
 import { FIGHTERS } from './fighters.js';
 import { ITEMS } from './items.js';
 import { LOST } from './lost.js';
@@ -8,6 +10,7 @@ import { REVEALED } from './revealed.js';
 import {
   ACTIVE_PLAYER,
   AP,
+  DECK,
   HAND,
   HAND_OVER_LIMIT,
   IN_PROGRESS,
@@ -26,10 +29,13 @@ export const facts = {
   TARGETING,
   PICKED,
   HAND,
+  DECK,
   HAND_OVER_LIMIT,
   FIGHTERS,
   COMBAT,
   CELLS,
+  CARDS,
+  DEATH,
   LOST,
   ITEMS,
   REVEALED,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { rules } from '#shared/constants/rules.js';
 import { runUi } from '#shared/core.js';
-import { runAction } from '#shared/gameEngine.js';
+import { runAction } from '#shared/publicApi.js';
 import { ap, createState, hand, PHASES, player } from '../fixtures/state.js';
 
 const extraCard = index => ({

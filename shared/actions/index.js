@@ -3,27 +3,36 @@ export { SET_ACTIONS, SET_RESIGNED } from './base.js';
 export { SET_CARDS } from './cards.js';
 export { SET_HEALTH } from './health.js';
 export { SET_FIGHTER_CELL } from './fighter.js';
+export { SWAP_FIGHTERS } from './swap.js';
 export { SET_MOVEMENT } from './movement.js';
 export { SET_COMBAT } from './combat.js';
 export { SET_TARGETING } from './targeting.js';
 export { REVIVE_FIGHTER } from './revive.js';
+export { RECALL_PLAYED_CARD } from './recall.js';
 export { SET_ITEM } from './items.js';
 export { SET_REVEAL } from './reveal.js';
+export { SET_STATUS } from './status.js';
+export { SET_HAND_LIMIT } from './handLimit.js';
 
 import { SET_ACTIONS, SET_RESIGNED } from './base.js';
 import { SET_CARDS } from './cards.js';
 import { SET_COMBAT } from './combat.js';
 import { SET_FIGHTER_CELL } from './fighter.js';
+import { SWAP_FIGHTERS } from './swap.js';
 import { SET_HEALTH } from './health.js';
 import { SET_MOVEMENT } from './movement.js';
 import { SET_TARGETING } from './targeting.js';
 import { REVIVE_FIGHTER } from './revive.js';
+import { RECALL_PLAYED_CARD } from './recall.js';
 import { SET_ITEM } from './items.js';
 import { SET_REVEAL } from './reveal.js';
+import { SET_STATUS } from './status.js';
+import { SET_HAND_LIMIT } from './handLimit.js';
 
 /** Универсальные actions (CAPS) — манипуляторы доменами; вызываются из фаз и из phase.moves. */
 export const actions = {
   SET_FIGHTER_CELL,
+  SWAP_FIGHTERS,
   SET_ACTIONS,
   SET_RESIGNED,
   SET_CARDS,
@@ -32,6 +41,9 @@ export const actions = {
   SET_COMBAT,
   SET_TARGETING,
   REVIVE_FIGHTER,
+  RECALL_PLAYED_CARD,
   SET_ITEM,
   SET_REVEAL,
+  SET_STATUS,
+  SET_HAND_LIMIT,
 };

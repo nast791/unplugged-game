@@ -9,8 +9,8 @@ export default {
       type: 'hero',
       hp: 14,
       move: 2,
-      attackType: 'ranged',
-      attackRange: 1,
+      // дальник: дальность задаёт attackRange (прежний признак attackType убран)
+      attackRange: 3,
       size: 1,
     },
   ],

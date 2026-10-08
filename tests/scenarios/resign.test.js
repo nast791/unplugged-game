@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { runAction, runLifecycle } from '#shared/gameEngine.js';
+import { runAction, runLifecycle } from '#shared/publicApi.js';
 import { ap, createState, discard, fighter, hand, PHASES, player } from '../fixtures/state.js';
 
 /** Карта на трёх игроков: у каждого своя номерная клетка и своя область. */
 const threePlayerMap = {
   id: 'tri',
   nodes: [
-    { id: 1, neighbors: [2], heroStart: true, position: 1, terrain: 'arcane' },
+    { id: 1, neighbors: [2], heroStart: true, position: 1, terrain: 'ice' },
     { id: 2, neighbors: [1, 3], heroStart: true, position: 2, terrain: 'lava' },
     { id: 3, neighbors: [2], heroStart: true, position: 3, terrain: 'forest' },
   ],

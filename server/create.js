@@ -1,7 +1,7 @@
 import { modes } from '#shared/constants/modes.js';
 import { rules } from '#shared/constants/rules.js';
 import { isTerrainId } from '#shared/constants/terrain.js';
-import { runLifecycle } from '#shared/gameEngine.js';
+import { runLifecycle } from '#shared/publicApi.js';
 import generateMap from '#shared/helpers/mapGenerator.js';
 import { heroes as HEROES, maps as MAPS } from './content/index.js';
 import { buildConnections, buildPlayer, sortPlayersByTeam } from './builders.js';
@@ -45,6 +45,13 @@ const mapTerrainError = (nodes, mapId) => {
   return null;
 };
 
+/** Целое из запроса или `null`: пустая строка и мусор значит «как решит движок». */
+const optionalInteger = raw => {
+  if (raw == null || raw === '') return null;
+  const value = Number(raw);
+  return Number.isInteger(value) ? value : null;
+};
+
 /** testId/testSeed — только для unit-тестов */
 export const createGame = (body, { testId, testSeed } = {}) => {
   const valid = validateCreate(body, { heroes: HEROES, maps: MAPS });
@@ -68,7 +75,14 @@ export const createGame = (body, { testId, testSeed } = {}) => {
   if (modeDef.format === 'teams_2v2') {
     playerSlots = sortPlayersByTeam(playerSlots);
   }
-  const seed = Number.isInteger(testSeed) ? testSeed : Math.floor(Math.random() * 0x100000000);
+  // Сид приходит из лобби (одно и то же число — то же поле и та же раздача), иначе выбирается случайно.
+  const seed =
+    (Number.isInteger(testSeed) ? testSeed : optionalInteger(body.seed)) ??
+    Math.floor(Math.random() * 0x100000000);
+  // Размер поля: `null` — «Авто», генератор сам выберет по пресету своего числа игроков.
+  const cells = optionalInteger(body.cells);
+  // Лимит времени на ход, секунды: 0 — без лимита. Правила движка, поэтому лежит в `settings`, а не в UI.
+  const turnLimit = optionalInteger(body.turnLimit) ?? 0;
   const rng = createRng(seed);
   // «generated» — поле, собранное генератором по сиду партии: клетки, зоны стихий и стартовые области
   const mapPack =
@@ -76,6 +90,7 @@ export const createGame = (body, { testId, testSeed } = {}) => {
       ? generateMap({
           players: playerSlots.length,
           seed,
+          cells,
           id: 'generated',
           fightersPerPlayer: playerSlots.map(slot => packFighterCount(HEROES[slot.heroId])),
         })
@@ -116,6 +131,10 @@ export const createGame = (body, { testId, testSeed } = {}) => {
       format: modeDef.format,
       seating: modeDef.seating,
       seed,
+      // Просьбы лобби, а не правила движка: размер поля (null — авто) и лимит времени на ход в секундах.
+      // Клиент читает их из проекции (`settings`), поэтому свои настройки он видит, а сид — нет.
+      cells: cells ?? null,
+      turnLimit,
       heroes: playerSlots.map(slot => ({ ...slot })),
     },
     players,

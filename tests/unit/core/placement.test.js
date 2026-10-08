@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { runUi } from '#shared/core.js';
 import pickNumHero from '#shared/phases/pickNumHero.js';
-import { runAction, runLifecycle } from '#shared/gameEngine.js';
+import { runAction, runLifecycle } from '#shared/publicApi.js';
 import { createState, fighter, PHASES } from '../../fixtures/state.js';
 
 const arenaMap = {
   id: 'arena',
   nodes: [
-    { id: 1, neighbors: [6], terrain: 'arcane' },
-    { id: 6, neighbors: [1], terrain: 'arcane', heroStart: true, position: 1 },
+    { id: 1, neighbors: [6], terrain: 'ice' },
+    { id: 6, neighbors: [1], terrain: 'ice', heroStart: true, position: 1 },
     { id: 5, neighbors: [10], terrain: 'lava' },
     { id: 10, neighbors: [5], terrain: 'lava', heroStart: true, position: 2 },
   ],
@@ -178,8 +178,8 @@ describe('runUi: placement highlights', () => {
         map: {
           id: 'arena',
           nodes: [
-            { id: 1, neighbors: [6, 7], terrain: 'arcane' },
-            { id: 6, neighbors: [1], terrain: 'arcane', heroStart: true, position: 1 },
+            { id: 1, neighbors: [6, 7], terrain: 'ice' },
+            { id: 6, neighbors: [1], terrain: 'ice', heroStart: true, position: 1 },
             { id: 7, neighbors: [1], terrain: 'mountains' },
           ],
         },

@@ -3,6 +3,20 @@ import { cardTypes } from '#shared/constants/deck.js';
 /** Ключ карты: instanceId, иначе id. */
 export const cardKey = card => String(card?.instanceId ?? card?.id);
 
+/**
+ * Теги карты: метки, которые заводит сам герой (`tags` в его паке), а карты лишь проставляют.
+ * Тег — признак, а не свойство: сам по себе он ничего не даёт, его читают факты (`CARDS { tag }`,
+ * `HAND { tag }`). Поля нет — считаем список пустым, поэтому старые колоды править не пришлось.
+ */
+export const cardTags = card => {
+  const raw = card?.tags;
+  if (!raw) return [];
+  return (Array.isArray(raw) ? raw : [raw]).map(String);
+};
+
+export const cardHasTag = (card, tag) =>
+  tag == null || String(tag) === '' || cardTags(card).includes(String(tag));
+
 /** Моменты хода, на которых применяется тип карты (constants/deck.js → cardTypes). */
 export const cardMoments = card => cardTypes.find(type => type.name === card?.type)?.turn ?? [];
 

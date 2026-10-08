@@ -7,7 +7,7 @@ import { occupiedCellIds } from '#shared/helpers/turn.js';
  * «воскресите Гарпию на любой свободной клетке в области Медузы» (`medusa_11`).
  * params: { areaOf, terrain, free, min }
  * areaOf — в одной области с указанным бойцом (область = стихия его клетки, `docs/terrain.md`);
- * terrain — клетки конкретной стихии ('forest', 'swamp', 'lava', ...);
+ * terrain — клетки конкретной стихии ('forest', 'water', 'lava', ...);
  * free — только свободные клетки (по умолчанию да).
  */
 export const CELLS = (ctx, params = {}) => {

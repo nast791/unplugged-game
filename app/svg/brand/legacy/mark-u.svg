@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="22 15 56 57" role="img">
+  <!--
+    ПРОШЛАЯ версия логотипа UnPlugged (скруглённая буква U). Собран бейкером
+    tests/support/bake-logo.py — руками не правим, правки теряются при пересборке.
+    Текущий знак — пиксельная сетка 3×3, её собирает tests/support/bake-brand.mjs.
+    Текст переведён в кривые (Manrope Variable, weight 600, tracking −0.025em): файл не зависит
+    от установленного шрифта. Знак — буква U и облако пикселей из старой public/favicon.svg.
+  -->
+  <title>UnPlugged</title>
+  <defs>
+    <linearGradient id="up-mark" gradientUnits="userSpaceOnUse" x1="22" y1="15" x2="78" y2="72">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="0.5" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#D946EF"/>
+    </linearGradient>
+  </defs>
+  <path d="M22 15 V48 C22 62 35 72 50 72 C65 72 78 62 78 48 V15 H65 V48 C65 55 58 60 50 60 C42 60 35 55 35 48 V15 H22Z" fill="url(#up-mark)"/>
+</svg>

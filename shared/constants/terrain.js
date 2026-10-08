@@ -3,19 +3,26 @@
  * на стыке зон стихий две-три (тогда рисуем сектора). Палитра и правила показа — `docs/terrain.md`.
  *
  * Цвета яркие и контрастные: на доске стихии должны различаться с первого взгляда, как на референсах.
- * `pattern` — обязательный узор-подсказка, чтобы цвет не был единственным различием.
+ * `pattern` — обязательный узор-подсказка, чтобы цвет не был единственным различием;
+ * `patternColor` (необязательно) — свой цвет текстуры: у лавы золото, у льда почти белый.
  *
  * Клетки без стихии не бывает: стихию задаёт карта или генератор, а `server/create.js` проверяет
  * это при создании партии. Поэтому запасной стихии здесь нет, а неизвестный id — ошибка, а не повод
  * что-то подставить: молча нарисованная «какая-то» стихия врёт игроку про области поля.
  */
 export const TERRAIN = {
-  arcane: { id: 'arcane', name: 'Магические земли', color: '#BE9BF2', pattern: 'runes' },
+  ice: { id: 'ice', name: 'Лёд', color: '#CFE9F7', pattern: 'frost', patternColor: '#F4FBFF' },
   forest: { id: 'forest', name: 'Лес', color: '#349948', pattern: 'dots' },
   mountains: { id: 'mountains', name: 'Горы', color: '#C2CBD8', pattern: 'triangles' },
-  lava: { id: 'lava', name: 'Лава', color: '#E2551C', pattern: 'cracks' },
-  desert: { id: 'desert', name: 'Пустыня', color: '#F0DFA8', pattern: 'specks' },
-  swamp: { id: 'swamp', name: 'Болото', color: '#3AAEB8', pattern: 'waves' },
+  lava: {
+    id: 'lava',
+    name: 'Лава',
+    color: '#e8453a',
+    pattern: 'cracks',
+    patternColor: '#F7C846',
+  },
+  desert: { id: 'desert', name: 'Пустыня', color: '#F0DFA8', pattern: 'dunes' },
+  water: { id: 'water', name: 'Вода', color: '#2E9FB8', pattern: 'waves' },
 };
 
 export const TERRAIN_IDS = Object.keys(TERRAIN);
@@ -54,6 +61,22 @@ export const terrainLabelColor = id => {
   const withWhite = 1.05 / (luminance + 0.05);
   const withDark = (luminance + 0.05) / 0.05;
   return withWhite >= withDark ? '#F8FAFC' : '#111827';
+};
+
+/**
+ * Цвет текстуры стихии: **плотный** — силу рисует слой своей прозрачностью, иначе два множителя
+ * гасят друг друга и текстуру не видно. Свой цвет задаётся в палитре (`patternColor`: у лавы золото,
+ * у льда почти белый), остальным он выбирается по контрасту с заливкой тем же сравнением, что и
+ * подпись: у светлых заливок текстура тёмная, у по-настоящему тёмных — светлая.
+ */
+export const terrainPatternColor = id => {
+  const own = terrainInfo(id)?.patternColor;
+  if (own) return own;
+  const luminance = colorLuminance(terrainColor(id));
+  const withWhite = 1.05 / (luminance + 0.05);
+  const withDark = (luminance + 0.05) / 0.05;
+  // цвет плотный: силу текстуры задаёт прозрачность слоя, иначе два множителя гасят друг друга
+  return withDark >= withWhite ? '#0F172A' : '#FFFFFF';
 };
 
 export default TERRAIN;

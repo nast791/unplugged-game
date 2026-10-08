@@ -1,5 +1,6 @@
 import {
   findCardInZone,
+  findFighter,
   findOwnedFighter,
   findPlayer,
   isTeamFormat,
@@ -10,14 +11,12 @@ import {
   fighterMatchesCard,
   hasFighterForCard,
   isAttackCard,
+  isDefenseCard,
 } from '#shared/helpers/cards.js';
-import { sharesArea } from '#shared/helpers/placement.js';
 import { combatMoments } from '#shared/constants/moments.js';
+import { handCards } from '#shared/helpers/turn.js';
 
 const attackRangeOf = fighter => Number(fighter?.attackRange ?? 1);
-
-/** Боец дальнего боя (attackType: 'ranged') бьёт по области (стихии), а не по расстоянию. */
-const isRangedFighter = fighter => String(fighter?.attackType ?? '') === 'ranged';
 
 /** Боец, который может действовать: жив и стоит на клетке. */
 const isReady = fighter =>
@@ -41,19 +40,11 @@ const enemiesOf = (partyState, playerId) => {
 };
 
 /**
- * Достаёт ли атакующий цель.
- * Ближний — по attackRange: соседние клетки (BFS-расстояние не больше дальности).
- * Дальний — по области (стихии): любая цель на клетке той же стихии, расстояние внутри области
- * не ограничено (область — это стихия клетки, `docs/terrain.md`). Ближний предел при этом сохраняется.
+ * Достаёт ли атакующий цель: только по `attackRange` (BFS-расстояние не больше дальности).
+ * Дальность 1 — ближний бой, больше — дальник; оба считаются одинаково, отдельного признака
+ * «дальнего боя» нет (решение владельца: дальник тоже ориентируется на attackRange).
  */
 const canReach = (partyState, attacker, fighter) => {
-  if (
-    isRangedFighter(attacker) &&
-    sharesArea(partyState, attacker.currentPosition, fighter.currentPosition)
-  ) {
-    return true;
-  }
-
   const range = attackRangeOf(attacker);
   return (
     bfsDistance(
@@ -142,6 +133,53 @@ export const buildCombatEffects = combat => {
   }
 
   return effects;
+};
+
+/**
+ * Ключи уже отработавших шагов очереди: сторона + момент + карта + номер шага внутри этой группы.
+ * Нужно замене защиты: очередь пересобирается под новую карту, а уже сыгранные шаги повторять нельзя.
+ */
+export const consumedEffectKeys = effects => {
+  const seen = new Map();
+  const done = new Set();
+
+  for (const entry of effects ?? []) {
+    const key = `${entry.side}|${entry.moment}|${entry.cardId}`;
+    const index = seen.get(key) ?? 0;
+    seen.set(key, index + 1);
+    if (entry.status !== 'pending' && entry.status !== 'waiting') done.add(`${key}|${index}`);
+  }
+
+  return done;
+};
+
+/** Пометить в пересобранной очереди шаги, которые уже отработали в прежней: они не повторяются. */
+export const restoreConsumedEffects = (effects, done) => {
+  const seen = new Map();
+
+  for (const entry of effects) {
+    const key = `${entry.side}|${entry.moment}|${entry.cardId}`;
+    const index = seen.get(key) ?? 0;
+    seen.set(key, index + 1);
+    if (done.has(`${key}|${index}`)) entry.status = 'applied';
+  }
+
+  return effects;
+};
+
+/**
+ * Карты руки, которыми игрок может защититься в открытом бою: тип подходит (защита или гибрид)
+ * и карта — за того бойца, которого атакуют. Нужна и фазе защиты, и замене защиты
+ * («Амат разрывает»): экшен сам решает, есть ли защитнику чем меняться.
+ */
+export const defenseCardIds = (partyState, playerId) => {
+  const target = partyState?.combat?.targetFighterId;
+  const defender = target == null ? null : (findFighter(partyState, target).fighter ?? null);
+
+  return handCards(partyState, playerId)
+    .filter(isDefenseCard)
+    .filter(card => fighterMatchesCard(defender, card))
+    .map(cardKey);
 };
 
 /** Участвует ли игрок в текущем бою (атакующий или защитник). */

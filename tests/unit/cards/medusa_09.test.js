@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction } from '#shared/gameEngine.js';
+import { runAction } from '#shared/publicApi.js';
 import medusaCards from '../../../server/content/heroes/medusa/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -9,8 +9,8 @@ const card = medusaCards.find(entry => entry.id === 'medusa_09');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1], terrain: 'ice' },
   ],
 };
 
@@ -58,17 +58,11 @@ const buildState = ({ deck = [deckCard(0), deckCard(1), deckCard(2)], defense = 
         '0',
         'Медуза',
         1,
-        [unit('medusa', 1, 16, { attackType: 'ranged' })],
+        [unit('medusa', 1, 16, { attackRange: 3 })],
         [{ ...card, instanceId: 'medusa_09_1' }],
         deck,
       ),
-      slot(
-        '1',
-        'Бета',
-        2,
-        [unit('beta', 2, 13, { attackType: 'ranged' })],
-        defense ? [defense] : [],
-      ),
+      slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackRange: 3 })], defense ? [defense] : []),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -158,7 +152,7 @@ describe('карта medusa_09 «Второе дыхание»', () => {
           '0',
           'Медуза',
           1,
-          [unit('medusa', 1, 16, { attackType: 'ranged' })],
+          [unit('medusa', 1, 16, { attackRange: 3 })],
           [{ ...card, instanceId: 'medusa_09_1' }],
           [deckCard(0), deckCard(1), deckCard(2)],
         ),
@@ -166,7 +160,7 @@ describe('карта medusa_09 «Второе дыхание»', () => {
           '1',
           'Бета',
           2,
-          [unit('beta', 2, 13, { attackType: 'ranged' })],
+          [unit('beta', 2, 13, { attackRange: 3 })],
           [
             {
               id: 'beta_atk',

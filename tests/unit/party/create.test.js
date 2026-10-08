@@ -5,7 +5,7 @@ import { sortPlayersByTeam } from '../../../server/builders.js';
 import { maps } from '../../../server/content/index.js';
 
 const validBody = {
-  mapId: 'arena',
+  mapId: 'generated',
   mode: 'vs_ai',
   heroes: [
     { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
@@ -28,7 +28,7 @@ describe('POST /api/game/create', () => {
     ).toBeNull();
     expect(
       v.players.find(p => p.id === 'medusa').fighters.find(f => f.type === 'hero').currentPosition,
-    ).toBe(6);
+    ).not.toBeNull();
     expect(state._enteredHooks?.gameStart).toBe(true);
     expect(v.ui?.phase).toBe('place');
   });
@@ -36,7 +36,7 @@ describe('POST /api/game/create', () => {
   it('mode по умолчанию — vs_ai', () => {
     createGame(
       {
-        mapId: 'arena',
+        mapId: 'generated',
         heroes: [
           { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
           { heroId: 'tesla', team: 'B', order: 2, control: 'ai' },
@@ -50,7 +50,7 @@ describe('POST /api/game/create', () => {
   it('vs_ai: два human → ошибка', () => {
     expect(() =>
       createGame({
-        mapId: 'arena',
+        mapId: 'generated',
         mode: 'vs_ai',
         heroes: [
           { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
@@ -63,7 +63,7 @@ describe('POST /api/game/create', () => {
   it('hotseat: ai слот → ошибка', () => {
     expect(() =>
       createGame({
-        mapId: 'arena',
+        mapId: 'generated',
         mode: 'hotseat',
         heroes: validBody.heroes,
       }),
@@ -73,7 +73,7 @@ describe('POST /api/game/create', () => {
   it('ffa: одинаковая team → ошибка', () => {
     expect(() =>
       createGame({
-        mapId: 'arena',
+        mapId: 'generated',
         mode: 'hotseat',
         heroes: [
           { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
@@ -92,7 +92,7 @@ describe('POST /api/game/create', () => {
       id: 'broken_missing',
       name: 'Битая карта',
       nodes: [
-        { id: 1, neighbors: [2], terrain: 'arcane', heroStart: true, position: 1 },
+        { id: 1, neighbors: [2], terrain: 'ice', heroStart: true, position: 1 },
         { id: 2, neighbors: [1], terrain: null },
       ],
       settings: { nodeSize: 120 },
@@ -101,8 +101,8 @@ describe('POST /api/game/create', () => {
       id: 'broken_unknown',
       name: 'Карта с чужой стихией',
       nodes: [
-        { id: 1, neighbors: [2], terrain: 'arcane', heroStart: true, position: 1 },
-        { id: 2, neighbors: [1], terrain: ['arcane', 'нет-такой'] },
+        { id: 1, neighbors: [2], terrain: 'ice', heroStart: true, position: 1 },
+        { id: 2, neighbors: [1], terrain: ['ice', 'нет-такой'] },
       ],
       settings: { nodeSize: 120 },
     };
@@ -123,6 +123,39 @@ describe('POST /api/game/create', () => {
     const a = load('shuffle_a').players[0].hand.cards.map(c => c.id);
     const b = load('shuffle_b').players[0].hand.cards.map(c => c.id);
     expect(a).toEqual(b);
+  });
+
+  it('сид, размер поля и лимит времени из лобби попадают в настройки партии', () => {
+    const state = createGame(
+      { ...validBody, seed: 777, cells: 30, turnLimit: 60, mode: 'table' },
+      { testId: 'lobby_settings' },
+    );
+    expect(state.settings.seed).toBe(777);
+    expect(state.settings.cells).toBe(30);
+    expect(state.settings.turnLimit).toBe(60);
+    // «Авто» — размер выбирает генератор по сиду, а лимита нет: в настройках это null и 0.
+    const auto = createGame({ ...validBody, mode: 'table' }, { testId: 'lobby_auto', testSeed: 5 });
+    expect(auto.settings.cells).toBeNull();
+    expect(auto.settings.turnLimit).toBe(0);
+    expect(view(auto, 'medusa').settings.turnLimit).toBe(0);
+  });
+
+  it('тот же сид из лобби даёт то же поле и тот же порядок карт', () => {
+    const body = { ...validBody, seed: 4242, mode: 'table' };
+    const first = createGame(body, { testId: 'same_seed_a' });
+    const second = createGame(body, { testId: 'same_seed_b' });
+    expect(second.map.nodes.map(node => node.id)).toEqual(first.map.nodes.map(node => node.id));
+    expect(second.players[0].hand.cards.map(card => card.id)).toEqual(
+      first.players[0].hand.cards.map(card => card.id),
+    );
+  });
+
+  it('сломанные сид, размер поля и лимит времени → ошибка', () => {
+    expect(() => createGame({ ...validBody, seed: -1 })).toThrow(/seed/);
+    expect(() => createGame({ ...validBody, seed: 1.5 })).toThrow(/seed/);
+    expect(() => createGame({ ...validBody, cells: 27 })).toThrow(/cells/);
+    expect(() => createGame({ ...validBody, cells: 39 })).toThrow(/cells/);
+    expect(() => createGame({ ...validBody, turnLimit: -5 })).toThrow(/turnLimit/);
   });
 
   it('sortPlayersByTeam: A,A,B,B → A,B,A,B', () => {

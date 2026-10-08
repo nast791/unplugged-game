@@ -1,6 +1,45 @@
+import { CELLS_LIMIT } from '#shared/helpers/mapGenerator.js';
 import { modes } from '#shared/constants/modes.js';
 
 const CONTROLS = new Set(['human', 'ai']);
+/** Сид — 32-битное число (тот же диапазон, что у генератора карт). */
+const SEED_MAX = 0xffffffff;
+/** Предел лимита времени на ход: 0 — без лимита, больше 3600 с (час) — уже не ход. */
+const TURN_LIMIT_MAX = 3600;
+
+/**
+ * Необязательные числа запроса (сид, размер поля, лимит времени): пустая строка и `null` значит
+ * «как решит движок», поэтому проверяем только то, что пришло.
+ */
+const validateOptionalNumbers = (body, errors) => {
+  const numbers = [
+    {
+      key: 'seed',
+      min: 0,
+      max: SEED_MAX,
+      message: `seed — целое число от 0 до ${SEED_MAX}`,
+    },
+    {
+      key: 'cells',
+      min: CELLS_LIMIT.min,
+      max: CELLS_LIMIT.max,
+      message: `cells — целое число от ${CELLS_LIMIT.min} до ${CELLS_LIMIT.max}`,
+    },
+    {
+      key: 'turnLimit',
+      min: 0,
+      max: TURN_LIMIT_MAX,
+      message: `turnLimit — целое число от 0 до ${TURN_LIMIT_MAX} (0 — без лимита)`,
+    },
+  ];
+
+  for (const { key, min, max, message } of numbers) {
+    const raw = body?.[key];
+    if (raw == null || raw === '') continue;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < min || value > max) errors.push(message);
+  }
+};
 
 const validateFfaTeams = (heroes, errors) => {
   const teams = new Set();
@@ -58,6 +97,8 @@ export const validateCreate = (body, { heroes: HEROES, maps: MAPS }) => {
       errors.push(`heroes: максимум ${modeDef.maxPlayers}`);
     }
   }
+
+  validateOptionalNumbers(body, errors);
 
   const orders = new Set();
   const heroIds = new Set();

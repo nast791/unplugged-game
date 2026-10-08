@@ -4,6 +4,7 @@ import { SET_COMBAT } from '#shared/actions/combat.js';
 import { SET_FIGHTER_CELL } from '#shared/actions/fighter.js';
 import { SET_HEALTH } from '#shared/actions/health.js';
 import { SET_MOVEMENT } from '#shared/actions/movement.js';
+import { SET_REVEAL } from '#shared/actions/reveal.js';
 import { SET_TARGETING } from '#shared/actions/targeting.js';
 import { SET_ACTIONS } from '#shared/actions/base.js';
 import { ap, createState, deck, discard, fighter, hand, player } from '../../fixtures/state.js';
@@ -87,6 +88,19 @@ describe('SET_CARDS', () => {
       to: 'discard',
     });
     expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual(['fx_0']);
+  });
+
+  it('cardIds принимает объекты факта (CARDS, HAND) наравне с ключами', () => {
+    const state = createState();
+    SET_CARDS(state, {
+      playerId: '0',
+      op: 'move',
+      from: 'hand',
+      to: 'discard',
+      cardIds: [{ cardId: 'fx_0', bonus: 2 }, 'def_0'],
+    });
+
+    expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual(['fx_0', 'def_0']);
   });
 
   it('отклоняет неверный op, зону и отсутствующую карту', () => {
@@ -179,8 +193,11 @@ describe('SET_MOVEMENT', () => {
       fighters: null,
       optional: false,
       throughEnemies: false,
+      damageOnPass: null,
+      damagedFighterIds: [],
       moves: [],
       source: null,
+      playedCard: null,
     });
     expect(() => SET_MOVEMENT(state, { op: 'open', playerId: '0' })).toThrow(/уже открыто/);
   });
@@ -252,7 +269,7 @@ describe('SET_MOVEMENT', () => {
   it('bonus отклоняет карту без усиления и отсутствующую карту', () => {
     const state = opened();
     player(state, '0').hand.cards.push({
-      id: 'arcane',
+      id: 'ice',
       instanceId: 'plain_0',
       type: 'effect',
       value: 0,
@@ -402,6 +419,24 @@ describe('SET_COMBAT', () => {
     expect(() => SET_COMBAT(state, { op: 'target', fighterId: 'beta' })).toThrow(/бой не идёт/);
     expect(() => SET_COMBAT(state, { op: 'fly' })).toThrow(/op/);
   });
+
+  it('замена защиты снимает снимок вскрытия, открытый заменённой картой', () => {
+    const state = createState();
+    player(state, '0').fighters[0].attackRange = 2;
+    SET_COMBAT(state, { op: 'open', playerId: '0', cardId: 'atk_0' });
+    SET_COMBAT(state, { op: 'defense', playerId: '1', cardId: 'bdef_0' });
+
+    // карта защиты раскрыла колоду противника — снимок принадлежит именно ей
+    SET_REVEAL(state, { op: 'open', of: '0', source: 'bdef_0' });
+    expect(state.reveal).toHaveLength(1);
+
+    SET_COMBAT(state, { op: 'replaceDefense', playerId: '0' });
+
+    // заменённая карта ушла в сброс — её снимок уходит вместе с ней
+    expect(state.reveal).toBeNull();
+    // и карта с тем же свойством может раскрыть колоду заново (иначе «колода уже раскрыта»)
+    expect(() => SET_REVEAL(state, { op: 'open', of: '0', source: 'bdef2_0' })).not.toThrow();
+  });
 });
 
 describe('SET_COMBAT: защита и расчёт', () => {
@@ -449,6 +484,8 @@ describe('SET_COMBAT: защита и расчёт', () => {
       defendedWithCard: true,
       attackCardId: 'atk_0',
       defenseCardId: 'bdef_0',
+      // отчёт боя хранит разрешённую очередь свойств (у этих карт её нет)
+      effects: [],
     });
     expect(player(state, '1').fighters[0].currentHp).toBe(12);
     expect(discard(player(state, '0')).map(card => card.instanceId)).toEqual(['atk_0']);

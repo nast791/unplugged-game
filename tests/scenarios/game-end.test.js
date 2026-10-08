@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runUi } from '#shared/core.js';
-import { runAction, runLifecycle } from '#shared/gameEngine.js';
+import { runAction, runLifecycle } from '#shared/publicApi.js';
 import { createState, PHASES, player } from '../fixtures/state.js';
 
 const lineMap = {
@@ -77,5 +77,18 @@ describe('scenario: конец партии', () => {
     expect(next.winner).toBe('0');
     expect(next.turn.actionsLeft).toBe(0);
     expect(next.players.every(entry => entry._activePhase == null)).toBe(true);
+  });
+
+  it('lifecycle на законченной партии не падает: на нём стоит перезагрузка экрана итогов', () => {
+    const state = createState({ phase: PHASES.turnEnd, actionsLeft: 0 });
+    player(state, '1').fighters[0].currentHp = 0;
+    const finishedState = runLifecycle(state);
+
+    // `useGameView.bootstrap` гонит lifecycle на сохранённой в sessionStorage партии, а она может быть
+    // уже закончена: отказ при `hook === 'gameEnd'` сломал бы экран итогов после перезагрузки страницы
+    const again = runLifecycle({ ...finishedState });
+
+    expect(again.hook).toBe(PHASES.gameEnd);
+    expect(again.winner).toBe(finishedState.winner);
   });
 });

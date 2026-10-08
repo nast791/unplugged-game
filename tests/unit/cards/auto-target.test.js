@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runAction } from '#shared/gameEngine.js';
+import { runAction } from '#shared/publicApi.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
 /**
@@ -45,9 +45,9 @@ const autoCard = {
 const map = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3], terrain: 'ice' },
+    { id: 3, neighbors: [2], terrain: 'ice' },
   ],
 };
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import teslaCards from '../../../server/content/heroes/tesla/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -9,8 +9,8 @@ const card = teslaCards.find(entry => entry.id === 'tesla_03');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1], terrain: 'ice' },
   ],
 };
 
@@ -58,12 +58,12 @@ const state = (coilStates = ['active', 'active']) =>
         '0',
         'Тесла',
         1,
-        [unit('tesla', 1, 14, { attackType: 'ranged', startHp: 14 })],
+        [unit('tesla', 1, 14, { attackRange: 3, startHp: 14 })],
         [{ ...card, instanceId: 'tesla_03_1' }],
         [],
         coilsOf(coilStates),
       ),
-      slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackType: 'ranged' })]),
+      slot('1', 'Бета', 2, [unit('beta', 2, 13, { attackRange: 3 })]),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -151,12 +151,11 @@ describe('карта tesla_03 «Фокусированный разряд»', ()
 
   it('отказ: катушки не тратятся, атака остаётся числом карты', () => {
     const paused = battlePause(state(['active', 'active']));
-    const queue = paused.combat.effects;
 
     const declined = runAction(paused, { type: 'UI_OK', playerId: '0' });
 
     expect(coilStates(declined)).toEqual(['active', 'active']);
-    expect(queue[0].status).toBe('declined');
+    expect(declined.lastCombat.effects[0].status).toBe('declined');
     expect(declined.lastCombat.attackValue).toBe(3);
     expect(betaHp(declined)).toBe(10);
   });

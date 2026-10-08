@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { runAction } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import { load, save } from '../../../server/party.js';
 import { createGame } from '../../../server/create.js';
 
 const vsAiBody = {
-  mapId: 'arena',
+  mapId: 'generated',
   mode: 'vs_ai',
   heroes: [
     { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
@@ -20,7 +20,9 @@ describe('party state', () => {
     const assistant = medusa.fighters.find(
       fighterEntry => fighterEntry.type === 'assistant' && fighterEntry.currentPosition == null,
     );
-    const cellId = current.map.nodes.find(node => Number(node.id) === 1)?.id;
+    // клетку берём из подсветки: карту собирает генератор, и номер стартовой клетки заранее неизвестен
+    const cellId = runUi(current, 'medusa', { selectedFighterId: assistant.id })
+      .highlightedCellIds[0];
 
     const next = runAction(current, {
       type: 'PICK',

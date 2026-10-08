@@ -1,5 +1,5 @@
 import { SET_COMBAT } from '#shared/actions/combat.js';
-import { SET_MOVEMENT } from '#shared/actions/movement.js';
+import { SET_MOVEMENT, movementHasDestination } from '#shared/actions/movement.js';
 import { advanceCombat, runEffectMoment } from '#shared/cards/run.js';
 import { resolveOkBackControls } from '#shared/helpers/base.js';
 import {
@@ -13,6 +13,22 @@ import {
 } from '#shared/helpers/turn.js';
 
 const cellIdOf = action => action.cellId ?? action.id;
+
+/**
+ * Можно ли закрыть перемещение, не сделав ни шага.
+ *
+ * Обязательное окно эффекта закрывается не только шагом: если шагать больше некуда — ни у одного
+ * бойца из списка нет доступной клетки, — «Закончить эффект» становится доступной. Иначе партия
+ * вставала бы намертво: выбор есть, но его нет (решение владельца «нет свободных клеток — свойство
+ * не срабатывает»).
+ */
+const closeWithoutMoves = (partyState, playerId) => {
+  const movement = partyState.movement;
+  if (movement?.source == null) return false;
+  const movable = movableFighterIds(partyState, playerId);
+  if (movable.length === 0) return true;
+  return !movementHasDestination(partyState, movement, playerId);
+};
 
 /** Перемещение от эффекта боя: бой ждёт, пока игрок подвигал бойцов. */
 const effectMovement = partyState =>
@@ -82,7 +98,8 @@ export default {
               visible: true,
               enabled:
                 partyState.movement?.optional === true ||
-                (partyState.movement?.moves?.length ?? 0) > 0,
+                (partyState.movement?.moves?.length ?? 0) > 0 ||
+                closeWithoutMoves(partyState, playerId),
               label: 'Закончить эффект',
             },
             back: { visible: false, enabled: false, label: null },
@@ -96,7 +113,9 @@ export default {
       if (!isMomentMine(partyState, playerId, 'movement')) return false;
       if (partyState.movement?.source == null) return true;
       return (
-        partyState.movement?.optional === true || (partyState.movement?.moves?.length ?? 0) > 0
+        partyState.movement?.optional === true ||
+        (partyState.movement?.moves?.length ?? 0) > 0 ||
+        closeWithoutMoves(partyState, playerId)
       );
     },
     onPress: (partyState, action) =>
@@ -152,8 +171,11 @@ export default {
     проходить можно при rules.canPassThroughTeammates.
  3. Перемещение от эффекта карты: правило задаёт бюджет (budget), список бойцов (fighters) и
     необязательность (optional). Того же бойца можно вести по клеткам, но не дальше бюджета от его
-    исходной клетки; враги блокируют путь (это перемещение, а не перенос). Подсвечены только бойцы
-    из списка, кнопка называется «Закончить эффект», усиления картой нет.
+    исходной клетки; враги блокируют путь (это перемещение, а не перенос), если правило не разрешило
+    проход сквозь них (throughEnemies), а `damageOnPass` бьёт бойцов противника на клетках маршрута
+    шага — в том числе на клетке, занятой врагом («сквозь»: маршрут идёт по ней, встать на неё
+    по-прежнему нельзя). Подсвечены только бойцы из списка, кнопка называется «Закончить эффект»,
+    усиления картой нет.
  4. Клик по подсвеченной клетке — шаг (SET_MOVEMENT step → SET_FIGHTER_CELL). Клик по недоступной клетке
     отклоняется с причиной.
  5. Одно усиление за обычное действие: клик по карте с bonus (playableCardIds) уводит её в сброс и

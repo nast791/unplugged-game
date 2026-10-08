@@ -75,17 +75,34 @@ const autoPickFor = card => (state, ownerId) => {
   return closeTargetingWindow(afterPicked, ownerId);
 };
 
+/**
+ * Шаг очереди, который сейчас ждёт ответа игрока.
+ *
+ * Отвечать нужно **тому** шагу, чьё окно открыто: пауз в одном бою может быть несколько (своя карта
+ * и чужая), и «первый ждущий» — не обязательно тот, кого спрашивают. Ответ уходил чужой карте, и её
+ * правило в моменте `picked` пыталось, например, поменять число боя уже после расчёта —
+ * `SET_COMBAT: шаг "reveal" недоступен на stage "close"`. Окно хранит ключ открывшей его карты
+ * (`source`), у шага тот же ключ лежит в `cardId`.
+ */
+const waitingStep = partyState => {
+  const waiting = (partyState.combat?.effects ?? []).filter(entry => entry.status === 'waiting');
+  if (waiting.length === 0) return null;
+
+  const source = partyState.targeting?.source ?? partyState.combat?.choice?.source ?? null;
+  if (source == null) return waiting[0];
+  return waiting.find(entry => String(entry.cardId) === String(source)) ?? waiting[0];
+};
+
 /** Карта боя, чей шаг сейчас ждёт решения игрока (её правила разбирают отметку варианта). */
 export const waitingCombatCard = partyState => {
-  const combat = partyState.combat;
-  const step = (combat?.effects ?? []).find(entry => entry.status === 'waiting');
+  const step = waitingStep(partyState);
   if (!step) return null;
-  return cardOf(combat, step.side) ?? null;
+  return cardOf(partyState.combat, step.side) ?? null;
 };
 
 /** Игрок отказался от необязательного свойства: шаг, ждавший решения, помечается `declined`. */
 export const declineWaitingStep = partyState => {
-  const step = (partyState.combat?.effects ?? []).find(entry => entry.status === 'waiting');
+  const step = waitingStep(partyState);
   if (step) step.status = 'declined';
   return partyState;
 };
@@ -97,7 +114,7 @@ export const declineWaitingStep = partyState => {
  */
 export const runCombatPicked = partyState => {
   const combat = partyState.combat;
-  const step = (combat?.effects ?? []).find(entry => entry.status === 'waiting');
+  const step = waitingStep(partyState);
   if (!step) return partyState;
 
   const card = cardOf(combat, step.side);
@@ -189,6 +206,9 @@ export const advanceCombat = partyState => {
     const combat = state.combat;
     // пауза: выбор эффекта, окно выбора (вариант, цель, клетка) или черновик перемещения
     if (!combat || waitingForPlayer(state)) return state;
+    // замена защиты («Амат разрывает»): бой вернулся на шаг выбора защиты — ждём клика защитника,
+    // очередь продолжится после него
+    if (combat.stage === 'defense') return state;
 
     const stageMoments = combatMomentsAt(combat.stage);
     const pending = (combat.effects ?? []).find(

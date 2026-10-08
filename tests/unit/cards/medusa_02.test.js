@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/gameEngine.js';
+import { runAction, runUi } from '#shared/publicApi.js';
 import medusaCards from '../../../server/content/heroes/medusa/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -9,8 +9,8 @@ const card = medusaCards.find(entry => entry.id === 'medusa_02');
 const lineMap = {
   id: 'line',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1], terrain: 'ice' },
   ],
 };
 
@@ -143,7 +143,6 @@ describe('карта medusa_02 «Град стрел»', () => {
   it('правило с max: 1 — вторая карта остаётся в руке, окно закрывается само', () => {
     const state = openBattle(attackState([bonusCard('quiet', 2), bonusCard('loud', 3)]));
     const paused = answerPass(state);
-    const queue = paused.combat.effects;
     expect(paused.combat.choice.max).toBe(1);
     expect(paused.combat.choice.candidates).toHaveLength(2);
 
@@ -154,11 +153,12 @@ describe('карта medusa_02 «Град стрел»', () => {
       playerId: '0',
     });
 
+    // шаг окна сработал: карта ушла в бой, а не осталась в руке (отчёт боя хранит очередь свойств)
     expect(boosted.combat).toBeNull();
     expect(boosted.lastCombat.attackValue).toBe(5);
     expect(boosted.lastCombat.combatDamage).toBe(5);
-    expect(queue[0].status).toBe('applied');
-    expect(queue[0].cards).toEqual(['quiet_1']);
+    expect(boosted.lastCombat.effects[0].status).toBe('applied');
+    expect(boosted.lastCombat.effects[0].cards).toEqual(['quiet_1']);
     expect(player(boosted, '0').hand.cards.map(entry => entry.id)).toEqual(['loud']);
   });
 
@@ -181,7 +181,7 @@ describe('карта medusa_02 «Град стрел»', () => {
     const paused = answerPass(state);
     const controls = runUi(paused, '0').controls;
     expect(controls.ok.enabled).toBe(true);
-    expect(controls.ok.label).toBe('Пропустить эффект');
+    expect(controls.ok.label).toBe('Закончить эффект');
     expect(controls.back.visible).toBe(false);
 
     const skipped = runAction(paused, { type: 'UI_OK', playerId: '0' });

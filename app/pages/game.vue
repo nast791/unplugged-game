@@ -18,8 +18,29 @@
       {{ error }}
     </p>
 
+    <p
+      v-if="sessionError"
+      class="text-16 flex flex-wrap items-center gap-3 border border-amber-300 bg-amber-50 px-4 py-3"
+    >
+      {{ sessionError }}
+      <NuxtLink to="/" class="underline">В лобби</NuxtLink>
+    </p>
+
     <p v-if="combatInfo" class="text-14 border border-amber-300 bg-amber-50 px-4 py-3">
       {{ combatInfo }}
+    </p>
+
+    <p
+      v-if="turnLimitMs"
+      class="text-16 flex flex-wrap items-center gap-3 border px-4 py-3"
+      :class="
+        timeExpired ? 'border-red-300 bg-red-50 text-red-700' : 'border-primary/20 bg-primary/5'
+      "
+      role="timer"
+      aria-live="off"
+    >
+      <span v-if="timeExpired">Время хода вышло — передайте ход ({{ turnLimitLabel }}).</span>
+      <span v-else>На ход: {{ timeLabel }} из {{ turnLimitLabel }}</span>
     </p>
 
     <p
@@ -82,7 +103,20 @@
     <div class="grid flex-1 gap-4 lg:grid-cols-[240px_1fr]">
       <aside class="flex flex-col gap-3">
         <section class="border-primary/15 flex flex-col gap-2 border p-3">
-          <p class="text-14 font-medium">Hotseat</p>
+          <p class="text-14 font-medium">{{ isVsAi ? 'Против компьютера' : 'Hotseat' }}</p>
+          <p v-if="isVsAi" class="text-12 opacity-60">
+            за компьютер играет клиент:
+            <strong>{{ aiNames }}</strong>
+            ·
+            {{
+              aiThinking
+                ? 'думает…'
+                : aiIterations
+                  ? `последний ход — ${aiIterations} доигрываний`
+                  : 'ждёт хода'
+            }}
+          </p>
+          <p v-if="aiError" class="text-12 text-red-600">{{ aiError }}</p>
           <p class="text-12 opacity-60">
             смотрите глазами:
             <strong>{{ me?.name || you }}</strong>
@@ -97,7 +131,7 @@
             type="button"
             class="border-primary/20 text-14 border px-3 py-2 text-left disabled:opacity-40"
             :class="String(you) === String(player.id) ? 'bg-primary text-white' : ''"
-            :disabled="pending || String(you) === String(player.id)"
+            :disabled="pending || aiThinking || String(you) === String(player.id)"
             @click="onSwitchPlayer(player.id)"
           >
             {{ player.name || player.id }}
@@ -113,7 +147,7 @@
           <button
             type="button"
             class="border-primary/20 text-14 border px-3 py-2 text-left disabled:opacity-40"
-            :disabled="pending || isGameOver || !deckClickable"
+            :disabled="pending || aiThinking || isGameOver || !deckClickable"
             @click="onDeckClick"
           >
             Колода ({{ deckCount }})
@@ -122,7 +156,7 @@
             v-if="okControl.visible"
             type="button"
             class="bg-primary text-14 px-3 py-2 text-white disabled:opacity-40"
-            :disabled="pending || isGameOver || !okControl.enabled"
+            :disabled="pending || aiThinking || isGameOver || !okControl.enabled"
             @click="onFinishAction"
           >
             <template v-if="isPlacement && !okControl.enabled">Ожидание…</template>
@@ -132,7 +166,7 @@
             v-if="backControl.visible"
             type="button"
             class="border-primary text-14 border px-3 py-2 disabled:opacity-40"
-            :disabled="pending || isGameOver || !backControl.enabled"
+            :disabled="pending || aiThinking || isGameOver || !backControl.enabled"
             @click="onUiBack"
           >
             {{ backControl.label || 'Назад' }}
@@ -141,7 +175,7 @@
             v-if="!isGameOver"
             type="button"
             class="border-primary text-14 border px-3 py-2 disabled:opacity-40"
-            :disabled="pending"
+            :disabled="pending || aiThinking"
             @click="onResign"
           >
             Сдаться
@@ -171,7 +205,8 @@
             v-for="fighter in myFighters"
             :key="fighter.id"
             type="button"
-            class="border-primary/20 text-14 border px-3 py-2 text-left"
+            class="border-primary/20 text-14 border px-3 py-2 text-left disabled:opacity-40"
+            :disabled="aiThinking"
             :class="
               String(selectedFighterId) === String(fighter.id)
                 ? 'bg-primary text-white'
@@ -190,7 +225,8 @@
           </button>
           <ul v-if="myItems.length" class="text-12 flex flex-col gap-1 opacity-70">
             <li v-for="item in myItems" :key="item.id">
-              {{ item.name || item.id }} · {{ itemStateLabel(item.state) }}
+              {{ item.name || item.id }} · {{ itemStateLabel(item, item.state) }}
+              <span v-if="item.condition"> — {{ item.condition }}</span>
             </li>
           </ul>
         </section>
@@ -238,6 +274,25 @@
           <p class="text-14 font-medium">Свойство карты</p>
           <button
             v-for="choice in choices"
+            :key="choice.optionId"
+            type="button"
+            class="border-primary/20 text-14 border px-3 py-2 text-left disabled:opacity-40"
+            :class="choice.disabled ? 'bg-zinc-100' : 'bg-white'"
+            :disabled="pending || choice.disabled"
+            @click="onChoiceClick(choice.optionId)"
+          >
+            {{ choice.title }}
+            <span v-if="choice.disabled" class="opacity-70"> · недоступно</span>
+          </button>
+        </section>
+
+        <section
+          v-if="targetingChoices.length"
+          class="flex flex-col gap-2 border border-amber-400/60 bg-amber-50 p-3"
+        >
+          <p class="text-14 font-medium">Выберите карту</p>
+          <button
+            v-for="choice in targetingChoices"
             :key="choice.optionId"
             type="button"
             class="border-primary/20 text-14 border px-3 py-2 text-left disabled:opacity-40"
@@ -316,7 +371,7 @@
         :highlighted-cell-ids="highlightedCellIds"
         :highlighted-fighter-ids="highlightedFighterIds"
         :framed-fighter-ids="framedFighterIds"
-        :interactive="boardInteractive"
+        :interactive="boardInteractive && !aiThinking"
         @select-node="onCellClick"
         @select-fighter="onFighterClick"
       />
@@ -355,15 +410,28 @@
 </template>
 
 <script setup>
+import { useSeoTitle } from '~/composables/useSeoTitle';
+import { useTimer } from '~/composables/useTimer';
+
 const route = useRoute();
 const { bootstrap, clear } = useGameView();
+
+/** Партия живёт в этой вкладке; если её нет — объясняем и отправляем в лобби вместо пустой страницы. */
+const sessionError = ref('');
 
 onUnmounted(() => clear());
 
 if (!route.query.gameId || !route.query.playerId) {
   await navigateTo('/');
 } else {
-  await bootstrap(String(route.query.gameId), String(route.query.playerId));
+  try {
+    await bootstrap(String(route.query.gameId), String(route.query.playerId));
+  } catch (err) {
+    sessionError.value =
+      err instanceof Error
+        ? err.message
+        : 'Партия не найдена в этой вкладке — начните новую из лобби';
+  }
 }
 
 const {
@@ -394,6 +462,7 @@ const {
   deckCount,
   results,
   choices,
+  targetingChoices,
   myItems,
   itemStateLabel,
   pickCandidates,
@@ -404,6 +473,7 @@ const {
   backControl,
   boardInteractive,
   showPickNumHero,
+  placementPhase,
   selectedFighterId,
   selectedNumHeroId,
   highlightedCellIds,
@@ -425,4 +495,42 @@ const {
   onFighterClick,
   onCellClick,
 } = useGameSession();
+
+/**
+ * Лимит времени на ход из настроек партии (`settings.turnLimit`, секунды; 0 — без лимита). Таймер
+ * считает от метки дедлайна (`useTimer`) и перезапускается на каждом новом ходу: время в состояние
+ * движка не пишется — иначе партия перестала бы быть воспроизводимой по сиду.
+ */
+const turnLimitSeconds = computed(() => Math.max(0, Number(view.value?.settings?.turnLimit ?? 0)));
+const turnLimitMs = computed(() => turnLimitSeconds.value * 1000);
+const turnLimitLabel = computed(() =>
+  turnLimitSeconds.value >= 60
+    ? `${Math.round(turnLimitSeconds.value / 60)} мин`
+    : `${turnLimitSeconds.value} с`,
+);
+const turnTimer = useTimer({ duration: () => turnLimitMs.value });
+const timeLabel = turnTimer.label;
+const timeExpired = turnTimer.expired;
+watch(
+  () => [turn.value, currentPlayerId.value],
+  () => turnTimer.restart(),
+  { immediate: true },
+);
+
+/** Динамический заголовок вкладки: состав партии известен только здесь («Партия: Анубис против Теслы»). */
+useSeoTitle(() => {
+  const names = players.value.map(player => player.name).filter(Boolean);
+
+  return names.length ? `Партия: ${names.join(' против ')}` : 'Партия';
+});
+
+/** Компьютерные соперники: ходы за них считает клиент (`app/composables/useGameAi.js`). */
+const { aiThinking, aiIterations, aiError, aiSeats, isVsAi } = useGameAi();
+
+/** Имена компьютеров для панели: id игрока — это id героя, а в партии у него человеческое имя. */
+const aiNames = computed(() =>
+  aiSeats.value
+    .map(id => players.value.find(player => String(player.id) === String(id))?.name ?? String(id))
+    .join(', '),
+);
 </script>

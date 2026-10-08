@@ -1,18 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
 import { runUi } from '#shared/core.js';
-import { runAction, runLifecycle } from '#shared/gameEngine.js';
+import { runAction, runLifecycle } from '#shared/publicApi.js';
 import medusa from '../../../server/content/heroes/medusa/index.js';
 import { ap, createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
-/** Области: 1-3 синие (зона Медузы), 4 красная. */
+/** Области: 1–3 и 5 синие (зона Медузы), 4 красная. */
 const areaMap = {
   id: 'areas',
   nodes: [
-    { id: 1, neighbors: [2], terrain: 'arcane' },
-    { id: 2, neighbors: [1, 3], terrain: 'arcane' },
-    { id: 3, neighbors: [2, 4], terrain: 'arcane' },
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3, 5], terrain: 'ice' },
+    { id: 3, neighbors: [2, 4], terrain: 'ice' },
     { id: 4, neighbors: [3], terrain: 'lava' },
+    // свободная клетка рядом с Гарпиями: без неё обычному перемещению некуда идти
+    // и окно не открывается (см. правило «пустое перемещение не открывается»)
+    { id: 5, neighbors: [2], terrain: 'ice' },
   ],
 };
 
@@ -203,14 +206,15 @@ describe('способность Медузы (Взгляд Медузы)', () =
     ).toThrow(/некого/);
   });
 
-  it('общая кнопка пропускает способность, не выбирая цель', () => {
+  it('общая кнопка «Завершить умение» пропускает способность, не выбирая цель', () => {
     const state = runLifecycle(skillState({ enemies: twoEnemies() }));
     const ui = runUi(state, '0');
 
-    // от необязательного окна можно отказаться той же кнопкой, что и везде
+    // от необязательного окна можно отказаться той же кнопкой, что и везде:
+    // у окна способности она называет то, что игрок завершает
     expect(ui.controls.ok.visible).toBe(true);
     expect(ui.controls.ok.enabled).toBe(true);
-    expect(ui.controls.ok.label).toBe('Пропустить');
+    expect(ui.controls.ok.label).toBe('Завершить умение');
 
     const skipped = runAction(state, { type: 'UI_OK', playerId: '0' });
 
