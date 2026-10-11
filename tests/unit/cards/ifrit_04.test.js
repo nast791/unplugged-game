@@ -106,8 +106,8 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({
       type: 'attack',
-      value: 3,
-      bonus: 1,
+      value: 4,
+      bonus: 3,
       quantity: 3,
       fighter: 'ifrit',
     });
@@ -164,10 +164,10 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
     // умер именно выбранный, а не «первый живой»
     expect(aliveIds(after)).toEqual(['ifrit', 'ash_1', 'ash_3']);
     expect(lostIds(after)).toEqual(['ash_2']);
-    // 3 + 1 = 4 урона по Бете
-    expect(after.lastCombat.attackValue).toBe(4);
-    expect(after.lastCombat.combatDamage).toBe(4);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
+    // 4 + 1 = 5 урона по Бете
+    expect(after.lastCombat.attackValue).toBe(5);
+    expect(after.lastCombat.combatDamage).toBe(5);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
     expect(after.targeting ?? null).toBeNull();
   });
 
@@ -176,7 +176,7 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
 
     expect(aliveIds(after)).toEqual(['ifrit', 'ash_1', 'ash_2']);
     expect(lostIds(after)).toEqual(['ash_3']);
-    expect(after.lastCombat.attackValue).toBe(4);
+    expect(after.lastCombat.attackValue).toBe(5);
   });
 
   // Отказ от необязательного окна: общая кнопка закрывает окно, помечает шаг `declined`, дух остаётся
@@ -194,9 +194,9 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
 
     expect(aliveIds(after)).toEqual(['ifrit', 'ash_1', 'ash_2', 'ash_3']);
     expect(lostIds(after)).toEqual([]);
-    // 3 без прибавки: Бета получает 3 урона, бой закрыт
-    expect(after.lastCombat.attackValue).toBe(3);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(11);
+    // 4 без прибавки: Бета получает 4 урона, бой закрыт
+    expect(after.lastCombat.attackValue).toBe(4);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
     expect(after.targeting ?? null).toBeNull();
   });
 
@@ -208,8 +208,8 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
     expect(after.combat ?? null).toBeNull();
     expect(aliveIds(after)).toEqual(['ifrit']);
     expect(lostIds(after)).toEqual(['ash_1', 'ash_3', 'ash_2']);
-    expect(after.lastCombat.attackValue).toBe(4);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
+    expect(after.lastCombat.attackValue).toBe(5);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
   });
 
   it('духов нет — окна нет вовсе, атака идёт без свойства', () => {
@@ -217,9 +217,9 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
 
     expect(state.targeting ?? null).toBeNull();
     expect(state.combat ?? null).toBeNull();
-    expect(state.lastCombat.attackValue).toBe(3);
+    expect(state.lastCombat.attackValue).toBe(4);
     expect(lostIds(state)).toEqual(['ash_1', 'ash_2', 'ash_3']);
-    expect(fighterOf(state, '1', 'beta').currentHp).toBe(11);
+    expect(fighterOf(state, '1', 'beta').currentHp).toBe(10);
   });
 
   it('клик мимо подсветки отклоняется, окно остаётся открытым', () => {

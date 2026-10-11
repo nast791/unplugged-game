@@ -3,10 +3,11 @@ import { fighterMatchesBinding } from '#shared/helpers/cards.js';
 import { findNode } from '#shared/helpers/placement.js';
 import { occupiedCellIds } from '#shared/helpers/turn.js';
 /**
- * REVIVE_FIGHTER — вернуть убитого бойца на поле: боец берётся из `player.lost`, получает полное
- * здоровье и встаёт на свободную клетку. Так работает «воскресите убитую Гарпию» (`medusa_11`)
- * и общая «Подмога».
- * params: { playerId, group, groups, cellId }
+ * REVIVE_FIGHTER — вернуть убитого бойца на поле: боец берётся из `player.lost`, получает здоровье
+ * и встаёт на свободную клетку. По умолчанию здоровье полное (`startHp`) — так работает «воскресите
+ * убитую Гарпию» (`medusa_11`) и общая «Подмога»; `hp` задаёт возврат с конкретным здоровьем
+ * («Вечность» Снежной королевы поднимает ворону с 1 hp) и выше начального не поднимает.
+ * params: { playerId, group, groups, cellId, hp }
  * Привязка `group` — id/группа бойца (как `card.fighter`), чтобы не поднять не того, кого нужно;
  * `groups` — список привязок (можно прямо объекты факта LOST `{ fighterId, group }`): подходит любой.
  */
@@ -44,7 +45,10 @@ export const REVIVE_FIGHTER = (partyState, action = {}) => {
   }
 
   const [fighter] = lost.splice(index, 1);
-  const hp = Number(fighter.startHp) || Number(fighter.currentHp) || 1;
+  const startHp = Number(fighter.startHp) || Number(fighter.currentHp) || 1;
+  // возврат «с 1 здоровьем» — это параметр карты, а не свойство бойца: без `hp` движок ставит полное
+  const wanted = action.hp == null ? startHp : Math.trunc(Number(action.hp));
+  const hp = Number.isFinite(wanted) && wanted > 0 ? Math.min(wanted, startHp) : startHp;
 
   player.lost = lost;
   player.fighters = [...player.fighters, { ...fighter, currentHp: hp, currentPosition: cellId }];

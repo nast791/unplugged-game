@@ -1,7 +1,16 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  defineComponent,
+  h,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 
 /**
  * Клики по доске вешает сцена: `v-stage` появляется только после `stageReady = true`, поэтому
@@ -22,10 +31,23 @@ const { default: Board } = await import('../../../app/components/game/Board.vue'
 const passthrough = name =>
   defineComponent({
     name,
+    // `config` объявлен, чтобы тест мог читать настройки фигуры конвы (`props('config')`)
+    props: { config: { type: Object, default: null } },
     setup(_props, { slots }) {
       return () => h('div', slots.default?.());
     },
   });
+
+/**
+ * Событие перетаскивания с координатами курсора: готовому событию happy-dom `clientX` не присвоить
+ * (свойство объявлено только для чтения), поэтому координаты кладём своим свойством поверх.
+ */
+const dragEvent = (type, clientX, clientY) => {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clientX', { value: clientX });
+  Object.defineProperty(event, 'clientY', { value: clientY });
+  return event;
+};
 
 /**
  * Сцена-заглушка вместо `v-stage`: помнит слушателей конвы и умеет позвать их с поддельной целью
@@ -132,10 +154,10 @@ describe('доска: клики доходят до движка', () => {
     ]);
   });
 
-  it('клик мимо (не по фигуре клетки) движку не уходит', async () => {
+  it('клик мимо клетки и фишки уходит как select-node: null — это «кликнули в пустоту»', async () => {
     const wrapper = await mountBoard();
     stageOf(wrapper).fire('click', {});
-    expect(wrapper.emitted('select-node')).toBeUndefined();
+    expect(wrapper.emitted('select-node')).toEqual([[null]]);
     expect(wrapper.emitted('select-fighter')).toBeUndefined();
   });
 
@@ -143,5 +165,107 @@ describe('доска: клики доходят до движка', () => {
     const wrapper = await mountBoard({ interactive: false });
     stageOf(wrapper).fire('click', konvaNode({ cellName: 'cell', cellId: 2 }));
     expect(wrapper.emitted('select-node')).toBeUndefined();
+  });
+});
+
+/**
+ * Перетаскивание аватарки с полки расстановки: браузер отдаёт координаты курсора, клетку по ним считает
+ * доска (`cellAtPoint`) — попадание совпадает с кликом по той же клетке. В заглушке сцены нет
+ * преобразования (сдвига и зума), поэтому точка экрана равна точке поля.
+ */
+describe('доска: перетаскивание бойца на клетку', () => {
+  const dropOn = async (clientX, clientY, props = {}) => {
+    const wrapper = await mountBoard({ highlightedCellIds: [1], ...props });
+    wrapper.element.dispatchEvent(dragEvent('dragover', clientX, clientY));
+    await nextTick();
+    wrapper.element.dispatchEvent(dragEvent('drop', clientX, clientY));
+    await nextTick();
+    return wrapper;
+  };
+
+  it('бросок в кружок подсвеченной клетки уходит как select-node с её id', async () => {
+    const wrapper = await dropOn(100, 100);
+
+    expect(wrapper.emitted('select-node')).toEqual([[1]]);
+  });
+
+  it('бросок мимо кружков движку не уходит', async () => {
+    const wrapper = await dropOn(20, 400);
+
+    expect(wrapper.emitted('select-node')).toBeUndefined();
+  });
+
+  it('бросок на клетку вне подсветки движку не уходит — выбранный боец не сбрасывается', async () => {
+    const wrapper = await dropOn(200, 100);
+
+    expect(wrapper.emitted('select-node')).toBeUndefined();
+  });
+
+  it('клетка светится всё сильнее: область, активный боец, курсор — а граница одна и та же', async () => {
+    const wrapper = await mountBoard({
+      highlightedCellIds: [1],
+      placementCells: [
+        { id: 1, occupied: false },
+        { id: 2, occupied: false },
+      ],
+    });
+    const rings = () =>
+      wrapper.findAllComponents({ name: 'VCircle' }).map(node => node.props('config'));
+    // голубое свечение идёт по клеткам карты: первое — активного бойца, второе — всей области
+    const glowing = () => rings().filter(config => config?.shadowColor === '#22d3ee');
+
+    const legal = glowing()[0];
+    const area = glowing()[1];
+    expect(legal?.shadowBlur).toBe(28);
+    expect(area?.shadowBlur).toBe(14);
+    // ярче — свечением, а не толщиной: граница у обеих одна, и она родная, а не голубая
+    expect(legal?.strokeWidth).toBe(area?.strokeWidth);
+    expect(legal?.stroke).toBe(area?.stroke);
+
+    wrapper.element.dispatchEvent(dragEvent('dragover', 100, 100));
+    await nextTick();
+
+    const hovered = rings().find(config => config?.shadowBlur === 42);
+    expect(hovered?.strokeWidth).toBe(area?.strokeWidth);
+  });
+
+  it('в расстановке обводку клетки свечение не перекрашивает', async () => {
+    const strokes = wrapper =>
+      wrapper
+        .findAllComponents({ name: 'VCircle' })
+        .map(node => node.props('config')?.stroke)
+        .filter(Boolean);
+
+    const placement = await mountBoard({
+      highlightedCellIds: [1],
+      placementCells: [{ id: 1, occupied: false }],
+    });
+    expect(strokes(placement)).not.toContain('#0284c7');
+
+    const movement = await mountBoard({ highlightedCellIds: [1] });
+    expect(strokes(movement)).toContain('#0284c7');
+  });
+
+  it('перетаскивание не показывает «запрещено», даже когда доска сейчас не слушает', async () => {
+    const wrapper = await mountBoard({ interactive: false });
+    const event = dragEvent('dragover', 100, 100);
+    wrapper.element.dispatchEvent(event);
+    await nextTick();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(wrapper.emitted('select-node')).toBeUndefined();
+  });
+
+  it('занятая своим бойцом клетка области не светится: кольцо серое', async () => {
+    const wrapper = await mountBoard({
+      placementCells: [{ id: 1, occupied: true }],
+    });
+    const busy = wrapper
+      .findAllComponents({ name: 'VCircle' })
+      .map(node => node.props('config'))
+      .find(config => config?.stroke === '#94a3b8');
+
+    expect(busy?.shadowBlur).toBe(0);
+    expect(busy?.opacity).toBeLessThan(1);
   });
 });

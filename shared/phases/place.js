@@ -1,4 +1,5 @@
 import { SET_FIGHTER_CELL } from '#shared/actions/fighter.js';
+import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer, playerHeroes, resolveOkBackControls } from '#shared/helpers/base.js';
 import {
   allPlayersPlacementReady,
@@ -7,6 +8,7 @@ import {
   isLockedHero,
   numberedCellId,
   placePhaseHighlightedCellIds,
+  placementAreaCells,
   placementRejection,
   playerFightersPlaced,
 } from '#shared/helpers/placement.js';
@@ -36,15 +38,14 @@ export default {
         const player = findPlayer(partyState, playerId);
         return Boolean(player && !player.placementReady);
       },
-      text: () =>
-        'Разместите на поле всех своих бойцов. Их можно ставить на клетках в одной области с героем',
+      text: HINTS.place.placeFighters,
     },
     waitingForAllPlayers: {
       active: (partyState, playerId) => {
         const player = findPlayer(partyState, playerId);
         return Boolean(player?.placementReady && !allPlayersPlacementReady(partyState));
       },
-      text: () => 'Ожидание расстановки бойцов всех игроков',
+      text: HINTS.place.waitingForAllPlayers,
     },
   },
 
@@ -81,6 +82,7 @@ export default {
     if (player?.placementReady) {
       return {
         highlightedCellIds: [],
+        placementCells: [],
         controls: {
           ok: { visible: false, enabled: false, label: null },
           back: { visible: false, enabled: false, label: null },
@@ -93,6 +95,7 @@ export default {
         playerId,
         clientContext.selectedFighterId,
       ),
+      placementCells: placementAreaCells(partyState, playerId),
       controls: resolveOkBackControls(phase, partyState, playerId),
     };
   },

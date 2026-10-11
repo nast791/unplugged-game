@@ -125,19 +125,29 @@ describe('POST /api/game/create', () => {
     expect(a).toEqual(b);
   });
 
-  it('сид, размер поля и лимит времени из лобби попадают в настройки партии', () => {
+  it('сид, размер поля и лимиты времени из лобби попадают в настройки партии', () => {
     const state = createGame(
-      { ...validBody, seed: 777, cells: 30, turnLimit: 60, mode: 'table' },
+      {
+        ...validBody,
+        seed: 777,
+        cells: 30,
+        actionLimit: 60,
+        placementLimit: 120,
+        mode: 'table',
+      },
       { testId: 'lobby_settings' },
     );
     expect(state.settings.seed).toBe(777);
     expect(state.settings.cells).toBe(30);
-    expect(state.settings.turnLimit).toBe(60);
-    // «Авто» — размер выбирает генератор по сиду, а лимита нет: в настройках это null и 0.
+    expect(state.settings.actionLimit).toBe(60);
+    expect(state.settings.placementLimit).toBe(120);
+    // «Авто» — размер выбирает генератор по сиду, а лимитов нет: в настройках это null и два нуля.
     const auto = createGame({ ...validBody, mode: 'table' }, { testId: 'lobby_auto', testSeed: 5 });
     expect(auto.settings.cells).toBeNull();
-    expect(auto.settings.turnLimit).toBe(0);
-    expect(view(auto, 'medusa').settings.turnLimit).toBe(0);
+    expect(auto.settings.actionLimit).toBe(0);
+    expect(auto.settings.placementLimit).toBe(0);
+    expect(view(auto, 'medusa').settings.actionLimit).toBe(0);
+    expect(view(auto, 'medusa').settings.placementLimit).toBe(0);
   });
 
   it('тот же сид из лобби даёт то же поле и тот же порядок карт', () => {
@@ -150,12 +160,13 @@ describe('POST /api/game/create', () => {
     );
   });
 
-  it('сломанные сид, размер поля и лимит времени → ошибка', () => {
+  it('сломанные сид, размер поля и лимиты времени → ошибка', () => {
     expect(() => createGame({ ...validBody, seed: -1 })).toThrow(/seed/);
     expect(() => createGame({ ...validBody, seed: 1.5 })).toThrow(/seed/);
     expect(() => createGame({ ...validBody, cells: 27 })).toThrow(/cells/);
     expect(() => createGame({ ...validBody, cells: 39 })).toThrow(/cells/);
-    expect(() => createGame({ ...validBody, turnLimit: -5 })).toThrow(/turnLimit/);
+    expect(() => createGame({ ...validBody, actionLimit: -5 })).toThrow(/actionLimit/);
+    expect(() => createGame({ ...validBody, placementLimit: -5 })).toThrow(/placementLimit/);
   });
 
   it('sortPlayersByTeam: A,A,B,B → A,B,A,B', () => {

@@ -102,7 +102,7 @@ describe('способность Дороти (Серебряные башмач
     expect(dorothy.skill.fighter).toBe('dorothy');
     expect(dorothy.skill.title).toBe('Серебряные башмачки');
     expect(dorothy.skill.text).toContain('КОНЕЦ ХОДА');
-    expect(dorothy.skill.text).toContain('кликните по любому из них');
+    expect(dorothy.skill.text).toContain('можете кликнуть по любому из них');
     expect(dorothy.skill.text).toContain('меняются местами');
     expect(dorothy.skill.rules.map(rule => rule.moment)).toEqual(['turnEnd', 'picked']);
     // обмен — не шаг манёвра: партнёра способность не объявляет
@@ -110,10 +110,10 @@ describe('способность Дороти (Серебряные башмач
     expect(dorothy.skill.options).toBeUndefined();
   });
 
-  it('герой и помощник описаны по паспорту: 12/2 ближний и Тото 6/3 ближний', () => {
+  it('герой и помощник описаны по паспорту: 13/2 ближний и Тото 6/3 ближний', () => {
     expect(dorothy.heroes[0]).toMatchObject({
       id: 'dorothy',
-      hp: 12,
+      hp: 13,
       move: 2,
       attackRange: 1,
     });

@@ -8,6 +8,7 @@ import {
   leafScorePlain,
   myTurnOf,
   rolloutEnd,
+  rootAdvantages,
   rootPriors,
   searchAction,
   searchBudget,
@@ -376,7 +377,7 @@ describe('бюджет времени на решение', () => {
 
 /**
  * Приор корня — подсказка о вариантах, а не замена доигрываний (§24): по умолчанию это вес политики,
- * с `priorFrom: 'qvalue'` — оценка обученного ученика (`bot/play/qvalue.js`).
+ * с `priorSource: 'qvalue'` — оценка обученного ученика (`bot/play/qvalue.js`).
  */
 describe('приор корня: вес политики или оценка ученика', () => {
   const start = () => firstSearchState(11);
@@ -390,7 +391,7 @@ describe('приор корня: вес политики или оценка у�
     }));
     const priors = rootPriors(state, playerId, entries, {
       ...searchBudget(),
-      priorFrom: 'weights',
+      priorSource: 'weights',
     });
     const heaviest = entries.reduce((leader, entry) =>
       entry.weight > leader.weight ? entry : leader,
@@ -409,13 +410,56 @@ describe('приор корня: вес политики или оценка у�
       weight: entry.weight,
     }));
     const scores = scoreOptions(state, playerId, entries);
-    const priors = rootPriors(state, playerId, entries, { ...searchBudget(), priorFrom: 'qvalue' });
+    const priors = rootPriors(state, playerId, entries, {
+      ...searchBudget(),
+      priorSource: 'qvalue',
+    });
     const bestByModel = entries.reduce((leader, entry) =>
       scores.get(keyOf(entry)) > scores.get(keyOf(leader)) ? entry : leader,
     );
 
     expect(priors.get(keyOf(bestByModel))).toBe(Math.max(...priors.values()));
     for (const value of priors.values()) expect(value).toBeLessThanOrEqual(0);
+  });
+
+  /**
+   * §47: прежний приор (`prior · log p`) в решении не участвовал — на 5–7 визитах на вариант он тонет в
+   * шуме средних, и свип коэффициента от 0 до 30 этого не менял. Мнение модели в решении — это
+   * `rootAdvantages`: те же числа, что у ученика (`Q(s, a)` плюс примесь весов), но **отсчитанные от
+   * сильнейшего варианта**, чтобы приор расставлял варианты между собой, а не поднимал весь корень.
+   */
+  it('мнение модели для решения: сильнейший вариант — ноль, остальные ниже', () => {
+    const { state, playerId } = start();
+    const entries = actionsFor(state, playerId, { policy: 'greedy' }).map(entry => ({
+      action: entry.action,
+      weight: entry.weight,
+    }));
+    const scores = scoreOptions(state, playerId, entries);
+    const advantages = rootAdvantages(state, playerId, entries, {
+      ...searchBudget(),
+      priorMix: 0.8,
+    });
+    const bestByModel = entries.reduce((leader, entry) =>
+      scores.get(keyOf(entry)) > scores.get(keyOf(leader)) ? entry : leader,
+    );
+
+    expect(advantages.size).toBe(entries.length);
+    expect(advantages.get(keyOf(bestByModel))).toBeCloseTo(0, 6);
+    expect(Math.max(...advantages.values())).toBeCloseTo(0, 6);
+    for (const value of advantages.values()) expect(value).toBeLessThanOrEqual(0);
+  });
+
+  it('приор выключен — мнения модели в решении нет', () => {
+    const { state, playerId } = start();
+    const entries = actionsFor(state, playerId, { policy: 'greedy' }).map(entry => ({
+      action: entry.action,
+      weight: entry.weight,
+    }));
+    const advantages = rootAdvantages(state, playerId, entries, {
+      ...searchBudget(),
+      priorMix: 0,
+    });
+    for (const value of advantages.values()) expect(value).toBe(0);
   });
 
   it('партия с приором от ученика доходит до конца и остаётся легальной', () => {

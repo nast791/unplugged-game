@@ -2,5 +2,5 @@
 export default {
   checkbox_group: 'flex flex-col gap-8',
   checkbox_group_inline: 'flex flex-row flex-wrap gap-16',
-  checkbox_group_label: 'text-14 text-dim',
+  checkbox_group_label: 'text-18 text-dim',
 };

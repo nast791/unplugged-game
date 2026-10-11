@@ -1,6 +1,9 @@
 import { runAction, runUi } from '#shared/publicApi.js';
 import { createGame } from '../../server/create.js';
 import { load } from '../../server/party.js';
+// чтение артефакта по пути — только на node: подключает загрузчик `bot/play/artifact-file.js`
+// (`node:fs` не имеет права попасть в клиентский бандл, а `duel.js` — общий вход всех прогонов и замеров)
+import './artifact-file.js';
 import { actionsFor, actorOf, pickWeighted } from './decide.js';
 import { createMetrics, noteAction, noteTransition, snapshotHp } from './metrics.js';
 
@@ -126,18 +129,23 @@ export const createDuel = (
  */
 export const playDuel = ({
   seed = 1,
-  maxSteps = 400,
+  maxSteps = 1200,
   testId = `fuzz_${seed}`,
   mapId = 'generated',
   heroA = 'medusa',
   heroB = 'tesla',
   policy = 'random',
   policyB = null,
+  artifact = null,
+  artifactB = null,
   onStep = null,
 } = {}) => {
   // предел шагов приходит и снаружи, и флагами CLI: `null`/0 значит «по умолчанию», иначе цикл ниже
-  // не сделал бы ни шага (0 < null — ложь) и партия сразу считалась бы незавершённой
-  const limit = Number.isFinite(Number(maxSteps)) && Number(maxSteps) > 0 ? Number(maxSteps) : 400;
+  // не сделал бы ни шага (0 < null — ложь) и партия сразу считалась бы незавершённой.
+  // Значение поднято с 400 до 1200 (§42): замер эталона `greedy` против `greedy` давал 49 незавершённых
+  // из 1800, и все они кончались сами — самым длинным нужно 800–900 шагов. Это не тупик, а медленная
+  // партия: обе стороны ходят по кругу, колода кончается, дальше решает истощение (2 урона за карту).
+  const limit = Number.isFinite(Number(maxSteps)) && Number(maxSteps) > 0 ? Number(maxSteps) : 1200;
   const rng = { value: (Number(seed) || 1) >>> 0 };
   const heroBFirst = (Number(seed) || 1) % 2 === 0;
   // стиль партии: одни сиды играют агрессивно, другие осторожно
@@ -155,6 +163,13 @@ export const playDuel = ({
     .sort((left, right) => Number(left.order) - Number(right.order))[0]?.heroId;
   const policyOf = playerId =>
     policyB != null && String(playerId) !== String(firstHeroId) ? policyB : policy;
+  /**
+   * Каким артефактом играет сторона: у первой — `artifact`, у второй — `artifactB` (или тот же).
+   * Это то, что делает возможным матч **версия против версии**: без него обе стороны брали бы вшитую
+   * в бандл модель, и «новая версия против старой» была бы невыразима (`bot/play/artifact.js`).
+   */
+  const artifactOf = playerId =>
+    artifactB != null && String(playerId) !== String(firstHeroId) ? artifactB : artifact;
 
   /** Отчёт с метриками: у всех исходов одна форма, поэтому собирается в одном месте. */
   const report = (status, steps, extra = {}) => ({
@@ -189,6 +204,7 @@ export const playDuel = ({
       policy: policyOf(playerId),
       style,
       skipAllowed,
+      artifact: artifactOf(playerId),
     });
     if (options.length === 0) {
       return report('deadlock', step, {

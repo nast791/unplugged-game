@@ -5,7 +5,7 @@
     <AvatarFallback :class="styles.avatar_fallback" :delay-ms="props.delayMs">
       <slot name="fallback">
         <Icon v-if="props.icon" :name="props.icon" :class="styles.avatar_icon" aria-hidden="true" />
-        <span v-else class="text-14">{{ initials }}</span>
+        <span v-else class="text-16">{{ initials }}</span>
       </slot>
     </AvatarFallback>
   </AvatarRoot>

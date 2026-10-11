@@ -75,8 +75,12 @@ const buildState = ({ deckCards = [deckCard(1), deckCard(2)] } = {}) =>
 const play = state =>
   runAction(state, { type: 'PICK', kind: 'card', id: 'ifrit_12_1', playerId: '0' });
 
+/** Клик по варианту только отмечает его: эффект применяет общая кнопка подтверждения (`UI_OK`). */
 const pick = (state, optionId) =>
-  runAction(state, { type: 'PICK', kind: 'option', id: optionId, playerId: '0' });
+  runAction(runAction(state, { type: 'PICK', kind: 'option', id: optionId, playerId: '0' }), {
+    type: 'UI_OK',
+    playerId: '0',
+  });
 
 const fighterOf = (state, playerId, fighterId) =>
   player(state, playerId).fighters.find(entry => entry.id === fighterId);
@@ -121,6 +125,30 @@ describe('карта ifrit_12 «Три обещания»', () => {
     ]);
     // у обязательного окна общей кнопки отказа нет: ui её не показывает
     expect(runUi(played, '0').controls.ok).toMatchObject({ visible: false, enabled: false });
+    // и подтверждать нечего, пока вариант не отмечен
+    expect(() => runAction(played, { type: 'UI_OK', playerId: '0' })).toThrow(
+      /закрывается только выбором/,
+    );
+  });
+
+  it('клик по варианту только отмечает его: применяет выбор общая кнопка', () => {
+    const marked = runAction(play(buildState()), {
+      type: 'PICK',
+      kind: 'option',
+      id: 'heal',
+      playerId: '0',
+    });
+
+    // эффект ещё не применён: окно открыто, отметка стоит
+    expect(fighterOf(marked, '0', 'ifrit').currentHp).toBe(10);
+    expect(marked.targeting).toMatchObject({ kind: 'options', picked: 'heal' });
+    // отметка включает общую кнопку — иначе выбор было бы нечем подтвердить
+    expect(runUi(marked, '0').controls.ok).toMatchObject({ visible: true, enabled: true });
+
+    const confirmed = runAction(marked, { type: 'UI_OK', playerId: '0' });
+
+    expect(fighterOf(confirmed, '0', 'ifrit').currentHp).toBe(12);
+    expect(confirmed.targeting).toBeNull();
   });
 
   it('вариант heal — 2 здоровья Ифриту', () => {

@@ -23,7 +23,7 @@
             data-menu-item
             @click="emit('select', item)"
           >
-            <span class="text-18 tracking-[0.12em] uppercase">{{ item.title }}</span>
+            <span class="text-20 tracking-[0.12em] uppercase">{{ item.title }}</span>
           </AButton>
         </nav>
 
@@ -32,10 +32,10 @@
             class="via-line h-1 w-full bg-gradient-to-r from-transparent to-transparent"
             aria-hidden="true"
           />
-          <p v-if="props.season" class="text-accent/90 text-11 tracking-[0.18em] uppercase">
+          <p v-if="props.season" class="text-accent/90 text-14 tracking-[0.08em] uppercase">
             {{ props.season }}
           </p>
-          <p class="text-dim/70 text-12 tracking-[0.1em] uppercase" aria-live="polite">{{ tip }}</p>
+          <p class="text-dim/70 text-14 tracking-[0.1em] uppercase" aria-live="polite">{{ tip }}</p>
         </div>
       </div>
     </div>
@@ -44,8 +44,8 @@
 
 <script setup>
 import { MENU_ITEMS, TIPS } from '#shared/constants/ui.js';
+import AButton from '~/components/atoms/AButton.vue';
 
-/** Меню лобби: компоновка своя — по центру (референс владельца — консольный экран). */
 const props = defineProps({
   season: { type: String, default: '' },
 });
@@ -68,7 +68,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => clearInterval(tipTimer));
 
-/** Стрелки вверх/вниз ведут по пунктам: это меню игры, а не список ссылок. */
 const move = step => {
   const buttons = [...(menuRef.value?.querySelectorAll('button[data-menu-item]') ?? [])];
   if (!buttons.length) return;

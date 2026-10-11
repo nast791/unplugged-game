@@ -56,8 +56,11 @@ const stepRoute = (partyState, movement, playerId, fighter, cellId) => {
  * а один и тот же боец получает такой урон не больше одного раза за окно движения — повторный вход
  * в его клетку (шаг туда и обратно) урона не удваивает. Урон идёт обычным `SET_HEALTH`: герой теряет
  * здоровье, помощник гибнет на нуле (с моментом `lost` его владельца).
+ *
+ * `healOnPass` («крадёт здоровье») — идущий получает столько же за каждого пройденного: лечение идёт
+ * тем же `SET_HEALTH`, поэтому выше начального здоровья боец не поднимается.
  */
-const damagePassedFighters = (partyState, movement, playerId, route, damage) => {
+const damagePassedFighters = (partyState, movement, playerId, route, damage, { heal = 0, moverId } = {}) => {
   const done = new Set((movement.damagedFighterIds ?? []).map(String));
   const hurt = [];
 
@@ -74,13 +77,26 @@ const damagePassedFighters = (partyState, movement, playerId, route, damage) => 
   if (hurt.length === 0) return partyState;
 
   // смертельный урон объявляет источник: правило `lost` карты, открывшей перемещение, тоже срабатывает
-  return SET_HEALTH(partyState, {
-    fighterIds: hurt,
-    delta: -damage,
-    source: movement.source ?? null,
-    playedCard: movement.playedCard ?? null,
-    playerId,
-  });
+  let state = partyState;
+  if (damage > 0) {
+    state = SET_HEALTH(state, {
+      fighterIds: hurt,
+      delta: -damage,
+      source: movement.source ?? null,
+      playedCard: movement.playedCard ?? null,
+      playerId,
+    });
+  }
+
+  if (heal > 0 && moverId != null) {
+    SET_HEALTH(state, {
+      fighterIds: [String(moverId)],
+      delta: heal * hurt.length,
+      playerId,
+    });
+  }
+
+  return state;
 };
 
 /** Список бойцов из правила (объекты FIGHTERS, id или строка привязки) → список id. */
@@ -136,8 +152,9 @@ const canExtendMovement = (partyState, playerId) => bonusCardIds(partyState, pla
  * Обычное перемещение (клик по колоде) — бюджет у каждого бойца свой (`fighter.move`).
  * Перемещение от эффекта карты задаёт правило: `budget` (сколько клеток каждому бойцу),
  * `fighters` (кого вообще можно двигать), `optional` (можно не двигать никого),
- * `throughEnemies` (разрешить проход сквозь врагов — «Возрождение стаи») и `damageOnPass`
- * (урон бойцам противника на клетках маршрута — «Метель из осколков»).
+ * `throughEnemies` (разрешить проход сквозь врагов — «Возрождение стаи»), `damageOnPass`
+ * (урон бойцам противника на клетках маршрута — «Метель из осколков») и `healOnPass`
+ * (идущий забирает столько же здоровья себе — «Пепельный ветер» Ифрита: «крадёт здоровье»).
  * Внутри боя такое перемещение ещё и ставит бой на паузу — эффект ждёт, пока игрок подвигал.
  *
  * **Пустое перемещение не открывается** (решение владельца): если ни один боец не может шагнуть ни на
@@ -145,8 +162,8 @@ const canExtendMovement = (partyState, playerId) => bonusCardIds(partyState, pla
  * отмечается сработавшим. Это защита от тупика: в обязательном окне без клеток не было ни одного
  * легального действия, и партия вставала намертво (`ifrit` против `snow-queen`, сид 33). Исключение —
  * обычное перемещение с картой усиления в руке: она расширяет радиус, значит выбор всё-таки есть.
- * params: { op: 'open', playerId?, budget?, fighters?, optional?, throughEnemies?, damageOnPass?, source?,
- *           playedCard? }
+ * params: { op: 'open', playerId?, budget?, fighters?, optional?, throughEnemies?, damageOnPass?,
+ *           healOnPass?, source?, playedCard? }
  */
 const openMovement = (partyState, action) => {
   if (partyState.movement) {
@@ -164,6 +181,9 @@ const openMovement = (partyState, action) => {
   // ноль и мусор в damageOnPass — это «урона нет»: без него поведение перемещения прежнее
   const passDamage = Number(action.damageOnPass);
   const damageOnPass = Number.isFinite(passDamage) && passDamage > 0 ? passDamage : null;
+  // «крадёт здоровье»: за каждого пройденного бойца противника идущий получает столько же себе
+  const passHeal = Number(action.healOnPass);
+  const healOnPass = Number.isFinite(passHeal) && passHeal > 0 ? passHeal : null;
 
   const draft = {
     playerId: String(playerId),
@@ -175,6 +195,7 @@ const openMovement = (partyState, action) => {
     optional: action.optional === true,
     throughEnemies: action.throughEnemies === true,
     damageOnPass,
+    healOnPass,
     damagedFighterIds: [],
     moves: [],
     source: action.source == null ? null : String(action.source),
@@ -229,10 +250,13 @@ const stepMovement = (partyState, action) => {
 
   const from = fighter.currentPosition;
 
-  // урон на проходе: маршрут нужен только тому перемещению, которое его наносит
+  // урон на проходе: маршрут нужен только тому перемещению, которое его наносит (или крадёт здоровье)
   const damage = Number(movement.damageOnPass) || 0;
+  const heal = Number(movement.healOnPass) || 0;
   const route =
-    damage > 0 ? stepRoute(partyState, movement, playerId, fighter, action.cellId) : null;
+    damage > 0 || heal > 0
+      ? stepRoute(partyState, movement, playerId, fighter, action.cellId)
+      : null;
 
   const state = SET_FIGHTER_CELL(partyState, {
     fighterId: action.fighterId,
@@ -246,7 +270,7 @@ const stepMovement = (partyState, action) => {
 
   if (!route?.length) return state;
 
-  return damagePassedFighters(state, movement, playerId, route, damage);
+  return damagePassedFighters(state, movement, playerId, route, damage, { heal, moverId: fighterId });
 };
 
 /** Усиление перемещения: карта из руки в сброс, её bonus — всему действию, один раз. */

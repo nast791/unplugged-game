@@ -82,8 +82,8 @@ describe('карта ifrit_02 «Жар из-под земли»', () => {
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({
       type: 'attack',
-      value: 3,
-      bonus: 1,
+      value: 4,
+      bonus: 3,
       quantity: 3,
       fighter: 'ifrit',
     });
@@ -95,35 +95,35 @@ describe('карта ifrit_02 «Жар из-под земли»', () => {
     expect(card.rules[1].then[0]).toMatchObject({ action: 'SET_COMBAT', delta: 1 });
   });
 
-  it('Ифрит на лаве — +2, атака 5', () => {
+  it('Ифрит на лаве — +2, атака 6', () => {
     const after = battle(buildState({ terrain: 'lava' }));
+
+    expect(after.lastCombat.attackValue).toBe(6);
+    expect(after.lastCombat.combatDamage).toBe(6);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(7);
+  });
+
+  it('Ифрит в пустыне — +1, атака 5', () => {
+    const after = battle(buildState({ terrain: 'desert' }));
 
     expect(after.lastCombat.attackValue).toBe(5);
     expect(after.lastCombat.combatDamage).toBe(5);
     expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
   });
 
-  it('Ифрит в пустыне — +1, атака 4', () => {
-    const after = battle(buildState({ terrain: 'desert' }));
+  it('вне лавы и пустыни свойство не срабатывает: атака 4', () => {
+    const after = battle(buildState({ terrain: 'ice' }));
 
     expect(after.lastCombat.attackValue).toBe(4);
     expect(after.lastCombat.combatDamage).toBe(4);
     expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
   });
 
-  it('вне лавы и пустыни свойство не срабатывает: атака 3', () => {
-    const after = battle(buildState({ terrain: 'ice' }));
-
-    expect(after.lastCombat.attackValue).toBe(3);
-    expect(after.lastCombat.combatDamage).toBe(3);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
-  });
-
-  it('двухцветная клетка лава+пустыня включает оба правила: 3 + 2 + 1 = 6', () => {
+  it('двухцветная клетка лава+пустыня включает оба правила: 4 + 2 + 1 = 7', () => {
     const after = battle(buildState({ terrain: ['lava', 'desert'] }));
 
-    expect(after.lastCombat.attackValue).toBe(6);
-    expect(after.lastCombat.combatDamage).toBe(6);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(7);
+    expect(after.lastCombat.attackValue).toBe(7);
+    expect(after.lastCombat.combatDamage).toBe(7);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(6);
   });
 });

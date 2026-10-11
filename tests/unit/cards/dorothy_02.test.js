@@ -134,26 +134,26 @@ describe('карта dorothy_02 «Ведро воды»', () => {
     ).toBe(true);
   });
 
-  it('цель на лаве — +1, атака 5', () => {
+  it('цель на лаве — +3, атака 7', () => {
     const after = battle(buildState({ heroCell: 2, foeCell: 3 }));
 
-    expect(after.lastCombat.attackValue).toBe(5);
-    expect(after.lastCombat.combatDamage).toBe(5);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+    expect(after.lastCombat.attackValue).toBe(7);
+    expect(after.lastCombat.combatDamage).toBe(7);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(6);
   });
 
-  it('цель на песке — +1, атака 5', () => {
+  it('цель на песке — +3, атака 7', () => {
     const after = battle(buildState({ heroCell: 5, foeCell: 4 }));
 
-    expect(after.lastCombat.attackValue).toBe(5);
-    expect(after.lastCombat.combatDamage).toBe(5);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+    expect(after.lastCombat.attackValue).toBe(7);
+    expect(after.lastCombat.combatDamage).toBe(7);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(6);
   });
 
-  it('цель на двухцветной клетке лава+песок — +1 приходит один раз', () => {
+  it('цель на двухцветной клетке лава+песок — +3 приходит один раз', () => {
     const after = battle(buildState({ map: dualMap, heroCell: 2, foeCell: 3 }));
 
-    expect(after.lastCombat.attackValue).toBe(5);
-    expect(after.lastCombat.combatDamage).toBe(5);
+    expect(after.lastCombat.attackValue).toBe(7);
+    expect(after.lastCombat.combatDamage).toBe(7);
   });
 });

@@ -49,6 +49,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui';
+import AScroll from '~/components/atoms/AScroll.vue';
 import { useUI } from '~/composables/ui/useUI';
 
 /**

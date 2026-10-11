@@ -1,5 +1,6 @@
 import { useState } from 'nuxt/app';
 import { runAction, runLifecycle } from '#shared/publicApi.js';
+import { clearClock, markClock } from '~/composables/useClock.js';
 import { adaptPartyView } from '~/utils/adaptPartyView.js';
 
 const actionErrorMessage = err => {
@@ -19,12 +20,6 @@ const actionErrorMessage = err => {
   return 'Ошибка хода';
 };
 
-/**
- * State партии живёт в памяти вкладки (hotseat), поэтому перезагрузка страницы убивала партию:
- * `hostState` пустой, `bootstrap` падал, и доска просто исчезала. Держим ту же копию ещё и в
- * sessionStorage: перезагрузка партию не теряет, а закрытие вкладки — теряет (как и раньше).
- * Ключ один на вкладку: секретность в hotseat и так на клиенте, новых данных это не раскрывает.
- */
 const STORAGE_KEY = 'unplugged:party:host';
 
 const storage = () => (typeof sessionStorage === 'undefined' ? null : sessionStorage);
@@ -46,22 +41,26 @@ const persistHost = state => {
   try {
     if (state) store.setItem(STORAGE_KEY, JSON.stringify(state));
     else store.removeItem(STORAGE_KEY);
-  } catch {
-    // переполнение или запрет хранилища — партия всё равно продолжается в памяти
-  }
+  } catch {}
 };
 
-/** Клиент: host state из create, view — GET /api/party/view, ход — POST /api/party/state. */
 export const useGameView = () => {
   const hostState = useState('party:host', () => null);
   const view = useState('party:view', () => null);
   const gameId = useState('party:gameId', () => null);
   const playerId = useState('party:playerId', () => null);
+  const steps = useState('party:steps', () => 0);
+  // выбранный боец — клиентское состояние экрана, но живёт в общем `useState`: `useGameSession()` не
+  // синглтон, и полка расстановки (свой экземпляр) иначе не увидела бы выбор доски
+  const selectedFighterId = useState('party:selectedFighter', () => null);
 
   const seed = (state, asPlayerId) => {
     hostState.value = runLifecycle(structuredClone(state));
     gameId.value = String(state.id);
     playerId.value = String(asPlayerId);
+    steps.value = 0;
+    markClock('party:placement');
+    clearClock('party:play');
     persistHost(hostState.value);
   };
 
@@ -71,7 +70,6 @@ export const useGameView = () => {
     gameId.value = gid;
     playerId.value = pid;
 
-    // сначала пробуем память вкладки, потом копию из sessionStorage: перезагрузка не должна убивать партию
     if (!hostState.value || String(hostState.value.id) !== gid) {
       const saved = storedHost();
       if (saved && String(saved.id) === gid) hostState.value = saved;
@@ -90,12 +88,6 @@ export const useGameView = () => {
     return view.value;
   };
 
-  /**
-   * Отправка состояния сериализуется: в режиме против компьютера ход человека и первый ход бота могут
-   * наложиться друг на друга (состояние в сторе меняется до ответа сервера), а сервер хранит последнее
-   * присланное. Без очереди поздний ответ на старый ход перетирал бы свежий — и экран показывал бы
-   * партию без только что сделанных действий.
-   */
   let requestChain = Promise.resolve();
 
   const postState = body => {
@@ -105,7 +97,6 @@ export const useGameView = () => {
         body,
       }),
     );
-    // цепочка не должна рваться из-за одного неудачного хода
     requestChain = request.then(
       () => undefined,
       () => undefined,
@@ -123,6 +114,7 @@ export const useGameView = () => {
     };
     try {
       hostState.value = runAction(hostState.value, payload);
+      steps.value += 1;
       persistHost(hostState.value);
       const raw = await postState({
         gameId: hostState.value.id,
@@ -147,15 +139,12 @@ export const useGameView = () => {
     return view.value;
   };
 
-  /**
-   * Забываем партию в памяти вкладки, но **не** трогаем копию в sessionStorage: уход со страницы
-   * (или перезапуск компонента при HMR) не должен стоить игроку партии. Новый `seed` перезапишет копию.
-   */
   const clear = () => {
     hostState.value = null;
     view.value = null;
     gameId.value = null;
     playerId.value = null;
+    selectedFighterId.value = null;
   };
 
   return {
@@ -163,6 +152,8 @@ export const useGameView = () => {
     view,
     gameId,
     playerId,
+    steps,
+    selectedFighterId,
     seed,
     bootstrap,
     sendAction,

@@ -7,7 +7,8 @@ import { occupiedCellIds } from '#shared/helpers/turn.js';
  * «воскресите Гарпию на любой свободной клетке в области Медузы» (`medusa_11`).
  * params: { areaOf, terrain, free, min }
  * areaOf — в одной области с указанным бойцом (область = стихия его клетки, `docs/terrain.md`);
- * terrain — клетки конкретной стихии ('forest', 'water', 'lava', ...);
+ * terrain — клетки конкретной стихии ('forest', 'water', 'lava', ...) или их список
+ * (`['lava', 'desert']` — «Пепельный покров» Ифрита: годится и лава, и пустыня);
  * free — только свободные клетки (по умолчанию да).
  */
 export const CELLS = (ctx, params = {}) => {
@@ -26,13 +27,18 @@ export const CELLS = (ctx, params = {}) => {
     }
   }
 
-  const terrain = params.terrain == null ? null : String(params.terrain);
+  const terrain =
+    params.terrain == null
+      ? null
+      : (Array.isArray(params.terrain) ? params.terrain : [params.terrain]).map(String);
   const freeOnly = params.free !== false;
   const occupied = freeOnly ? occupiedCellIds(state) : new Set();
 
   const cells = nodes
     .filter(node => node?.id != null)
-    .filter(node => terrain == null || nodeTerrains(node).includes(terrain))
+    .filter(
+      node => terrain == null || nodeTerrains(node).some(value => terrain.includes(String(value))),
+    )
     .filter(node => pinnedCell == null || sharesArea(state, pinnedCell, node.id))
     .map(node => String(node.id))
     .filter(cellId => !occupied.has(cellId));

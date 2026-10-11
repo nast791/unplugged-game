@@ -117,7 +117,7 @@ const cards = [
     id: 'common_volley',
     title: 'Залп',
     type: 'attack',
-    value: 2,
+    value: 3,
     bonus: 2,
     quantity: 1,
     text: 'ПОСЛЕ БОЯ: 1 урон всем бойцам противника в области вашего бойца.',

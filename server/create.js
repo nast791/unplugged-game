@@ -81,8 +81,11 @@ export const createGame = (body, { testId, testSeed } = {}) => {
     Math.floor(Math.random() * 0x100000000);
   // Размер поля: `null` — «Авто», генератор сам выберет по пресету своего числа игроков.
   const cells = optionalInteger(body.cells);
-  // Лимит времени на ход, секунды: 0 — без лимита. Правила движка, поэтому лежит в `settings`, а не в UI.
-  const turnLimit = optionalInteger(body.turnLimit) ?? 0;
+  // Лимиты времени из настроек стола, секунды: 0 — без лимита. «На действие» — на одно решение игрока,
+  // «на расстановку» — один бюджет на всю первую фазу. Настройки стола, не правила движка, поэтому лежат
+  // в `settings`, а не в состоянии хода.
+  const actionLimit = optionalInteger(body.actionLimit) ?? 0;
+  const placementLimit = optionalInteger(body.placementLimit) ?? 0;
   const rng = createRng(seed);
   // «generated» — поле, собранное генератором по сиду партии: клетки, зоны стихий и стартовые области
   const mapPack =
@@ -131,10 +134,12 @@ export const createGame = (body, { testId, testSeed } = {}) => {
       format: modeDef.format,
       seating: modeDef.seating,
       seed,
-      // Просьбы лобби, а не правила движка: размер поля (null — авто) и лимит времени на ход в секундах.
-      // Клиент читает их из проекции (`settings`), поэтому свои настройки он видит, а сид — нет.
+      // Просьбы лобби, а не правила движка: размер поля (null — авто) и лимиты времени в секундах
+      // (на действие и на расстановку). Клиент читает их из проекции (`settings`), поэтому свои настройки
+      // он видит, а сид — нет.
       cells: cells ?? null,
-      turnLimit,
+      actionLimit,
+      placementLimit,
       heroes: playerSlots.map(slot => ({ ...slot })),
     },
     players,

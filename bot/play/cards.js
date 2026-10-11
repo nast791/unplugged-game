@@ -120,8 +120,22 @@ const actionWorth = (action, sides, resolved = action) => {
       return {};
     }
 
-    case 'SET_MOVEMENT':
-      return { value: 1.5 };
+    // перемещение: сам шаг стоит 1,5, а длина, проход сквозь строй и проход с уроном или кражей
+    // добавляют по своей шкале. Сколько бойцов реально стоит на маршруте, оценка не знает (маршрут
+    // считается в партии по карте), поэтому урон и кража берутся по одному разу за пункт — движок
+    // бьёт каждого пройденного не больше одного раза за окно
+    case 'SET_MOVEMENT': {
+      const budget = num(action.budget);
+      let value = 1.5;
+      // каждый шаг сверх первого дешевле первого: дальний манёвр — это свобода, а не второй ход
+      if (budget > 1) value += 0.25 * (budget - 1);
+      if (action.throughEnemies === true) value += 0.5;
+      // урон чужому бойцу и лечение себе — по шкале `SET_HEALTH`, но вполовину: урон на проходе
+      // не гарантирован (врагов на маршруте может и не быть), а маршрут оценке неизвестен
+      value += 1 * Math.max(0, num(action.damageOnPass));
+      value += 1 * Math.max(0, num(action.healOnPass));
+      return { value };
+    }
     case 'REVIVE_FIGHTER':
       return { value: 4 };
     case 'SET_FIGHTER_CELL':

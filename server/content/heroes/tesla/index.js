@@ -9,7 +9,6 @@ export default {
       type: 'hero',
       hp: 14,
       move: 2,
-      // дальник: дальность задаёт attackRange (прежний признак attackType убран)
       attackRange: 3,
       size: 1,
     },
@@ -22,9 +21,8 @@ export default {
       type: 'item',
       count: 2,
       color: '#FACC15',
-      // обе катушки начинают игру неактивными; одну активирует правило начала игры ниже
       state: 'inactive',
-      icon: 'bi:lightning-fill',
+      icon: 'lucide:zap',
     },
   ],
   skill: {
@@ -36,7 +34,6 @@ export default {
     rules: [
       {
         moment: 'gameStart',
-        // «НАЧАЛО ИГРЫ: 1 катушка уже активна» — правило, а не состояние пака
         then: [
           {
             action: 'SET_ITEM',
@@ -49,7 +46,6 @@ export default {
       },
       {
         moment: 'turnEnd',
-        // катушки заряжаются сами: одна за каждый свой ход, но если обе уже активны — пропускаем
         when: [{ fact: 'ITEMS', params: { group: 'coil', state: 'inactive' }, min: 1 }],
         then: [
           {
@@ -63,7 +59,6 @@ export default {
       },
       {
         moment: 'turnStart',
-        // обе катушки активны — разряд по врагам на соседних клетках
         when: [
           { fact: 'ITEMS', params: { group: 'coil', state: 'active' }, min: 2 },
           {
@@ -77,7 +72,6 @@ export default {
       },
       {
         moment: 'turnStart',
-        // и толкаем тех, кто ещё стоит рядом: по одному, на расстояние до 1 клетки (можно и на 0)
         when: [
           { fact: 'ITEMS', params: { group: 'coil', state: 'active' }, min: 2 },
           {

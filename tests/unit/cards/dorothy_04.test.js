@@ -110,8 +110,12 @@ const optionWindow = () => {
   });
 };
 
+/** Клик по варианту только отмечает его: эффект применяет общая кнопка подтверждения (`UI_OK`). */
 const choose = (state, optionId) =>
-  runAction(state, { type: 'PICK', kind: 'option', id: optionId, playerId: '0' });
+  runAction(runAction(state, { type: 'PICK', kind: 'option', id: optionId, playerId: '0' }), {
+    type: 'UI_OK',
+    playerId: '0',
+  });
 
 const step = (state, fighterId, cellId) =>
   runAction(state, {
@@ -135,7 +139,7 @@ describe('карта dorothy_04 «Смена караула»', () => {
     ]);
     for (const rule of card.rules) expect(isMoment(rule.moment)).toBe(true);
     expect(card.hook).toBeUndefined();
-    expect(card).toMatchObject({ type: 'defense', value: 4, bonus: 1, fighter: 'dorothy' });
+    expect(card).toMatchObject({ type: 'hybrid', value: 4, bonus: 1, fighter: 'dorothy' });
     expect(card.options.map(option => option.id)).toEqual(['heal', 'draw', 'push']);
   });
 

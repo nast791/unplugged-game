@@ -75,15 +75,18 @@ const buildState = ({ handCards = [filler(1), filler(2)] } = {}) =>
     _enteredHooks: { gameStart: true, turn: true },
   });
 
-/** Дух объявляет атаку (кандидат один), Бета пасует. */
+/** Дух объявляет атаку; карта «любого бойца», поэтому движок сперва спрашивает, кто атакует. */
 const fight = state => {
-  const opened = runAction(state, {
+  let run = runAction(state, {
     type: 'PICK',
     kind: 'card',
     id: 'ifrit_07_1',
     playerId: '0',
   });
-  return runAction(opened, { type: 'UI_OK', playerId: '1' });
+  if (run.combat?.stage === 'attacker') {
+    run = runAction(run, { type: 'PICK', kind: 'fighter', id: 'ash_1', playerId: '0' });
+  }
+  return runAction(run, { type: 'UI_OK', playerId: '1' });
 };
 
 const fighterOf = (state, playerId, fighterId) =>
@@ -100,7 +103,7 @@ describe('карта ifrit_07 «Пепел в глаза»', () => {
       value: 2,
       bonus: 2,
       quantity: 2,
-      fighter: 'ash',
+      fighter: 'any',
     });
     expect(card.rules[0].when[0]).toMatchObject({
       fact: 'COMBAT',

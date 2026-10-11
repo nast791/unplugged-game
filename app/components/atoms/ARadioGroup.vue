@@ -22,6 +22,7 @@
 
 <script setup>
 import { RadioGroupRoot } from 'reka-ui';
+import ARadio from '~/components/atoms/ARadio.vue';
 import { useUI } from '~/composables/ui/useUI';
 
 /** Группа радиокнопок: `options` — `{ value, label, disabled? }`, либо свои `ARadio` в слоте. */

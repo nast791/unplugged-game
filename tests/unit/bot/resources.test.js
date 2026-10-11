@@ -54,7 +54,7 @@ describe('ресурс героя из пака', () => {
       need: 1,
     });
     // у Снежной королевы правила считают осколки в сбросе, а не копии предмета-табло
-    expect(resourceSpec('snow-queen')).toMatchObject({ kind: 'card', tag: 'shard', need: 6 });
+    expect(resourceSpec('snow-queen')).toMatchObject({ kind: 'card', tag: 'shard', need: 5 });
   });
 
   it('у героя без запаса ресурса нет', () => {
@@ -101,18 +101,20 @@ describe('готовность ресурса', () => {
       count: 12,
       state: 'collected',
     }));
-    expect(resourceOf(queen)).toMatchObject({ ready: 0, need: 6 });
+    expect(resourceOf(queen)).toMatchObject({ ready: 0, need: 5 });
     expect(resourceProgress(resourceOf(queen))).toBe(0);
 
     queen.discard.cards = shardCards(3, true);
-    expect(resourceProgress(resourceOf(queen))).toBe(0.5);
+    expect(resourceProgress(resourceOf(queen))).toBe(0.6);
     expect(resourceReady(resourceOf(queen))).toBe(0);
 
     // карты без метки осколка ресурсом не считаются
-    queen.discard.cards = [...shardCards(5, true), ...shardCards(2, false)];
-    expect(resourceOf(queen).ready).toBe(5);
+    queen.discard.cards = [...shardCards(4, true), ...shardCards(2, false)];
+    expect(resourceOf(queen).ready).toBe(4);
+    expect(resourceReady(resourceOf(queen))).toBe(0);
 
-    queen.discard.cards = shardCards(6, true);
+    // порог умения — пять осколков (правка владельца: было шесть)
+    queen.discard.cards = shardCards(5, true);
     expect(resourceReady(resourceOf(queen))).toBe(1);
   });
 

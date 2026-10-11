@@ -4,8 +4,8 @@ import { modes } from '#shared/constants/modes.js';
 const CONTROLS = new Set(['human', 'ai']);
 /** Сид — 32-битное число (тот же диапазон, что у генератора карт). */
 const SEED_MAX = 0xffffffff;
-/** Предел лимита времени на ход: 0 — без лимита, больше 3600 с (час) — уже не ход. */
-const TURN_LIMIT_MAX = 3600;
+/** Предел лимита времени (на действие и на расстановку): 0 — без лимита, больше 3600 с (час) — уже не лимит. */
+const TIME_LIMIT_MAX = 3600;
 
 /**
  * Необязательные числа запроса (сид, размер поля, лимит времени): пустая строка и `null` значит
@@ -26,10 +26,16 @@ const validateOptionalNumbers = (body, errors) => {
       message: `cells — целое число от ${CELLS_LIMIT.min} до ${CELLS_LIMIT.max}`,
     },
     {
-      key: 'turnLimit',
+      key: 'actionLimit',
       min: 0,
-      max: TURN_LIMIT_MAX,
-      message: `turnLimit — целое число от 0 до ${TURN_LIMIT_MAX} (0 — без лимита)`,
+      max: TIME_LIMIT_MAX,
+      message: `actionLimit — целое число от 0 до ${TIME_LIMIT_MAX} (0 — без лимита)`,
+    },
+    {
+      key: 'placementLimit',
+      min: 0,
+      max: TIME_LIMIT_MAX,
+      message: `placementLimit — целое число от 0 до ${TIME_LIMIT_MAX} (0 — без лимита)`,
     },
   ];
 

@@ -62,14 +62,30 @@ export const rivalOf = (state, playerId) =>
       .map(player => String(player.heroId ?? player.id))[0] ?? '',
   );
 
-/** Дистанция по полю: для экспорта и живой игры этого хватает, кэш не нужен (не горячий путь). */
+/**
+ * Индекс «id клетки → клетка» по массиву карты: один раз на партию, а не на каждый обход (§48).
+ * Ключ — сам массив `state.map.nodes`, который форк состояния переиспользует, поэтому `WeakMap` не копит
+ * карты разных партий.
+ */
+const nodeIndexCache = new WeakMap();
+
+const nodeIndex = nodes => {
+  if (!Array.isArray(nodes)) return new Map();
+  const hit = nodeIndexCache.get(nodes);
+  if (hit != null) return hit;
+  const index = new Map(nodes.map(node => [String(node.id), node]));
+  nodeIndexCache.set(nodes, index);
+  return index;
+};
+
+/** Дистанция по полю (предел 6): короткий BFS по индексу клеток, без полной карты расстояний. */
 export const distanceBetween = (state, from, to) => {
   if (from == null || to == null) return 6;
   const start = String(from);
   const goal = String(to);
   if (start === goal) return 0;
 
-  const nodes = new Map((state.map?.nodes ?? []).map(node => [String(node.id), node]));
+  const nodes = nodeIndex(state.map?.nodes);
   const seen = new Set([start]);
   const queue = [[start, 0]];
   while (queue.length > 0) {
@@ -111,22 +127,42 @@ const round = value => Math.round((Number(value) || 0) * 10000) / 10000;
  * а поиск зовёт это на каждом доигрывании: отдельный BFS на каждого врага и каждого своего бойца
  * стоил бы дороже самого перечисления. Экспортируется ещё и оценке листа (`bot/play/search.js`), которая
  * считает угрозу герою и прикрытие, — там те же расстояния.
+ *
+ * Карта расстояний **кэшируется по объекту карты и клетке отправления** (§48): поле в партии не меняется,
+ * поэтому обход делается один раз на клетку, а не на каждый вариант и каждое доигрывание. Ключ — сам
+ * массив `state.map.nodes`: форк состояния переиспользует его, а новая партия даёт новый объект, поэтому
+ * `WeakMap` не течёт между партиями.
  */
+const cellDistanceCache = new WeakMap();
+
 export const cellDistances = (state, from) => {
-  const nodes = new Map((state.map?.nodes ?? []).map(node => [String(node.id), node]));
-  const start = String(from);
-  const seen = new Map([[start, 0]]);
-  const queue = [[start, 0]];
+  const nodes = state.map?.nodes;
+  if (!Array.isArray(nodes) || from == null) return new Map();
+
+  let perMap = cellDistanceCache.get(nodes);
+  if (perMap == null) {
+    // индекс «id → клетка»: линейный поиск по 112 клеткам на каждом шаге обхода стоил больше самого BFS
+    perMap = { index: nodeIndex(nodes), distances: new Map() };
+    cellDistanceCache.set(nodes, perMap);
+  }
+  const key = String(from);
+  const hit = perMap.distances.get(key);
+  if (hit != null) return hit;
+
+  const seen = new Map([[key, 0]]);
+  const queue = [[key, 0]];
   while (queue.length > 0) {
     const [cell, step] = queue.shift();
     if (step >= 6) continue;
-    for (const neighbour of nodes.get(cell)?.neighbors ?? []) {
-      const key = String(neighbour);
-      if (seen.has(key)) continue;
-      seen.set(key, step + 1);
-      queue.push([key, step + 1]);
+    for (const neighbour of perMap.index.get(cell)?.neighbors ?? []) {
+      const next = String(neighbour);
+      if (seen.has(next)) continue;
+      seen.set(next, step + 1);
+      queue.push([next, step + 1]);
     }
   }
+
+  perMap.distances.set(key, seen);
   return seen;
 };
 

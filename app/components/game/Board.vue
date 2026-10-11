@@ -1,7 +1,11 @@
 <template>
   <div
     ref="wrapRef"
+    data-board
     class="border-primary/15 relative h-full min-h-96 w-full overflow-hidden border bg-[#eef1f4]"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
   >
     <ClientOnly>
       <v-stage v-if="stageReady" ref="stageRef" :config="stageConfig">
@@ -50,6 +54,8 @@
               />
               <v-circle :config="nodeOutlineConfig(node)" />
             </template>
+            <!-- кольцо расстановки: голубое свечение или серая занятая клетка, кладётся поверх границы -->
+            <v-circle v-if="isPlacementCell(node)" :config="placementRingConfig(node)" />
             <!-- id клетки: по умолчанию скрыт, включается SHOW_CELL_IDS для отладки -->
             <v-text v-if="SHOW_CELL_IDS" :config="cellLabelConfig(node)" />
           </v-group>
@@ -81,7 +87,7 @@
         </v-layer>
       </v-stage>
       <template #fallback>
-        <p class="text-14 p-4 opacity-60">Загрузка доски…</p>
+        <p class="text-16 p-4 opacity-60">Загрузка доски…</p>
       </template>
     </ClientOnly>
   </div>
@@ -90,11 +96,13 @@
 <script setup>
 import { terrainColor } from '#shared/constants/terrain.js';
 import {
+  PLACEMENT,
   SHADOW,
   SHOW_CELL_IDS,
   STROKE,
   PATTERN_TILES,
   bendFor,
+  cellAtPoint,
   cellPatterns,
   patternTileConfig,
   tileClipFunc,
@@ -114,6 +122,8 @@ const props = defineProps({
   players: { type: Array, default: () => [] },
   selectedFighterId: { type: [String, Number], default: null },
   highlightedCellIds: { type: Array, default: () => [] },
+  /** Клетки области расстановки: `[{ id, occupied }]` — светятся всю расстановку. */
+  placementCells: { type: Array, default: () => [] },
   highlightedFighterIds: { type: Array, default: () => [] },
   framedFighterIds: { type: Array, default: () => [] },
   interactive: { type: Boolean, default: true },
@@ -124,6 +134,7 @@ const emit = defineEmits(['select-node', 'select-fighter']);
 const wrapRef = ref(null);
 const stageReady = ref(false);
 const size = ref({ width: 720, height: 480 });
+const dropCellId = ref(null);
 
 const nodes = computed(() => (Array.isArray(props.map?.nodes) ? props.map.nodes : []));
 const nodeSize = computed(() => Number(props.map?.settings?.nodeSize) || 72);
@@ -134,6 +145,44 @@ const highlightedSet = computed(
 );
 
 const isHighlighted = node => highlightedSet.value.has(String(node.id));
+
+/** Область расстановки: id клетки → занята ли она своим бойцом. */
+const placementMap = computed(() => {
+  const map = new Map();
+  for (const cell of props.placementCells || []) {
+    if (cell?.id != null) map.set(String(cell.id), cell.occupied === true);
+  }
+  return map;
+});
+
+const isPlacementCell = node => placementMap.value.has(String(node.id));
+const isPlacementBusy = node => placementMap.value.get(String(node.id)) === true;
+const isDropCell = node => dropCellId.value != null && String(dropCellId.value) === String(node.id);
+
+/** Идёт расстановка: движок прислал клетки области. */
+const inPlacement = computed(() => placementMap.value.size > 0);
+
+/**
+ * Кольцо расстановки идёт поверх границы клетки. **Обводку клетки оно не перекрашивает**: граница у всех
+ * одна, а состояние ведёт **мягкое свечение наружу** (`shadowBlur`), как гало у кнопки завершения — только
+ * не мигающее: у всей области слабое, у клеток активного бойца ярче, под курсором при перетаскивании ярче
+ * всего. Занятая своим бойцом клетка не светится вовсе.
+ */
+const placementRingConfig = node => {
+  const busy = isPlacementBusy(node);
+  const level = busy ? 0 : isDropCell(node) ? 3 : isHighlighted(node) ? 2 : 1;
+  return {
+    radius: radius.value + PLACEMENT.stroke,
+    fill: undefined,
+    opacity: busy ? 0.5 : 1,
+    stroke: busy ? PLACEMENT.busy : STROKE.edgeColor,
+    strokeWidth: PLACEMENT.stroke,
+    shadowColor: PLACEMENT.free,
+    shadowBlur: PLACEMENT.glow * level,
+    shadowOpacity: level ? 0.3 + 0.15 * level : 0,
+    listening: false,
+  };
+};
 
 /**
  * Стихии клетки: основная задаёт заливку, у двух- и трёхцветных клеток их несколько —
@@ -274,9 +323,14 @@ const stageConfig = computed(() => {
   };
 });
 
-/** Границы клеток одинаковые: номерную клетку видно по ромбику героя, а не по толщине. */
+/**
+ * Границы клеток одинаковые: номерную клетку видно по ромбику героя, а не по толщине. В расстановке
+ * обводка тоже остаётся родной — допустимые клетки показывает **свечение** кольца расстановки, а не
+ * синяя рамка поверх голубого гало (`placementRingConfig`).
+ */
 const nodeStroke = node => {
-  if (isHighlighted(node)) return { color: '#0284c7', width: STROKE.highlight };
+  if (!inPlacement.value && isHighlighted(node))
+    return { color: '#0284c7', width: STROKE.highlight };
   return { color: STROKE.edgeColor, width: STROKE.cell };
 };
 
@@ -364,17 +418,88 @@ const fighterLabelConfig = token => ({
 /**
  * Клики обрабатывает сама сцена, а не слушатели на конва-компонентах: у них корень фрагментный,
  * и Vue ругался «extraneous non-emits event listeners». Цель клика разбирает `clickTarget` —
- * поднимается от фигуры к её клетке или фишке по атрибутам группы.
+ * поднимается от фигуры к её клетке или фишке по атрибутам группы. Клик мимо уходит `select-node: null`:
+ * так экран узнаёт «кликнули в пустоту» (в расстановке это снятие активности бойца).
  */
 const onStageClick = event => {
   if (!props.interactive) return;
   const pick = clickTarget(event?.target);
-  if (!pick) return;
+  if (!pick) {
+    emit('select-node', null);
+    return;
+  }
   if (pick.kind === 'fighter') {
     emit('select-fighter', { fighterId: pick.fighterId, playerId: pick.playerId });
     return;
   }
   emit('select-node', pick.cellId);
+};
+
+/** Точка курсора в координатах контейнера доски: `clientX/Y` минус её положение на экране. */
+const containerPoint = event => {
+  const rect = wrapRef.value?.getBoundingClientRect?.();
+  if (!rect) return null;
+  return { x: Number(event?.clientX) - rect.left, y: Number(event?.clientY) - rect.top };
+};
+
+/** Живое преобразование сцены: сдвиг и зум пользователь меняет сам, из props их не видно. */
+const stageTransform = () => {
+  const stage = stageRef.value?.getNode?.() ?? null;
+  return {
+    x: Number(stage?.x?.() ?? 0) || 0,
+    y: Number(stage?.y?.() ?? 0) || 0,
+    scaleX: Number(stage?.scaleX?.() ?? 1) || 1,
+    scaleY: Number(stage?.scaleY?.() ?? 1) || 1,
+  };
+};
+
+const cellAtEvent = event => {
+  const point = containerPoint(event);
+  if (!point) return null;
+  return cellAtPoint(nodes.value, radius.value, stageTransform(), point);
+};
+
+/**
+ * Аватарку тащат с полки расстановки: клетку под курсором считает доска, ставит бойца экран.
+ *
+ * Умолчание браузера отменяем **всегда**, даже когда доска сейчас не слушает клики: иначе курсор
+ * превращается в «запрещено» (так браузер показывает, что бросок не принимают) и перетаскивание
+ * читается как поломка, хотя доска просто ждёт — например, пока считает компьютер.
+ *
+ * Подсветка броска и сам бросок — только на клетку, которую движок разрешил сейчас
+ * (`highlightedCellIds`), то есть на ту же, куда прошёл бы клик: промах по чужой клетке не сбрасывает
+ * выбранного бойца, а просто ничего не делает.
+ */
+const dropTargetOf = event => {
+  const id = cellAtEvent(event);
+  if (id == null) return null;
+  return highlightedSet.value.has(String(id)) ? id : null;
+};
+
+const onDragOver = event => {
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  if (!props.interactive) return;
+  const next = dropTargetOf(event);
+  if (String(dropCellId.value ?? '') !== String(next ?? '')) dropCellId.value = next;
+};
+
+const onDragLeave = () => {
+  dropCellId.value = null;
+};
+
+const clearDropCell = () => {
+  dropCellId.value = null;
+};
+
+const onDrop = event => {
+  event.preventDefault();
+  const id = dropCellId.value ?? (props.interactive ? dropTargetOf(event) : null);
+  dropCellId.value = null;
+  if (id == null) return;
+  // id клетки отдаём таким, каким он лежит на карте: клик по доске отдаёт то же значение
+  const node = nodeById.value.get(String(id));
+  emit('select-node', node ? node.id : id);
 };
 
 /** Сцена konva: на неё вешаем один обработчик клика/тапа вместо слушателей на каждой клетке. */
@@ -407,6 +532,8 @@ let resizeObserver;
 onMounted(() => {
   stageReady.value = true;
   updateSize();
+  // перетаскивание аватарки кончается и отменой (Esc): яркое кольцо под курсором надо снять в любом случае
+  document.addEventListener('dragend', clearDropCell);
   const el = wrapRef.value;
   if (!el || typeof ResizeObserver === 'undefined') return;
   resizeObserver = new ResizeObserver(() => updateSize());
@@ -415,6 +542,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stageRef.value?.getNode?.()?.off('click tap', onStageClick);
+  document.removeEventListener('dragend', clearDropCell);
   resizeObserver?.disconnect();
 });
 </script>

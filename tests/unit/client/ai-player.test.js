@@ -40,7 +40,7 @@ describe('цикл компьютера в клиенте', () => {
         state = runAction(state, { ...move.action, playerId: move.playerId });
         return state;
       },
-      { timeMs: 0, overrides: FAST },
+      { timeMs: 0, pauseMs: 0, overrides: FAST },
     );
 
     expect(applied.length).toBeGreaterThan(0);
@@ -63,7 +63,7 @@ describe('цикл компьютера в клиенте', () => {
         applied += 1;
         return runAction(state, { ...move.action, playerId: move.playerId });
       },
-      { timeMs: 0, overrides: FAST },
+      { timeMs: 0, pauseMs: 0, overrides: FAST },
     );
 
     expect(applied).toBe(0);

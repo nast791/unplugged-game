@@ -114,10 +114,15 @@ describe('компьютерный игрок', () => {
   /**
    * Клиент собирает бандл и из этих файлов: если ядро решений потянет `node:` (или серверный реестр
    * партий), страница в браузере упадёт на импорте. Проверка дешёвая, а границу держит.
+   *
+   * `artifact.js` в списке не для красоты: он читал артефакт через `node:fs`, и `vs_ai` в браузере
+   * получал в консоль `Module "node:fs" has been externalized… Cannot access "node:fs.readFileSync"`.
+   * Чтение файла теперь на node-стороне (`bot/play/artifact-file.js`, его тянет `duel.js`).
    */
   it('ядро решений не тянет node и серверный реестр партий', () => {
     const browserSafe = [
       'ai.js',
+      'artifact.js',
       'decide.js',
       'search.js',
       'plan.js',

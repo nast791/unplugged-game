@@ -118,13 +118,17 @@ const step = (state, fighterId, cellId) =>
 
 const finish = state => runAction(state, { type: 'UI_OK', playerId: '0' });
 
+/** Клик по варианту только отмечает его: эффект применяет общая кнопка подтверждения (`UI_OK`). */
 const choose = (state, optionId) =>
-  runAction(state, {
-    type: 'PICK',
-    kind: 'option',
-    id: optionId,
-    playerId: '0',
-  });
+  runAction(
+    runAction(state, {
+      type: 'PICK',
+      kind: 'option',
+      id: optionId,
+      playerId: '0',
+    }),
+    { type: 'UI_OK', playerId: '0' },
+  );
 
 const cellOf = (state, playerId, fighterId) =>
   player(state, playerId).fighters.find(entry => entry.id === fighterId).currentPosition;

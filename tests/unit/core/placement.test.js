@@ -197,4 +197,38 @@ describe('runUi: placement highlights', () => {
     expect(ui.hint).toContain('Ожидание');
     expect(ui.controls.ok.visible).toBe(false);
   });
+
+  it('область расстановки светится и без выбранного бойца: клетки знают, заняты ли', () => {
+    const state = runLifecycle(placementState());
+    const ui = runUi(state, '0');
+
+    // под бойца подсветки нет (он не выбран), а область видна сразу
+    expect(ui.highlightedCellIds).toEqual([]);
+    expect(ui.placementCells).toEqual([
+      { id: '1', occupied: false },
+      // герой стоит на номерной клетке — она занята
+      { id: '6', occupied: true },
+    ]);
+
+    // клетка второго игрока в чужую область не попадает
+    expect(ui.placementCells.map(cell => cell.id)).not.toContain('5');
+  });
+
+  it('занятая своим бойцом клетка области помечается, а не исчезает', () => {
+    let state = runLifecycle(placementState());
+    state = runAction(state, pickCell('0', '0-pawn', 1));
+
+    expect(runUi(state, '0').placementCells).toEqual([
+      { id: '1', occupied: true },
+      { id: '6', occupied: true },
+    ]);
+  });
+
+  it('после подтверждения расстановки область гаснет', () => {
+    let state = runLifecycle(placementState());
+    state = runAction(state, pickCell('0', '0-pawn', 1));
+    state = runAction(state, { type: 'UI_OK', playerId: '0' });
+
+    expect(runUi(state, '0').placementCells).toEqual([]);
+  });
 });

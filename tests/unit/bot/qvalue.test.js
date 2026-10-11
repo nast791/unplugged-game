@@ -281,10 +281,32 @@ describe('примесь мнения политики (§29)', () => {
 
   it('примесь 0 — чистая модель: равные оценки остаются равными', () => {
     const state = stateOf();
-    const ranked = withMix(0, () => rankOptions(state, '0', options(), { table, temperature: 0 }));
-
-    for (const entry of ranked) expect(entry.weight).toBeGreaterThan(0);
+    // с §43 примесь зависит ещё и от неуверенности модели, поэтому «чистую модель» включаем явно:
+    // нулевая база плюс нулевой ген неуверенности
+    const before = process.env.BOT_GENE_UNCERTAINMIX;
+    const beforeKind = process.env.BOT_GENE_BYKIND;
+    process.env.BOT_GENE_UNCERTAINMIX = '0';
+    // разделение решений по виду (§44) тоже выключаем: оно поднимает примесь на клетках по умолчанию
+    process.env.BOT_GENE_BYKIND = 'mix';
+    try {
+      const ranked = withMix(0, () =>
+        rankOptions(state, '0', options(), { table, temperature: 0 }),
+      );
+      for (const entry of ranked) expect(entry.weight).toBeGreaterThan(0);
+    } finally {
+      if (before == null) delete process.env.BOT_GENE_UNCERTAINMIX;
+      else process.env.BOT_GENE_UNCERTAINMIX = before;
+      if (beforeKind == null) delete process.env.BOT_GENE_BYKIND;
+      else process.env.BOT_GENE_BYKIND = beforeKind;
+    }
   });
+
+  /**
+   * Ген неуверенности (§43) отдельно не воспроизводится подменой модели: оценки даёт настоящий артефакт,
+   * и «уверенного» решения с нужным разбросом в фикстуре нет. Поэтому здесь проверяется только то, что
+   * нулевой ген возвращает прежнее поведение (постоянная примесь) — сам вклад гена меряется в игре
+   * (`bot/tools/stats.js --policy=qvalue --policy-b=greedy`).
+   */
 });
 
 describe('оценка пары «состояние + действие» (продолжение)', () => {

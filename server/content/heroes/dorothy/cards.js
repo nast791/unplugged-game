@@ -6,25 +6,48 @@ import { commonCard } from '../../common/cards.js';
  */
 export default [
   {
-    // основная атака: награда и за разведку собакой, и за её смерть (тогда факт пуст — условие сошлось)
+    // Тото — приманка: боец противника из этой битвы меняется с ним местами, а Дороти получает
+    // лишнее действие. Так врага, который держал дистанцию, затаскивают в её ближний бой
     id: 'dorothy_01',
     title: 'Тото отвлекает',
     type: 'attack',
-    value: 3,
-    bonus: 1,
+    value: 4,
+    bonus: 4,
     quantity: 3,
     fighter: 'dorothy',
-    text: 'ВО ВРЕМЯ БИТВЫ: Если Дороти не в области Тото, значение карты +2.',
+    text: 'ПОСЛЕ БИТВЫ: Поменяйте местами бойца оппонента, участвовавшего в битве, и Тото. Получите 1 дополнительное действие. Если Тото или участвовавшего в битве бойца оппонента уже нет на поле, то получите 2 дополнительных действия вместо 1.',
     rules: [
       {
-        moment: 'duringCombat',
+        moment: 'afterCombat',
         when: [
-          {
-            fact: 'FIGHTERS',
-            params: { fighterIds: ['dorothy'], areaOf: 'toto', max: 0 },
-          },
+          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
+          // боец противника мог погибнуть в бою, а Тото — не стоять на поле: тогда меняться не с кем
+          { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1, var: 'foes' },
+          { fact: 'FIGHTERS', params: { group: 'toto' }, min: 1, var: 'toto' },
         ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
+        then: [{ action: 'SWAP_FIGHTERS', a: 'toto', b: '$foe' }],
+      },
+      {
+        // обмен состоялся — одно действие
+        moment: 'afterCombat',
+        when: [
+          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
+          { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1 },
+          { fact: 'FIGHTERS', params: { group: 'toto' }, min: 1 },
+        ],
+        then: [{ action: 'SET_ACTIONS', delta: 1 }],
+      },
+      {
+        // обмен не сложился (нет Тото или бойца противника) — два действия вместо одного
+        moment: 'afterCombat',
+        any: [
+          [{ fact: 'FIGHTERS', params: { group: 'toto' }, max: 0 }],
+          [
+            { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
+            { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, max: 0 },
+          ],
+        ],
+        then: [{ action: 'SET_ACTIONS', delta: 2 }],
       },
     ],
   },
@@ -37,17 +60,17 @@ export default [
     bonus: 1,
     quantity: 3,
     fighter: 'any',
-    text: 'ВО ВРЕМЯ БИТВЫ: Если цель стоит на клетке со стихией лавы или пустыни, значение карты +1.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если цель стоит на клетке со стихией лавы или пустыни, значение карты +3.',
     rules: [
       {
         moment: 'duringCombat',
         when: [{ fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' }],
-        // две стихии — две ветки «или»: на клетке с двумя стихиями +1 приходит один раз, а не дважды
+        // две стихии — две ветки «или»: на клетке с двумя стихиями +3 приходит один раз, а не дважды
         any: [
           [{ fact: 'FIGHTERS', params: { fighterIds: '$foe', terrain: 'lava' }, min: 1 }],
           [{ fact: 'FIGHTERS', params: { fighterIds: '$foe', terrain: 'desert' }, min: 1 }],
         ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 3 }],
       },
     ],
   },
@@ -78,7 +101,7 @@ export default [
     // развилка вместо линейного эффекта: залечиться, добрать карту или оттолкнуть атакующего
     id: 'dorothy_04',
     title: 'Смена караула',
-    type: 'defense',
+    type: 'hybrid',
     value: 4,
     bonus: 1,
     quantity: 2,
@@ -140,7 +163,7 @@ export default [
     bonus: 2,
     quantity: 2,
     fighter: 'any',
-    text: 'ВО ВРЕМЯ БИТВЫ: Если атакует герой противника, значение карты +1.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если атакует герой противника, значение карты +2.',
     rules: [
       {
         moment: 'duringCombat',
@@ -148,7 +171,7 @@ export default [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
           { fact: 'FIGHTERS', params: { fighterIds: '$foe', type: 'hero' }, min: 1 },
         ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
       },
     ],
   },
@@ -179,7 +202,7 @@ export default [
     bonus: 2,
     quantity: 3,
     fighter: 'toto',
-    text: 'ПОСЛЕ БИТВЫ: Если вы победили, получите 1 действие и переместите Тото на расстояние до 2 клеток.',
+    text: 'ПОСЛЕ БИТВЫ: Если вы победили, получите 1 действие и переместите Тото на расстояние до 3 клеток.',
     rules: [
       {
         moment: 'afterCombat',
@@ -190,13 +213,15 @@ export default [
         ],
         then: [
           { action: 'SET_ACTIONS', delta: 1 },
-          { action: 'SET_MOVEMENT', op: 'open', fighters: '$toto', budget: 2, optional: true },
+          { action: 'SET_MOVEMENT', op: 'open', fighters: '$toto', budget: 3, optional: true },
         ],
       },
     ],
   },
   {
-    // её слабое место — значение: стоять и бить сильнее или сдвинуться и ударить слабее
+    // удар «наотмашь» достаёт даже проигранный бой: 2 урона бойцу противника из этой битвы,
+    // а если это помощник — ещё 1 урон его герою (условия правил читаются до действий,
+    // поэтому помощника можно снять первым уроном и всё равно задеть хозяйского героя)
     id: 'dorothy_08',
     title: 'Наотмашь',
     type: 'attack',
@@ -204,18 +229,28 @@ export default [
     bonus: 2,
     quantity: 3,
     fighter: 'dorothy',
-    text: 'ВО ВРЕМЯ БИТВЫ: Если Дороти не перемещалась в этом ходу, значение карты +2.',
+    text: 'ПОСЛЕ БОЯ: Нанесите 2 урона бойцу противника, участвовавшему в бою. Если этот боец — помощник, нанесите также 1 урон герою этого противника.',
     rules: [
       {
-        moment: 'duringCombat',
+        moment: 'afterCombat',
         when: [
-          {
-            fact: 'FIGHTERS',
-            params: { fighterIds: ['dorothy'], movedThisTurn: false },
-            min: 1,
-          },
+          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
+          // боец противника мог погибнуть в бою — тогда добивать некого
+          { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1, var: 'foes' },
         ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$foes', delta: -2 }],
+      },
+      {
+        moment: 'afterCombat',
+        when: [
+          // помощник противника в этой битве: тип читается и у погибшего — из записи боя
+          // (`COMBAT { select, type }`), поэтому ветка работает и когда 2 урона выше его уже сняли
+          { fact: 'COMBAT', params: { select: 'opponent', type: 'assistant' }, var: 'foe' },
+          // герой того же противника: `of` берёт бойцов одного игрока
+          { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
+          { fact: 'FIGHTERS', params: { of: '$enemy', type: 'hero' }, min: 1, var: 'heroes' },
+        ],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$heroes', delta: -1 }],
       },
     ],
   },
@@ -224,7 +259,7 @@ export default [
     title: 'Зелёные очки',
     type: 'effect',
     value: null,
-    bonus: 2,
+    bonus: 3,
     quantity: 2,
     fighter: 'any',
     text: 'Возьмите 2 карты.',
@@ -245,7 +280,7 @@ export default [
     bonus: 3,
     quantity: 2,
     fighter: 'dorothy',
-    text: 'Сдвиньте Дороти и Тото: каждый может пройти до 2 клеток.',
+    text: 'Сдвиньте Дороти и Тото: каждый может пройти до 4 клеток.',
     rules: [
       {
         moment: 'effect',
@@ -259,7 +294,7 @@ export default [
           },
         ],
         then: [
-          { action: 'SET_MOVEMENT', op: 'open', fighters: '$pair', budget: 2, optional: true },
+          { action: 'SET_MOVEMENT', op: 'open', fighters: '$pair', budget: 4, optional: true },
         ],
       },
     ],

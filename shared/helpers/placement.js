@@ -198,3 +198,21 @@ export const placePhaseHighlightedCellIds = (partyState, playerId, selectedFight
     )
     .map(String);
 };
+
+/**
+ * Клетки области расстановки со признаком «занята своим бойцом». Отдельно от подсветки выбранного бойца
+ * (`placePhaseHighlightedCellIds`): область светится **всю расстановку**, а не только когда боец выбран, и
+ * по признаку `occupied` клетка меняет вид — свободна она или уже занята. Чужие клетки не читаем: чужая
+ * расстановка скрыта проекцией (`party.js`), и подсветка не должна её выдавать.
+ */
+export const placementAreaCells = (partyState, playerId) => {
+  const player = findPlayer(partyState, playerId);
+  if (!player || player.placementReady) return [];
+
+  const busy = new Set(
+    (player.fighters ?? [])
+      .filter(fighter => fighter.currentPosition != null)
+      .map(fighter => String(fighter.currentPosition)),
+  );
+  return startAreaCellIds(partyState, playerId).map(id => ({ id, occupied: busy.has(id) }));
+};

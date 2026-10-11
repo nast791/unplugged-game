@@ -1,7 +1,7 @@
 /** Пресет кнопки: слоты `button*`. Вариант подставляется как `button_<variant>`. */
 export default {
   button:
-    'inline-flex items-center justify-center gap-8 rounded-4 border-2 border-transparent px-20 py-10 text-16 font-medium transition-colors select-none disabled:cursor-not-allowed disabled:opacity-40',
+    'inline-flex items-center justify-center gap-8 rounded-4 border-2 border-transparent px-20 py-10 text-18 font-medium transition-colors select-none disabled:cursor-not-allowed disabled:opacity-40',
   button_primary: 'bg-accent text-app hover:bg-accent-hover',
   button_secondary: 'border-line bg-surface/70 text-ink hover:border-dim',
   button_ghost: 'text-dim hover:text-ink',

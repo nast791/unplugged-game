@@ -1,4 +1,5 @@
 import { cardBonus } from '#shared/helpers/cards.js';
+import { findFighter } from '#shared/helpers/base.js';
 
 /**
  * COMBAT — снимок lastCombat: проверка победителя и выбор бойца.
@@ -34,6 +35,11 @@ import { cardBonus } from '#shared/helpers/cards.js';
  * - 'winner'   — боец победившей стороны
  * - 'loser'    — боец проигравшей стороны
  *
+ * params.type (проверка, необязательно): 'hero' | 'assistant' — тип бойца, выбранного `select`.
+ * У живого бойца тип берётся из состояния, у погибшего — из записи боя (`lastCombat.targetType`
+ * и `lastCombat.attackerType`): в `lost` бойца по id уже не найти, а свойствам «после битвы» тип нужен
+ * («Наотмашь» Дороти добивает помощника и задевает его героя).
+ *
  * Без winner и select: ok, если lastCombat есть; value = null.
  */
 const matchWinner = (lastCombat, winner, ctx) => {
@@ -62,18 +68,18 @@ const matchWinner = (lastCombat, winner, ctx) => {
   );
 };
 
-/** Боец владельца правила в этом бою: у атакующего — атакующий, у защитника — тот, кого били. */
-const ownFighterId = (lastCombat, ctx) => {
-  const selfId = ctx.player?.id ?? ctx.playerId ?? null;
-  if (selfId == null) return null;
-  if (String(lastCombat.attackerPlayerId) === String(selfId)) {
-    return lastCombat.attackerFighterId;
-  }
-  if (String(lastCombat.defenderPlayerId) === String(selfId)) {
-    return lastCombat.targetFighterId;
-  }
-  return null;
-};
+/** Боец владельца правила в этом бою: у атакующего — атакующий, у защитника — тот, кого били. */ const ownFighterId =
+  (lastCombat, ctx) => {
+    const selfId = ctx.player?.id ?? ctx.playerId ?? null;
+    if (selfId == null) return null;
+    if (String(lastCombat.attackerPlayerId) === String(selfId)) {
+      return lastCombat.attackerFighterId;
+    }
+    if (String(lastCombat.defenderPlayerId) === String(selfId)) {
+      return lastCombat.targetFighterId;
+    }
+    return null;
+  };
 
 /** Боец противника в этом бою: у атакующего — цель, у защитника — атакующий. */
 const otherFighterId = (lastCombat, ctx) => {
@@ -112,6 +118,14 @@ const fighterIdForSelect = (battle, select, ctx) => {
   throw new Error(
     `fact COMBAT: неизвестный select "${key}" (attacker|target|self|opponent|winner|loser)`,
   );
+};
+
+/** Тип участника боя из записи (`lastCombat`): у открытого боя полей типа нет, там смотрим состояние. */
+const recordedType = (record, fighterId) => {
+  if (record == null) return null;
+  if (String(record.targetFighterId) === String(fighterId)) return record.targetType ?? null;
+  if (String(record.attackerFighterId) === String(fighterId)) return record.attackerType ?? null;
+  return null;
 };
 
 /** Кто из участников боя: значение — id игрока, а не список (как NEXT_PLAYER). */
@@ -267,6 +281,20 @@ export const COMBAT = (ctx, params = {}) => {
   const fighterId = fighterIdForSelect(battle, params.select, ctx);
   if (fighterId == null || fighterId === '') {
     return { ok: false, value: [] };
+  }
+
+  // тип бойца из этого боя: у живого спрашиваем состояние, у погибшего — запись боя
+  // (открытый бой типов не хранит, поэтому смотрим и в итог последнего боя)
+  if (params.type != null && params.type !== '') {
+    const alive = findFighter(ctx.state, fighterId).fighter;
+    const type =
+      alive?.type ??
+      recordedType(battle, fighterId) ??
+      recordedType(ctx.state?.lastCombat, fighterId) ??
+      null;
+    if (type == null || String(type) !== String(params.type)) {
+      return { ok: false, value: [] };
+    }
   }
 
   return { ok: true, value: [String(fighterId)] };

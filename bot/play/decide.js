@@ -15,6 +15,7 @@ import {
   optionWeight,
   targetWeight,
   weightsFor,
+  gene,
 } from './policy.js';
 import { PRIOR_MIX, SELECTION_TEMPERATURE, rankOptions, scoreOptions, valueOf } from './qvalue.js';
 import { featuresOf } from './value.js';
@@ -71,41 +72,66 @@ const enemiesOf = (state, playerId) =>
     .filter(fighter => fighter.currentPosition != null && fighter.currentHp > 0);
 
 /**
+ * Переключатели кэшей для замера их вклада (§48): `BOT_CACHE_DIST=0`, `BOT_CACHE_UNSEEN=0` — и правка
+ * меряется на тех же сидах, а не «на глаз».
+ */
+const env = typeof process === 'undefined' ? {} : (process.env ?? {});
+const cacheOn = name => env[name] !== '0';
+
+/**
  * Дистанции от клетки до всех клеток — одним обходом. `bfsDistance` считает один маршрут за вызов, а
  * правилу позиции нужны десятки: расстояние до врага, «достаёт ли он отсюда», «достаём ли мы». Замер
  * показал, что именно BFS съедает время перечисления (0,056 мс на 20 обходов против 0,014 мс на ход
  * движка), поэтому карта расстояний кэшируется по объекту карты и клетке отправления.
+ *
+ * §48: внутри обхода клетка искалась линейно (`nodes.find` по 112 клеткам **на каждом шаге**), поэтому
+ * кэш работал вполсилы. Индекс «id → клетка» строится один раз на карту (`WeakMap` по массиву узлов,
+ * который форк переиспользует).
  */
 const distanceCache = new WeakMap();
+const mapIndexCache = new WeakMap();
+
+const mapIndexOf = nodes => {
+  if (!Array.isArray(nodes)) return new Map();
+  const hit = mapIndexCache.get(nodes);
+  if (hit != null) return hit;
+  const index = new Map(nodes.map(node => [String(node.id), node]));
+  mapIndexCache.set(nodes, index);
+  return index;
+};
 
 const distanceMap = (state, from) => {
   const nodes = state.map?.nodes;
   if (!Array.isArray(nodes) || from == null) return null;
 
-  let perMap = distanceCache.get(nodes);
-  if (!perMap) {
-    perMap = new Map();
-    distanceCache.set(nodes, perMap);
-  }
+  const index = mapIndexOf(nodes);
   const key = String(from);
-  const hit = perMap.get(key);
-  if (hit) return hit;
+  let perMap = null;
+  if (cacheOn('BOT_CACHE_DIST')) {
+    perMap = distanceCache.get(nodes);
+    if (perMap == null) {
+      perMap = new Map();
+      distanceCache.set(nodes, perMap);
+    }
+    const hit = perMap.get(key);
+    if (hit) return hit;
+  }
 
   const distances = new Map();
-  const queue = [[Number(from), 0]];
-  distances.set(String(from), 0);
+  const queue = [[key, 0]];
+  distances.set(key, 0);
   while (queue.length > 0) {
     const [cellId, step] = queue.shift();
-    const node = nodes.find(entry => String(entry.id) === String(cellId));
+    const node = index.get(cellId);
     for (const neighbour of node?.neighbors ?? []) {
       const next = String(neighbour);
       if (distances.has(next)) continue;
       distances.set(next, step + 1);
-      queue.push([Number(neighbour), step + 1]);
+      queue.push([next, step + 1]);
     }
   }
 
-  perMap.set(key, distances);
+  perMap?.set(key, distances);
   return distances;
 };
 
@@ -324,7 +350,61 @@ const reachFrom = (state, playerId, cellId, range) =>
  * (кайтить может тот, у кого дальность больше). Шаг на свою стихию получает премию `terrain`,
  * а закончить маневр на выгодной позиции — премию `hold`.
  */
-const movementActions = (state, playerId, movement, weights) => {
+/**
+ * Ограничение на **отходы** бойца за один ход — предохранитель против «качелей» (дистанция 2 → 3 → 2
+ * и обратно), когда обе стороны бесконечно выходят из-под удара и снова входят, а бой так и не начинается.
+ *
+ * Найдено замером §42: в серии `greedy` против `greedy` (пары Анубис — Снежная королева) 49 партий из
+ * 1800 упирались в лимит шагов, и самая долгая кончалась на 419-м шаге — уже за лимитом 400. Разбор двух
+ * таких партий показал, что **отходы тут почти не при чём** (в разобранной партии отход не предлагался ни
+ * разу, вся возня — шаги `closer` на дистанцию 2 и «закончить маневр»), поэтому основным лечением стало
+ * не это, а **поднятый лимит шагов** (`bot/play/duel.js`, 400 → 1200): партии не бесконечны, они просто
+ * длинные, и после лимита их заканчивает истощение. Этот предохранитель оставлен как страховка от
+ * буквальных вечных «качелей»: первый отход в ходу — как решила политика, каждый следующий — по цене
+ * `ESCAPE_PENALTY` от предыдущей.
+ *
+ * Порог спасения: при здоровье ≤ `ESCAPE_CRITICAL` отход не ограничивается — раненый боец вправе убегать.
+ */
+const ESCAPE_LIMIT = 1;
+const ESCAPE_PENALTY = 0.16;
+const ESCAPE_CRITICAL = 4;
+
+/**
+ * Счётчики отходов и «что уже достигнуто» по бойцу **за ход**: ключ — сам объект бойца (он живёт, пока
+ * не сменятся игрок и данные), значения — число предложенных отходов и лучшая достигнутая дистанция.
+ *
+ * Ход кончился — счётчики сбрасываются (в следующем ходу боец снова может уйти один раз). Окно
+ * перемещения при этом переоткрывается на каждом шаге, поэтому «начало маневра» берём не из окна, а
+ * один раз за ход — иначе счётчик успевал сброситься между шагами и предохранитель не видел бы серию.
+ */
+let escapes = new WeakMap();
+let seenState = new WeakMap();
+let lastTurn = -1;
+
+/** Сбросить счётчики, если номер хода сменился. Вызывается на каждом перечислении действий. */
+const noteTurn = state => {
+  const index = Number(state?.turn?.index) || 0;
+  if (index !== lastTurn) {
+    lastTurn = index;
+    escapes = new WeakMap();
+    seenState = new WeakMap();
+  }
+};
+
+/**
+ * Множитель веса отхода: первый отход в ходу — как решено политикой, дальше — тем меньше, чем больше
+ * боец уже убегал. Исключения: раненый боец и политика, которая отход не запрещает вовсе (`stepAway`
+ * равен нулю — тогда боец и так не убегает, и множитель не нужен).
+ */
+const escapeFactor = (fighter, weights, hp) => {
+  const base = Number(weights?.stepAway) || 0;
+  if (base <= 0 || Number(hp) <= ESCAPE_CRITICAL) return 1;
+  const count = escapes.get(fighter) ?? 0;
+  return count <= ESCAPE_LIMIT ? 1 : ESCAPE_PENALTY ** (count - ESCAPE_LIMIT);
+};
+
+const movementActions = (state, playerId, movement, weights, { afterCard = false } = {}) => {
+  noteTurn(state);
   const options = [];
   const affinity = new Set(terrainAffinity(playerOf(state, playerId)?.heroId));
   let usefulStep = false;
@@ -338,12 +418,18 @@ const movementActions = (state, playerId, movement, weights) => {
     const ui = runUi(state, playerId, { selectedFighterId: fighterId });
     const range = Number(fighter.attackRange) || 1;
 
-    // что уже достигнуто в этом маневре: старт и все клетки, куда боец успел встать
-    const origin = movement.origins?.[String(fighterId)] ?? fighter.currentPosition;
-    const visited = (movement.moves ?? [])
-      .filter(move => String(move.fighterId) === String(fighterId))
-      .map(move => Number(move.to));
-    const best = [origin, ...visited].reduce(
+    // что уже достигнуто **за ход**: начало первого маневра этого хода и все клетки, куда боец успел
+    // встать. Один раз за ход фиксируем, дальше берём из памяти: окно движок переоткрывает на каждом шаге
+    if (!seenState.has(fighter)) {
+      seenState.set(fighter, {
+        origin: movement.origins?.[String(fighterId)] ?? fighter.currentPosition,
+        visited: (movement.moves ?? [])
+          .filter(move => String(move.fighterId) === String(fighterId))
+          .map(move => Number(move.to)),
+      });
+    }
+    const seen = seenState.get(fighter);
+    const best = [seen.origin, ...seen.visited].reduce(
       (value, cellId) => Math.min(value, distanceToNearestEnemy(state, playerId, cellId)),
       Infinity,
     );
@@ -352,6 +438,7 @@ const movementActions = (state, playerId, movement, weights) => {
     // выгодная позиция: по нам не достают, а мы оттуда бьём (или стоим на своей стихии)
     const here = fighter.currentPosition;
     const hereThreat = threatenedBy(state, playerId, here);
+    let awaySteps = 0;
     if (
       (hereThreat === 0 && reachFrom(state, playerId, here, range) > 0) ||
       onAffinity(state, here, affinity)
@@ -374,11 +461,27 @@ const movementActions = (state, playerId, movement, weights) => {
         distance > best;
       const closer = !inRange && !improves && !away && distance < best;
       const kind = improves ? 'step' : away ? 'away' : closer ? 'closer' : 'idle';
-      const weight = movementWeight(weights, {
-        kind,
-        affinity: onAffinity(state, cell, affinity),
-      });
+      // «качели» лечим здесь: отход, который боец делает не первый раз за ход, стоит почти ничего
+      const shrink = kind === 'away' ? escapeFactor(fighter, weights, fighter.hp) : 1;
+      // после своего удара в этом же ходу сближение дешевле: размен уже начат, догонять важнее,
+      // чем отходить (ген `actionSecond`) — иначе бот бьёт и уходит вместо продолжения
+      const pursuit =
+        kind === 'closer' && afterCard
+          ? 1 - Math.max(0, Math.min(0.9, gene('actionsecond', Number(weights?.actionSecond) || 0)))
+          : 1;
+      const weight =
+        movementWeight(weights, {
+          kind,
+          affinity: onAffinity(state, cell, affinity),
+        }) *
+        shrink *
+        pursuit;
       if (weight > 0) usefulStep = true;
+      if (kind === 'away' && weight > 0) {
+        // отход реально предложен — считаем его бойцу: следующий в этом же ходу будет стоить копейки
+        awaySteps += 1;
+        if (!seen.visited.includes(cell)) seen.visited.push(cell);
+      }
       options.push({
         weight,
         action: {
@@ -389,6 +492,8 @@ const movementActions = (state, playerId, movement, weights) => {
         },
       });
     }
+
+    if (awaySteps > 0) escapes.set(fighter, (escapes.get(fighter) ?? 0) + 1);
   }
 
   // завершить перемещение можно всегда
@@ -410,6 +515,10 @@ const movementActions = (state, playerId, movement, weights) => {
  */
 export const SEARCH_POLICIES = new Set([
   'search',
+  'spair',
+  'srep',
+  'sdedup',
+  'sworld',
   'net',
   'matchup',
   'plain',
@@ -427,15 +536,40 @@ export const SEARCH_POLICIES = new Set([
 export const PLAN_POLICIES = new Set(['chain']);
 
 /**
+ * Политика, которой **перечисляются** варианты игры: она расставляет веса, а решение потом принимает
+ * модель (`qvalue`), поиск или планировщик. Одна на рантайм и дневник — это не удобство, а условие
+ * честности: признак 19 вектора варианта («мнение политики») считается по **этим** весам
+ * (`bot/play/actionFeatures.js`), поэтому модель, которую учили на весах одного предлагателя, а играют
+ * на весах другого, видит на входе чужие числа. Так уже случалось: в дневник уезжали веса жадного
+ * (`§23`), а живой ход в браузере с §36 перечисляет `trade`.
+ *
+ * Менять значение можно, но **только вместе с дневником**: старый дневник после смены недействителен
+ * (числа признака 19 в нём другие), его пересобирают, а модель переучивают.
+ */
+export const PROPOSER_POLICY = 'trade';
+
+/**
+ * Кем перечисляются варианты для политики `policy`: своя политика, если она сама расставляет веса
+ * (`greedy`, `trade`, …), иначе — предлагатель рантайма. Так дневник партий ученика и живого режима
+ * собирается по одному и тому же мнению политики (`bot/learn/export.js`, `bot/play/ai.js`).
+ */
+export const proposalPolicy = policy =>
+  SEARCH_POLICIES.has(policy) || PLAN_POLICIES.has(policy) || policy === 'qvalue'
+    ? PROPOSER_POLICY
+    : policy;
+
+/**
  * Все действия, которые движок сейчас принимает от игрока (по данным `runUi`), с весами от политики.
  *
  * `search` — особая политика: она не расставляет веса, а перебирает действия поиском по детерминизациям
- * (`bot/play/search.js`). Поэтому перечисление идёт жадными весами (они задают порядок вариантов), а выбор
- * остаётся за поиском: выбранному действию вес 1, остальным 0.
+ * (`bot/play/search.js`). Поэтому перечисление идёт весами предлагателя рантайма (`proposalPolicy`: они
+ * задают порядок и запреты вариантов), а выбор остаётся за поиском: выбранному действию вес 1,
+ * остальным 0.
  *
  * `qvalue` — политика обученного тренера (`bot/learn/export.js` → `trainer/` → `bot/play/qvalue.js`):
- * варианты перечисляются жадно, а веса переставляет модель, которая оценивает **пару** «состояние +
- * действие». Так играет то, что раньше жило только в замерах: ценность действия, а не позиции.
+ * варианты перечисляются предлагателем рантайма, а веса переставляет модель, которая оценивает **пару**
+ * «состояние + действие». Так играет то, что раньше жило только в замерах: ценность действия, а не
+ * позиции.
  */
 /**
  * Продолжение глазами **самого ученика**: он смотрит на позицию после своего хода и отвечает на вопрос
@@ -443,17 +577,19 @@ export const PLAN_POLICIES = new Set(['chain']);
  * (или вариантов нет) — его голова оценки позиции `V(s)`. Никакого поиска и никакого оракула: это его
  * собственный пересчёт на шаг вперёд, тот же, каким `bot/play/search.js: qvalueLeaf` пользуется на листе.
  */
-const continuationValue = (state, playerId) => {
+const continuationValue = (state, playerId, artifact = null) => {
   let offered = [];
   try {
-    offered = enumerateActions(state, playerId, { policy: 'greedy' }).filter(
+    // перечисление — предлагателем рантайма (`proposalPolicy`), а не жадным: иначе оценки продолжения
+    // считались бы на другом списке вариантов, чем тот, которым играет рантайм
+    offered = enumerateActions(state, playerId, { policy: proposalPolicy('qvalue') }).filter(
       entry => Number(entry.weight) > 0,
     );
   } catch {
     offered = [];
   }
 
-  const scores = offered.length > 0 ? scoreOptions(state, playerId, offered) : null;
+  const scores = offered.length > 0 ? scoreOptions(state, playerId, offered, { artifact }) : null;
   if (scores != null) {
     const values = offered.map(entry => scores.get(JSON.stringify(entry.action)) ?? 0);
     const best = Math.max(...values);
@@ -489,8 +625,8 @@ const envLookahead = () => {
  * получу после него» — тем же способом, что и на листе поиска. Это и есть «ученик сам считает наперёд и
  * думает»: без поиска, без оракула, только своими `Q(s, a)` и своей головой оценки позиции.
  */
-const deepOptions = (state, playerId, options) => {
-  const ranked = rankOptions(state, playerId, options);
+const deepOptions = (state, playerId, options, artifact = null) => {
+  const ranked = rankOptions(state, playerId, options, { artifact });
   const look = envLookahead() ?? LOOKAHEAD;
   if (look <= 0) return ranked;
 
@@ -502,7 +638,7 @@ const deepOptions = (state, playerId, options) => {
     const base = Number(entry.qvalue) || 0;
     let next = 0;
     try {
-      next = continuationValue(runAction(state, { ...entry.action, playerId }), playerId);
+      next = continuationValue(runAction(state, { ...entry.action, playerId }), playerId, artifact);
     } catch {
       next = 0;
     }
@@ -567,7 +703,7 @@ const envTop = () => {
  * Ветвление ограничено (`THINK_BRANCH` на внутренних своих узлах, у соперника берётся его сильнейший по
  * весам ход): без предела перебор растёт как степень и «думать дольше» станет невозможно.
  */
-const thinkValue = (state, playerId, depth) => {
+const thinkValue = (state, playerId, depth, artifact = null) => {
   if (state.hook === 'gameEnd') return String(state.winner) === String(playerId) ? 1 : -1;
   if (depth <= 0) return valueOfState(state, playerId);
 
@@ -577,7 +713,9 @@ const thinkValue = (state, playerId, depth) => {
 
   let offered = [];
   try {
-    offered = enumerateActions(state, actor, { policy: 'greedy' }).filter(
+    // варианты перечисляет предлагатель рантайма: соперник в пересчёте должен ходить тем же списком,
+    // каким ходит в игре, иначе «мой ход, его ответ» считается по чужой политике
+    offered = enumerateActions(state, actor, { policy: proposalPolicy('qvalue') }).filter(
       entry => Number(entry.weight) > 0,
     );
   } catch {
@@ -595,7 +733,12 @@ const thinkValue = (state, playerId, depth) => {
   for (const entry of ordered) {
     try {
       values.push(
-        thinkValue(runAction(state, { ...entry.action, playerId: actor }), playerId, depth - 1),
+        thinkValue(
+          runAction(state, { ...entry.action, playerId: actor }),
+          playerId,
+          depth - 1,
+          artifact,
+        ),
       );
     } catch {
       /* нелегальный вариант в пересчёте пропускаем */
@@ -613,8 +756,8 @@ const thinkValue = (state, playerId, depth) => {
  * списка (`QVALUE_TOP`, по умолчанию 3): думанье решает спор между уже хорошими вариантами, а не
  * подменяет выбор — в чистом `qthink` по всем вариантам оно давало 49% (глубже, но слабее).
  */
-const thinkOptions = (state, playerId, options) => {
-  const ranked = rankOptions(state, playerId, options);
+const thinkOptions = (state, playerId, options, artifact = null) => {
+  const ranked = rankOptions(state, playerId, options, { artifact });
   const depth = envDepth() ?? 1;
   const top = envTop() ?? THINK_TOP;
   const offered = ranked.filter(entry => Number(entry.weight) > 0);
@@ -641,7 +784,12 @@ const thinkOptions = (state, playerId, options) => {
   for (const entry of shortlist) {
     let value = -1;
     try {
-      value = thinkValue(runAction(state, { ...entry.action, playerId }), playerId, depth);
+      value = thinkValue(
+        runAction(state, { ...entry.action, playerId }),
+        playerId,
+        depth,
+        artifact,
+      );
     } catch {
       value = -1;
     }
@@ -678,7 +826,7 @@ const thinkOptions = (state, playerId, options) => {
 export const actionsFor = (
   state,
   playerId,
-  { policy = 'random', style = 2, skipAllowed = false } = {},
+  { policy = 'random', style = 2, skipAllowed = false, artifact = null } = {},
 ) => {
   // `search`, `net`, `matchup`, `plain` и `qprior` — поиск; отличаются оценкой листа и приором корня.
   // `chain` — планировщик хода (`bot/play/plan.js`): варианты перечисляются так же, а решение — цепочка.
@@ -687,14 +835,18 @@ export const actionsFor = (
   const ranked = policy === 'qvalue';
   const deep = policy === 'qdeep';
   const thinking = policy === 'qthink';
+  // Перечисление — **одно на рантайм и дневник** (`proposalPolicy`): у поиска, планировщика и ученика
+  // веса вариантов задаёт предлагатель рантайма (`trade`), а решение принимают они сами. Так признак 19
+  // вектора варианта значится теми же весами, которыми варианты и предложены, — иначе дневник учит на
+  // мнении политики, которого в игре не видно (§23 — уже случалось).
   const options = enumerateActions(state, playerId, {
-    policy: searching || ranked || deep || thinking ? 'greedy' : policy,
+    policy: proposalPolicy(policy),
     style,
     skipAllowed,
   });
-  if (ranked) return rankOptions(state, playerId, options);
-  if (deep) return deepOptions(state, playerId, options);
-  if (thinking) return thinkOptions(state, playerId, options);
+  if (ranked) return rankOptions(state, playerId, options, { artifact });
+  if (deep) return deepOptions(state, playerId, options, artifact);
+  if (thinking) return thinkOptions(state, playerId, options, artifact);
   if (!searching) return options;
 
   // поиск перебирает только те действия, которые политика действительно предлагает: вес 0 значит
@@ -728,13 +880,40 @@ export const actionsFor = (
   // ручной формулой (§16) для замера вклада ресурса, помощников и покоя (§21), `qprior` — ручной лист с
   // приором корня от ученика (`bot/play/search.js: rootPriors`)
   const budget = { ...searchBudget() };
+  // каким артефактом играет эта сторона: поиск, `qleaf` и `qprior` считают оценки ученика, поэтому
+  // артефакт обязан доехать до листа и приора — иначе обе стороны матча играли бы одной моделью
+  if (artifact != null) budget.artifact = artifact;
   if (policy === 'net' || policy === 'matchup' || policy === 'plain' || policy === 'position')
     budget.evaluation = policy;
   // `qleaf` — тот же поиск, но лист оценивает **ученик**: он делает в позиции свой лучший ход (1 шаг
   // пересчёта вперёд собственными `Q(s, a)`), а не считается ручной формулой
   if (policy === 'qleaf') budget.evaluation = 'qvalue';
-  // `qprior` — ручной лист, но приор корня даёт ученик (`bot/play/search.js: rootPriors`)
-  if (policy === 'qprior') budget.priorFrom = 'qvalue';
+  // `qprior` — ручной лист, но приор корня даёт ученик (`bot/play/search.js: rootPriors`/`rootAdvantages`)
+  if (policy === 'qprior') budget.priorSource = 'qvalue';
+  /**
+   * `spair` — тот же поиск, но решение корня уточняется **парной переоценкой** (§52): раскрытые варианты
+   * считаются в одних и тех же мирах (`bot/play/search.js: paired`). Отдельная политика, а не переменная
+   * среды, нужна для честного матча «с механизмом против без»: настройка среды задала бы её **обеим**
+   * сторонам партии, и сравнивать было бы нечего.
+   */
+  if (policy === 'spair' && budget.paired <= 0) budget.paired = 8;
+  /**
+   * `srep` — тот же поиск с **кэшем повторных миров** (§53): разные ходы корня часто ведут в одно и то же
+   * состояние (замер: 49% доигрываний корня — повтор), и доигрывать его второй раз незачем. Отдельное имя
+   * по той же причине, что у `spair`: переменная среды задала бы кэш обеим сторонам матча.
+   */
+  if (policy === 'srep') budget.repeat = true;
+  /**
+   * `sdedup` — поиск, который **схлопывает варианты, ведущие в одно состояние** (§53): у копий не
+   * появляется отдельного узла корня, и визиты не делятся между неразличимыми записями.
+   */
+  if (policy === 'sdedup') budget.dedup = true;
+  /**
+   * `sworld` — поиск на **пуле миров** (§54): миры набираются один раз на решение и берутся по кругу,
+   * поэтому разница между вариантами не тонет в разнице чужих рук. Каждое доигрывание свежее — в
+   * отличие от кэша оценок (§53), который врал статистикой.
+   */
+  if (policy === 'sworld' && !(Number(budget.worldPool) > 0)) budget.worldPool = 8;
   // `turn` — тот же поиск, но лист ставится на границе хода: доигрываем свой ход целиком и ответ
   // соперника, а не первые `depth` шагов (`bot/play/search.js: rolloutScore`)
   if (policy === 'turn') {
@@ -765,9 +944,15 @@ export const actionsFor = (
 };
 
 /**
- * Перечисление легальных действий с весами политики: перечисление — задача движка, выбор из него —
+ * Перечисление легальных действий с весов политики: перечисление — задача движка, выбор из него —
  * задача политики (`bot/play/policy.js`). Ситуация для политики собирается из **открытых** данных: своя рука
  * (`hand`), есть ли из чего добирать (`canDraw`), запас колоды (`fuel`), здоровье и тип чужих бойцов.
+ *
+ * §48: кэш перечисления по объекту состояния **пробовали и убрали** — замер на тех же сидах
+ * (`.workbuddy/search-bench.mjs`, 4 прогона на режим, мс на решение) дал с кэшем 22,3–26,1 против
+ * 20,1–23,7 без него, то есть кэш **вредит**: перечисление вызывается на состоянии дважды (корень), но
+ * накладные расходы `WeakMap` + `Map` на каждое из тысяч состояний доигрывания дороже самого повтора.
+ * Поэтому кэша здесь нет — это записанный результат, а не забытая оптимизация.
  */
 const enumerateActions = (
   state,
@@ -788,6 +973,15 @@ const enumerateActions = (
     rivalFuel: rivalDeckSize(state, playerId),
     // метки ресурса героя: сброс такой карты не трата, а вложение (осколки Снежной королевы)
     resourceTags: resourceTags(playerOf(state, playerId)?.heroId),
+    // номер хода (он же раунд): часы не только по колодам, но и по самой партии. Нужен политике,
+    // чтобы на затянувшемся ходу перестать откладывать бой (`tempo`, §43)
+    round: Number(state.turn?.index) || 0,
+    // действий осталось в этом ходу: первое и последнее действие стоят по-разному (`lastAction`, §43).
+    // Движок умеет и больше двух (карты добавляют действия), поэтому берём число, а не флаг
+    actionsLeft: Number(state.turn?.actionsLeft) || 0,
+    // бой уже был в этой партии? `lastCombat` заполняется при закрытии боя — по нему видно, тянется ли
+    // партия без боя (`deal`, §43)
+    inFight: state.lastCombat != null,
   };
   const ui = runUi(state, playerId);
   const pickWeight = () => weightsFor(policy, situation).pick;
@@ -807,15 +1001,30 @@ const enumerateActions = (
     return optionWeight(optionWorth(sourceDefinition(state, playerId, source), optionId), weights);
   };
 
-  // окно вариантов свойства: свойства используем. Отказ — только в «осторожных» прогонах
-  // (`skipAllowed`): по умолчанию бот ничего не пропускает, иначе редкие эффекты не проверяются
-  const choices = (ui.choices ?? []).filter(choice => !choice.disabled);
-  if (choices.length > 0) {
+  // окно вариантов свойства: свойства используем. Список вариантов берём из `ui.choices` (его отдаёт
+  // фаза боя), а если его нет — из кандидатов самого окна (так окно эффектной карты видно в фазе хода).
+  // Клик по варианту только **отмечает** его: выбор применяет общая кнопка (`UI_OK`), поэтому отмеченный
+  // вариант подтверждаем — иначе бот отмечал бы его по кругу и свойство не срабатывало бы вовсе.
+  const optionWindow = state.targeting;
+  const uiChoices = ui.choices ?? [];
+  const optionCandidates =
+    uiChoices.length > 0
+      ? uiChoices
+      : String(optionWindow?.playerId) === String(playerId) && optionWindow?.kind === 'options'
+        ? (optionWindow.candidates ?? [])
+        : [];
+  const optionChoices = optionCandidates.filter(choice => !choice.disabled);
+  if (optionChoices.length > 0) {
     const weights = weightsFor(policy, situation);
-    const options = choices.map(choice => ({
+    if (optionWindow?.picked != null) {
+      return [{ weight: pickWeight(), action: { type: 'UI_OK' } }];
+    }
+    const options = optionChoices.map(choice => ({
       weight: optionPickWeight(weights, choice.optionId),
       action: { type: 'PICK', kind: 'option', id: choice.optionId },
     }));
+    // без отметки общая кнопка — это отказ от необязательного свойства: его берём только
+    // в «осторожных» прогонах, а подтверждение отметки всегда доступно (`ok.enabled` включает её сам)
     if (skipAllowed && ui.controls?.ok?.visible && ui.controls.ok.enabled) {
       options.push({ weight: pickWeight(), action: { type: 'UI_OK' } });
     }
@@ -826,20 +1035,22 @@ const enumerateActions = (
   const targeting = state.targeting;
   if (targeting && String(targeting.playerId) === String(playerId)) {
     const weights = weightsFor(policy, situation);
-    const options = (targeting.candidates ?? []).map(candidate => ({
-      weight:
-        targeting.kind === 'fighters'
-          ? fighterPickWeight(weights, candidate.fighterId)
-          : targeting.kind === 'options'
-            ? optionPickWeight(weights, candidate.optionId)
-            : weights.pick,
-      action:
-        targeting.kind === 'cells'
-          ? { type: 'PICK', kind: 'cell', id: Number(candidate.cellId) }
-          : targeting.kind === 'options'
-            ? { type: 'PICK', kind: 'option', id: candidate.optionId }
-            : { type: 'PICK', kind: 'fighter', id: candidate.fighterId },
-    }));
+    const options = (targeting.candidates ?? [])
+      .filter(candidate => candidate.disabled !== true)
+      .map(candidate => ({
+        weight:
+          targeting.kind === 'fighters'
+            ? fighterPickWeight(weights, candidate.fighterId)
+            : targeting.kind === 'options'
+              ? optionPickWeight(weights, candidate.optionId)
+              : weights.pick,
+        action:
+          targeting.kind === 'cells'
+            ? { type: 'PICK', kind: 'cell', id: Number(candidate.cellId) }
+            : targeting.kind === 'options'
+              ? { type: 'PICK', kind: 'option', id: candidate.optionId }
+              : { type: 'PICK', kind: 'fighter', id: candidate.fighterId },
+      }));
     if (skipAllowed && targeting.required !== true) {
       options.push({ weight: weights.pick, action: { type: 'UI_OK' } });
     }
@@ -848,7 +1059,12 @@ const enumerateActions = (
 
   // пауза перемещения от эффекта
   if (state.movement && String(state.movement.playerId) === String(playerId)) {
-    return movementActions(state, playerId, state.movement, weightsFor(policy, situation));
+    // `afterCard` — этот ход уже потратил действие на карту: тогда сближение дешевле (ген `actionSecond`)
+    const total = Number(state.turn?.actionsTotal) || 0;
+    const left = Number(state.turn?.actionsLeft) || 0;
+    return movementActions(state, playerId, state.movement, weightsFor(policy, situation), {
+      afterCard: total > 0 && left < total,
+    });
   }
 
   // пауза выбора карты в бою (усиление, сброс): карту тратят, поэтому уходит самая дешёвая
@@ -984,6 +1200,10 @@ const enumerateActions = (
         threat: counterThreat,
         fuel: situation.fuel,
         rivalFuel: situation.rivalFuel,
+        round: situation.round,
+        actionsLeft: situation.actionsLeft,
+        inFight: situation.inFight,
+        enemyHp: weakness,
         material,
         rivalHand,
       }),

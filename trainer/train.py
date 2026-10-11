@@ -28,6 +28,36 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from contract import describe, read_samples, vocabulary  # noqa: E402
 
+# сводка позиции и полный список признаков состояния — порядок обязан совпадать с
+# `bot/play/value.js: baseFeatureNames` (иначе ворота §50 считались бы по чужим числам)
+DEFAULT_SUMMARY = [
+    "heroHp",
+    "teamHp",
+    "fighters",
+    "hand",
+    "deck",
+    "resourceOn",
+    "stillness",
+    "sidekickHp",
+]
+BASE_FEATURES = [
+    "heroHp",
+    "teamHp",
+    "fighters",
+    "hand",
+    "deck",
+    "thinDeck",
+    "resource",
+    "resourceOn",
+    "fuel",
+    "stillness",
+    "rivalHand",
+    "sidekickHp",
+    "frozen",
+    "handLimit",
+    "round",
+]
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Универсальный тренер: Q(state, action)")
@@ -69,9 +99,36 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--reflect",
+        type=float,
+        default=0.0,
+        help=(
+            "«Рефлексия»: во сколько раз сильнее учиться на решениях, где модель ошиблась "
+            "(0 — как раньше; рекомендация 1.0). Вес решения = 1 + потеря/0.2 + 0.6·неуверенность, "
+            "где потеря — ценность лучшего варианта минус ценность сыгранного (по оценкам учителя)"
+        ),
+    )
+    parser.add_argument(
         "--js-out",
         default="bot/play/qvalue-weights.js",
         help="зеркало артефакта для бандла (то же, что у линейного тренера)",
+    )
+    parser.add_argument(
+        "--two-heads",
+        action="store_true",
+        help=(
+            "две головы по виду решения (§49): отдельный ствол и голова для шагов (клеток) и общие — "
+            "для карт, добора, бойцов и «закончить». Параметров столько же, сколько у одной головы"
+        ),
+    )
+    parser.add_argument(
+        "--gated",
+        action="store_true",
+        help=(
+            "скрещивание «состояние × действие» (§50): вектор варианта умножается на ворота, "
+            "посчитанные из сводки позиции (`a' = a · σ(G·summary + g0)`), поэтому взаимодействие "
+            "своё для каждой позиции, а не общее, как внутри первого слоя"
+        ),
     )
     parser.add_argument("--check", action="store_true", help="только проверить данные и выйти")
     return parser.parse_args()
@@ -129,6 +186,28 @@ def batches(samples, size, seed, epoch):
         yield [samples[index] for index in order[start : start + size]]
 
 
+def reflect_weights(torch, values, mask, chosen):
+    """Веса решений для «рефлексии»: сильнее учиться там, где модель ошиблась и где учитель не уверен.
+
+    Идея владельца (§45): «когда сделал так — вышло плохо, значит надо иначе». В дневнике это измеримо:
+    у каждого варианта есть **ценность от учителя** (`values`), поэтому потеря решения — ценность лучшего
+    варианта минус ценность сыгранного (`regret`). Вес = `1 + regret/0,2 + 0,6·неуверенность`, где
+    неуверенность = `1 − разброс/0,3`: у решений с равными оценками учителя весь сигнал в самой цели, и в
+    общем среднем они теряются.
+
+    Замер схемы на дневнике §41: медиана веса 1,58, средний 1,71, максимум 10,97; 1,8% решений получают
+    вес больше 4 — это и есть «журнал паттернов ошибок», только записанный числами.
+    """
+    missing = mask == 0
+    best = values.masked_fill(missing, float("-inf")).max(dim=1).values
+    worst = values.masked_fill(missing, float("inf")).min(dim=1).values
+    mine = values.gather(1, chosen.unsqueeze(1)).squeeze(1)
+    regret = torch.clamp(best - mine, min=0.0)
+    spread = best - worst
+    uncertainty = torch.clamp(1 - spread / 0.3, min=0.0, max=1.0)
+    return 1.0 + regret / 0.2 + 0.6 * uncertainty
+
+
 def train(args):
     import torch  # импорт здесь: `--check` должен работать без torch
 
@@ -147,6 +226,13 @@ def train(args):
     state_dim = max(len(sample.state) for sample in samples)
     action_dim = max(len(action.features) for sample in samples for action in sample.actions)
     card_index = {card: index + 1 for index, card in enumerate(words["cards"])}  # 0 — «не карта»
+    # сводка позиции для скрещивания «состояние × действие» (`--gated`, §50): имена и порядок — те же,
+    # что в `bot/play/value.js: baseFeatureNames` (артефакт несёт `summaryFeatures`/`summaryIndex`,
+    # поэтому рантайм берёт их из файла, а не угадывает)
+    summary_names = DEFAULT_SUMMARY
+    summary_index = [BASE_FEATURES.index(name) for name in summary_names if name in BASE_FEATURES]
+    if args.gated and not summary_index:
+        raise SystemExit("--gated: не нашлась сводка позиции в признаках состояния")
 
     print(
         f"выборка: {len(samples)} точек, партий {len({s.game for s in samples})}, "
@@ -156,7 +242,15 @@ def train(args):
     )
 
     model = QScorer(
-        state_dim, action_dim, words["heroes"], words["cards"], hidden=args.hidden, embed=args.embed
+        state_dim,
+        action_dim,
+        words["heroes"],
+        words["cards"],
+        hidden=args.hidden,
+        embed=args.embed,
+        two_heads=args.two_heads,
+        summary_index=summary_index,
+        gated=args.gated,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -188,12 +282,19 @@ def train(args):
         )
         return states, actions, cards, mask, chosen, outcome, visits, values, priors
 
-    def policy_loss(scores, target, outcome):
-        """Потери политики: мягкая цель плюс (для `self`) знак шага — исход партии."""
+    def policy_loss(scores, target, outcome, weights=None):
+        """Потери политики: мягкая цель плюс (для `self`) знак шага — исход партии.
+
+        `weights` — «рефлексия» (§45): вес решения по величине ошибки, чтобы дорогие промахи не тонули в
+        среднем (нормируется на сумму весов, иначе менялся бы масштаб градиента).
+        """
         logp = torch.log_softmax(scores, dim=1)
         per_row = -(target * logp).sum(dim=1)
         sign = outcome if args.target == "self" else torch.ones_like(outcome)
-        return (per_row * sign).mean()
+        per_row = per_row * sign
+        if weights is None:
+            return per_row.mean()
+        return (per_row * weights).sum() / torch.clamp(weights.sum(), min=1e-9)
 
     def margin_loss(scores, values, mask, margin):
         """Парное ранжирование с порогом: учимся только на парах, где оракул уверен.
@@ -269,6 +370,9 @@ def train(args):
             scores, value = model(states, actions, names, rivals, cards, mask)
 
             loss = torch.zeros(())
+            weights = None
+            if args.reflect > 0:
+                weights = reflect_weights(torch, values, mask, chosen)
             if args.margin > 0:
                 # учимся на парах, где оракул уверен; пары внутри порога — шум оракула (§29)
                 loss = loss + args.policy_weight * margin_loss(scores, values, mask, args.margin)
@@ -277,10 +381,15 @@ def train(args):
                     args.target, visits, values, priors, chosen, mask, args.oracle_temperature
                 )
                 if target is not None:
-                    loss = loss + args.policy_weight * policy_loss(scores, target, outcome)
+                    loss = loss + args.policy_weight * policy_loss(scores, target, outcome, weights)
 
             picked = scores.gather(1, chosen.unsqueeze(1)).squeeze(1)
-            loss = loss + args.q_weight * torch.nn.functional.mse_loss(picked, outcome)
+            if weights is None:
+                q_loss = torch.nn.functional.mse_loss(picked, outcome)
+            else:
+                per_row = torch.nn.functional.mse_loss(picked, outcome, reduction="none")
+                q_loss = (per_row * weights).sum() / torch.clamp(weights.sum(), min=1e-9)
+            loss = loss + args.q_weight * q_loss
             loss = loss + args.value_weight * torch.nn.functional.mse_loss(value, outcome)
 
             optimizer.zero_grad()
@@ -308,12 +417,18 @@ def train(args):
         "epochs": args.epochs,
         "target": args.target,
         "margin": args.margin,
+        "reflect": args.reflect,
+        "two_heads": bool(args.two_heads),
+        "gated": bool(args.gated),
         "policy_weight": args.policy_weight,
         "q_weight": args.q_weight,
         "value_weight": args.value_weight,
         **{key: round(value, 4) for key, value in report.items() if isinstance(value, float)},
     }
     artifact = model.export(meta)
+    if args.gated:
+        # имена сводки рядом с индексами: артефакт читается глазами, а рантайм берёт индексы
+        artifact["summaryFeatures"] = list(summary_names)
     directory = os.path.dirname(os.path.abspath(args.out))
     os.makedirs(directory, exist_ok=True)
     with open(args.out, "w", encoding="utf8") as handle:
@@ -339,8 +454,12 @@ def train(args):
 def main():
     args = parse_args()
     if args.check:
-        rows = read_samples(args.data, limit=args.limit)
-        print(json.dumps(describe(rows), ensure_ascii=False, indent=2))
+        # `--data` принимает список файлов через запятую ровно как обучение (`train`): иначе проверка
+        # падала бы на имени «a.gz,b.gz» — так и случилось на первом чанковом дневнике
+        for path in [part.strip() for part in str(args.data).split(",") if part.strip()]:
+            rows = read_samples(path, limit=args.limit)
+            print(path)
+            print(json.dumps(describe(rows), ensure_ascii=False, indent=2))
         return
     train(args)
 

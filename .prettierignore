@@ -17,3 +17,5 @@ yarn-error.log
 README.md
 .gitignore
 .gitlab
+# Кэш контекста: prettier выравнивает таблицы пробелами и раздувает файл (93 → 114 КБ)
+AGENTS.md

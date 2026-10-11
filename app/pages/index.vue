@@ -1,23 +1,11 @@
 <template>
-  <div class="lobby-root bg-app text-ink relative flex h-dvh w-full flex-col overflow-hidden">
+  <div class="lobby-root bg-app text-ink relative flex h-full w-full flex-col overflow-hidden">
     <div class="lobby-backdrop pointer-events-none absolute inset-0" aria-hidden="true" />
 
     <ALoader v-if="!ready" class="absolute inset-0 z-30" />
 
     <template v-else>
-      <header class="relative z-10 flex items-start justify-between gap-24 p-24">
-        <NuxtLink to="/" class="inline-flex" aria-label="UnPlugged — на главную">
-          <BrandLogo class="h-32 w-auto" />
-        </NuxtLink>
-        <ProfileBar
-          :nick="nick"
-          :avatar="avatar"
-          :currency="currency"
-          @profile="onProfileAction('profile')"
-          @settings="onProfileAction('settings')"
-          @exit="onProfileAction('exit')"
-        />
-      </header>
+      <Header />
 
       <main class="relative z-10 flex flex-1 items-center justify-center p-24">
         <Menu :season="SEASON" @select="onSelect" />
@@ -26,10 +14,10 @@
       <Footer />
     </template>
 
-    <ProfileModal :nick="profile?.nick ?? ''" :avatar="avatar" @save="saveProfile" />
+    <ProfileModal />
     <TableSetupModal :content="content" />
 
-    <ExitScreen v-if="exited" @back="exited = false" />
+    <ExitScreen />
 
     <p
       v-if="toast"
@@ -43,36 +31,37 @@
 </template>
 
 <script setup>
-import BrandLogo from '~/svg/brand/logo.svg';
+import ALoader from '~/components/atoms/ALoader.vue';
+import ExitScreen from '~/components/organisms/lobby/ExitScreen.vue';
+import Footer from '~/components/organisms/layout/Footer.vue';
+import Header from '~/components/organisms/layout/Header.vue';
+import Menu from '~/components/organisms/lobby/Menu.vue';
+import ProfileModal from '~/components/organisms/modals/ProfileModal.vue';
+import TableSetupModal from '~/components/organisms/modals/TableSetupModal.vue';
 import { useLobbyBoot } from '~/composables/useLobbyBoot';
-import { useProfile } from '~/composables/useProfile';
 import { useSeoTitle } from '~/composables/useSeoTitle';
+import { exitGame } from '~/composables/ui/useExitScreen';
 import { openModal } from '~/composables/ui/useModal';
+import { clearToast, notify, useToast } from '~/composables/ui/useToast';
 
-/** Лобби (`docs/ui-plan.md` §2). Композаблы импортированы явно — см. `AGENTS.md` §12. */
+/**
+ * Лобби (`docs/ui-plan.md` §2). Композаблы импортированы явно — см. `AGENTS.md` §12.
+ *
+ * Страница держит только то, что принадлежит ей: загрузку, центральное меню и тост. Профиль, модалки и
+ * экран выхода — общее состояние, его читают и пишут сами компоненты (`docs/ui-plan.md` §12).
+ */
 useSeoTitle('Лобби');
 
 const { ready, content, boot } = useLobbyBoot();
-const { profile, nick, currency, avatar, setNick, setAvatar } = useProfile();
+const { toast } = useToast();
 
 onMounted(boot);
 
+/** Тост рисует страница: уходим — гасим сообщение, иначе оно встретило бы возвращение в лобби. */
+onBeforeUnmount(clearToast);
+
 /** Сезон — динамика, поэтому пропом; пока его не отдаёт контент, подпись стоит здесь. */
 const SEASON = 'Сезон 1 · Остановившаяся зима';
-
-const exited = ref(false);
-const toast = ref('');
-let toastTimer = null;
-
-const notify = message => {
-  toast.value = message;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toast.value = '';
-  }, 2400);
-};
-
-onBeforeUnmount(() => clearTimeout(toastTimer));
 
 /** Пункт меню = режим или раздел: экранов пока нет, поэтому честный тост вместо пустой ссылки. */
 const onSelect = item => {
@@ -81,28 +70,9 @@ const onSelect = item => {
     return;
   }
   if (item.id === 'exit') {
-    exited.value = true;
+    exitGame();
     return;
   }
   notify(`«${item.title}» — экран в разработке`);
-};
-
-/** Меню профиля: профиль и выход работают, настройки появятся вместе с экраном настроек (§6). */
-const onProfileAction = action => {
-  if (action === 'profile') {
-    openModal('profile');
-    return;
-  }
-  if (action === 'exit') {
-    exited.value = true;
-    return;
-  }
-  notify('«Настройки» — экран в разработке');
-};
-
-const saveProfile = values => {
-  setNick(values.nick);
-  setAvatar(values.avatar);
-  notify('Профиль сохранён');
 };
 </script>

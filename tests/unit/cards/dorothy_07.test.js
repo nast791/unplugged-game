@@ -105,7 +105,7 @@ describe('карта dorothy_07 «Взять след»', () => {
     expect(card).toMatchObject({ type: 'hybrid', value: 2, bonus: 2, fighter: 'toto' });
   });
 
-  it('после победы даёт действие и перемещение Тото до 2 клеток', () => {
+  it('после победы даёт действие и перемещение Тото до 3 клеток', () => {
     const state = buildState();
     const before = state.turn.actionsLeft;
 
@@ -116,7 +116,7 @@ describe('карта dorothy_07 «Взять след»', () => {
     expect(after.turn.actionsLeft).toBe(before);
     expect(after.movement).toMatchObject({
       playerId: '0',
-      budget: 2,
+      budget: 3,
       optional: true,
       fighters: ['toto'],
     });
@@ -132,7 +132,7 @@ describe('карта dorothy_07 «Взять след»', () => {
     expect(fighterOf(finished, '0', 'toto').currentPosition).toBe('1');
   });
 
-  it('перемещение необязательно: «до 2 клеток» включает 0', () => {
+  it('перемещение необязательно: «до 3 клеток» включает 0', () => {
     const after = battle(buildState());
 
     const finished = runAction(after, { type: 'UI_OK', playerId: '0' });

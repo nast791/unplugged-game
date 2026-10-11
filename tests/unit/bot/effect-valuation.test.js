@@ -41,25 +41,27 @@ describe('оценка эффекта: карта без свойств и ка�
   });
 
   it('карта с правилом и невыполненным условием: `known: true`, `fires: 0`, вес ноль', () => {
-    // `ifrit_11` требует трёх духов «пепла»: без них правило не выполняется — карта не играется
-    const storm = ifritCards.find(card => card.id === 'ifrit_11');
-    const state = stateWith([{ ...storm, instanceId: 'storm_0' }]);
+    // «Прыжок в лаву» требует свободной клетки лавы: в фикстурной карте стихий нет вовсе —
+    // условие не выполняется, и карта не играется
+    const jump = ifritCards.find(card => card.id === 'ifrit_10');
+    const state = stateWith([{ ...jump, instanceId: 'jump_0' }]);
 
-    const worth = effectWorth(storm, state, '0');
+    const worth = effectWorth(jump, state, '0');
     expect(worth.known).toBe(true);
     expect(worth.fires).toBe(0);
     expect(weightFrom(worth, weights)).toBe(0);
 
     // и то же видно в живом решении
     const options = actionsFor(state, '0', { policy: 'trade' });
-    expect(weightOfCard(options, 'storm_0')).toBe(0);
+    expect(weightOfCard(options, 'jump_0')).toBe(0);
   });
 
   it('карта с выполненным условием получает вес выше базового', () => {
+    // «Пепельный ветер»: шаг открывается, и карта получает ценность шага
     const storm = ifritCards.find(card => card.id === 'ifrit_11');
     const state = stateWith([{ ...storm, instanceId: 'storm_0' }]);
     const owner = player(state, '0');
-    // три духа «пепла» по одному hp — ровно то, что требует карта
+    // три духа «пепла» по одному hp — рой, ради которого карта и лежит в колоде
     for (const [index, id] of ['ash_1', 'ash_2', 'ash_3'].entries()) {
       owner.fighters.push({
         ...owner.fighters[0],

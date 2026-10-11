@@ -24,6 +24,7 @@ import {
 } from './matchup.js';
 import { policyNames } from '../play/policy.js';
 import { runMatrixParallel } from '../learn/parallel.js';
+import { artifactName } from '../play/artifact.js';
 import { matchups, heroIds as poolHeroIds } from '../play/pool.js';
 import { failuresOf, groupByReason, plural, showReport } from './sweep.js';
 
@@ -58,6 +59,11 @@ const workers = numberArg('workers', 1);
 const mapId = stringArg('map', 'generated');
 const policy = policyArg('policy', 'greedy');
 const policyB = stringArg('policy-b') == null ? null : policyArg('policy-b', policy);
+// Артефакты сторон (`bot/play/artifact.js`): `--artifact` — первый игрок, `--artifact-b` — второй.
+// Так мерится «версия против версии» (`--policy=qvalue --policy-b=qvalue --artifact=a.json
+// --artifact-b=b.json`), чего до этого в игре не было: модель была одна на оба места.
+const artifact = stringArg('artifact', '') || null;
+const artifactB = stringArg('artifact-b', '') || null;
 const requested = (stringArg('heroes') ?? '')
   .split(',')
   .map(value => value.trim())
@@ -79,7 +85,9 @@ console.log(
   `матрица матчапов: героев ${heroes.length}, пар ${matchups(heroes).length}, ` +
     `по ${plural(seeds.length, ['партии', 'партиям', 'партиям'])} на пару ` +
     `(сиды ${seeds[0]}…${seeds[seeds.length - 1]}), поле ${mapId}, ` +
-    `политика ${policy}${policyB ? ` против ${policyB} (в обе стороны)` : ''}, ` +
+    `политика ${policy}${policyB ? ` против ${policyB} (в обе стороны)` : ''}` +
+    `${artifact ? `, артефакт ${artifactName(artifact)}` : ''}` +
+    `${artifactB ? ` против ${artifactName(artifactB)}` : ''}, ` +
     `${maxSteps ? `лимит партии ${maxSteps} шагов, ` : ''}` +
     `${workers > 1 ? `воркеров ${workers}, ` : ''}` +
     `шум ±${noiseMargin(seeds.length).toFixed(1)}%`,
@@ -93,11 +101,21 @@ const started = Date.now();
  */
 const parallel =
   workers > 1
-    ? await runMatrixParallel({ heroes, seeds, mapId, policy, policyB, maxSteps, workers })
+    ? await runMatrixParallel({
+        heroes,
+        seeds,
+        mapId,
+        policy,
+        policyB,
+        maxSteps,
+        workers,
+        artifact,
+        artifactB,
+      })
     : null;
 const pairResults = parallel
   ? parallel.pairResults
-  : runMatrix({ heroes, seeds, mapId, policy, policyB, maxSteps }).pairResults;
+  : runMatrix({ heroes, seeds, mapId, policy, policyB, maxSteps, artifact, artifactB }).pairResults;
 const reports = pairResults.flatMap(pair => pair.reports);
 
 /**
@@ -108,7 +126,16 @@ const reports = pairResults.flatMap(pair => pair.reports);
 const mirrorPairs = parallel
   ? parallel.mirrorPairs
   : policyB
-    ? runMatrix({ heroes, seeds, mapId, policy: policyB, policyB: policy, maxSteps }).pairResults
+    ? runMatrix({
+        heroes,
+        seeds,
+        mapId,
+        policy: policyB,
+        policyB: policy,
+        maxSteps,
+        artifact: artifactB,
+        artifactB: artifact,
+      }).pairResults
     : null;
 if (mirrorPairs) reports.push(...mirrorPairs.flatMap(pair => pair.reports));
 

@@ -194,6 +194,7 @@ describe('SET_MOVEMENT', () => {
       optional: false,
       throughEnemies: false,
       damageOnPass: null,
+      healOnPass: null,
       damagedFighterIds: [],
       moves: [],
       source: null,
@@ -476,6 +477,9 @@ describe('SET_COMBAT: защита и расчёт', () => {
       defenderPlayerId: '1',
       attackerFighterId: 'alpha',
       targetFighterId: 'beta',
+      // типы участников пишутся в итог: погибшего бойца из состояния уже не достать
+      attackerType: 'hero',
+      targetType: 'hero',
       attackValue: 4,
       defenseValue: 3,
       combatDamage: 1,

@@ -53,6 +53,9 @@ const buildState = () => {
   const state = createState({
     phase: PHASES.turn,
     turn: { index: 1, playerId: '0', actionsTotal: 2, actionsLeft: 2 },
+    // хук turn уже «входил»: иначе его enter снимает бой и окно, открытые тем же действием,
+    // а теперь отметка варианта и подтверждение — два разных действия (`PICK` и `UI_OK`)
+    _enteredHooks: { gameStart: true, turn: true },
   });
   player(state, '0').hand = { visibility: [], cards: [] };
   player(state, '1').hand = {
@@ -88,9 +91,12 @@ const buildState = () => {
 /** Разыграть карту: очередь боя доходит до её правила и открывает окно по чужой руке. */
 const play = state => advanceCombat(state);
 
-/** Выбрать карту чужой руки: противник её сбрасывает. */
+/** Выбрать карту чужой руки: клик только отмечает вариант, сбрасывает карту подтверждение (`UI_OK`). */
 const pick = (state, optionId) =>
-  runAction(state, { type: 'PICK', kind: 'option', id: optionId, playerId: '0' });
+  runAction(runAction(state, { type: 'PICK', kind: 'option', id: optionId, playerId: '0' }), {
+    type: 'UI_OK',
+    playerId: '0',
+  });
 
 const handIds = (state, playerId) => hand(player(state, playerId)).map(entry => entry.instanceId);
 

@@ -18,8 +18,8 @@ export default {
    * Так ошибку видно и при скролле тела, и при длинном тексте — в теле её сдвигало за экран.
    */
   modal_footer: 'flex items-center justify-end gap-12 p-28 pt-16',
-  modal_error: 'text-14 text-danger mr-auto',
+  modal_error: 'text-16 text-danger mr-auto',
   modal_close: 'rounded-2 p-6 text-dim transition-colors hover:text-ink',
   modal_title: 'text-26 font-semibold',
-  modal_description: 'text-14 text-dim',
+  modal_description: 'text-16 text-dim',
 };

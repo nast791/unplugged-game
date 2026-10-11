@@ -1,5 +1,5 @@
 <template>
-  <div class="flex max-h-dvh flex-1 flex-col">
+  <div class="flex h-dvh flex-col overflow-hidden">
     <NuxtPage />
   </div>
 </template>

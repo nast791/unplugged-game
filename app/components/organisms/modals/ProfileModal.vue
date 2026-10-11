@@ -10,7 +10,7 @@
     />
 
     <div class="flex flex-col gap-8">
-      <span class="text-14 text-dim">Аватар</span>
+      <span class="text-18">Аватар</span>
       <div class="flex flex-wrap gap-8">
         <AButton
           v-for="icon in AVATAR_ICONS"
@@ -40,14 +40,13 @@
 </template>
 
 <script setup>
-/**
- * Модалка по имени: открывается `openModal('profile')`, закрывается `closeModal('profile')`
- * или кнопкой в шапке (её рисует AModal).
- */
-import { DEFAULT_NICK } from '~/composables/useProfile';
+import AButton from '~/components/atoms/AButton.vue';
+import AInput from '~/components/atoms/AInput.vue';
+import AModal from '~/components/atoms/AModal.vue';
+import { DEFAULT_NICK, useProfile } from '~/composables/useProfile';
 import { closeModal, useIsModalOpen } from '~/composables/ui/useModal';
+import { notify } from '~/composables/ui/useToast';
 
-/** Доступные аватары — выбор интерфейса, поэтому список живёт здесь, а не в профиле. */
 const AVATAR_ICONS = [
   'lucide:user-round',
   'lucide:cat',
@@ -57,29 +56,25 @@ const AVATAR_ICONS = [
   'lucide:bird',
 ];
 
-const props = defineProps({
-  nick: { type: String, default: '' },
-  avatar: { type: String, default: '' },
-});
+const { profile, avatar, setNick, setAvatar } = useProfile();
 
-const emit = defineEmits(['save']);
-
-const draftNick = ref(props.nick);
-const draftAvatar = ref(props.avatar || AVATAR_ICONS[0]);
+const draftNick = ref(profile.value?.nick ?? '');
+const draftAvatar = ref(avatar.value || AVATAR_ICONS[0]);
 const nickInput = ref(null);
 
 const isOpen = useIsModalOpen('profile');
 
-/** Пока окно закрыто, содержимое не отрисовано: фокус и черновики обновляем на открытии. */
 watch(isOpen, open => {
   if (!open) return;
-  draftNick.value = props.nick;
-  draftAvatar.value = props.avatar || AVATAR_ICONS[0];
+  draftNick.value = profile.value?.nick ?? '';
+  draftAvatar.value = avatar.value || AVATAR_ICONS[0];
   nextTick(() => nickInput.value?.focus());
 });
 
 const save = () => {
-  emit('save', { nick: draftNick.value, avatar: draftAvatar.value });
+  setNick(draftNick.value);
+  setAvatar(draftAvatar.value);
+  notify('Профиль сохранён');
   closeModal('profile');
 };
 </script>

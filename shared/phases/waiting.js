@@ -1,3 +1,4 @@
+import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer } from '#shared/helpers/base.js';
 
 const playerName = (partyState, playerId) =>
@@ -10,17 +11,22 @@ export default {
     waitingMovement: {
       active: partyState => Boolean(partyState.movement),
       text: partyState =>
-        `Ждём перемещения бойцов: ${playerName(partyState, partyState.movement?.playerId)}`,
+        HINTS.waiting.waitingMovement({
+          name: playerName(partyState, partyState.movement?.playerId),
+        }),
     },
     // пауза эффекта у другого игрока: он выбирает карту из своей руки, остальные ждут
     waitingChoice: {
       active: partyState => Boolean(partyState.combat?.choice),
       text: partyState =>
-        `Оппонент выбирает карту для эффекта: ${playerName(partyState, partyState.combat?.choice?.playerId)}`,
+        HINTS.waiting.waitingChoice({
+          name: playerName(partyState, partyState.combat?.choice?.playerId),
+        }),
     },
     waitingTurn: {
       active: () => true,
-      text: partyState => `Ход игрока ${playerName(partyState, partyState.turn?.playerId)}`,
+      text: partyState =>
+        HINTS.waiting.waitingTurn({ name: playerName(partyState, partyState.turn?.playerId) }),
     },
   },
 

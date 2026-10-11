@@ -66,6 +66,8 @@ export const planBudget = () => ({
   policy: env.PLAN_POLICY ?? 'greedy',
   rollout: env.PLAN_ROLLOUT ?? 'aggressive',
   timeMs: envNumber('PLAN_TIME') ?? 0,
+  // каким артефактом играет эта сторона (`bot/play/artifact.js`): `null` — вшитый в бандл
+  artifact: env.PLAN_ARTIFACT ?? null,
 });
 
 /**
@@ -149,7 +151,7 @@ const chainLeaves = (state, viewerId, budget) => {
 
     let options;
     try {
-      options = actionsFor(node, actor, { policy: budget.policy });
+      options = actionsFor(node, actor, { policy: budget.policy, artifact: budget.artifact });
     } catch {
       leaf();
       return;

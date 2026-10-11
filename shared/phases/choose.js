@@ -4,6 +4,7 @@ import { SET_COMBAT } from '#shared/actions/combat.js';
 import { SET_MOVEMENT } from '#shared/actions/movement.js';
 import { SET_TARGETING } from '#shared/actions/targeting.js';
 import { openEffect, runEffectMoment } from '#shared/cards/run.js';
+import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer } from '#shared/helpers/base.js';
 import { cardKey, hasFighterForCard, isAttackCard, isEffectCard } from '#shared/helpers/cards.js';
 import { attackCandidates, attackRejection } from '#shared/helpers/combat.js';
@@ -23,6 +24,12 @@ const hiddenControls = () => ({
   ok: { visible: false, enabled: false, label: null },
   back: { visible: false, enabled: false, label: null },
 });
+
+/** Окно вариантов свойства, открытое этому игроку: клик по варианту только отмечает выбор. */
+const optionWindowOf = (partyState, playerId) =>
+  isTargetingMine(partyState, playerId) && partyState.targeting?.kind === 'options'
+    ? partyState.targeting
+    : null;
 
 /** Окно выбора, от которого можно отказаться («вы можете»): общая кнопка его закрывает. */
 const optionalWindowOf = (partyState, playerId) =>
@@ -182,22 +189,38 @@ const targetingFighters = (partyState, playerId) =>
  * дальше окно закрывает движок, а слот разыгранной карты освобождается.
  */
 const pickTarget = (partyState, playerId, pick) => {
-  let state = SET_TARGETING(partyState, {
+  const state = SET_TARGETING(partyState, {
     op: 'pick',
     playerId,
     ...pick,
   });
 
-  const source = state.targeting?.source ?? null;
-  const skill = findPlayer(state, playerId)?.skill;
+  // окно вариантов свойства клик только отмечает: применяет выбор общая кнопка (`ok.onPress`)
+  if (state.targeting?.kind === 'options') return state;
+
+  return closePickedWindow(state, playerId);
+};
+
+/** Закрыть окно, чья отметка уже разыграна: правила `picked`, закрытие окна, освобождение слота карты. */
+const closePickedWindow = (partyState, playerId) => {
+  const source = partyState.targeting?.source ?? null;
+  const skill = findPlayer(partyState, playerId)?.skill;
   const bySkill = source != null && skill != null && String(source) === String(skill.id);
 
-  state = bySkill ? runSkillMoment(state, playerId, 'picked') : runEffectMoment(state, 'picked');
+  let state = bySkill
+    ? runSkillMoment(partyState, playerId, 'picked')
+    : runEffectMoment(partyState, 'picked');
 
   state = SET_TARGETING(state, { op: 'close', playerId });
   if (!state.targeting && !state.movement) state.effect = null;
 
   return state;
+};
+
+/** Окно вариантов свойства, отмеченное игроком: отметку подтверждает общая кнопка. */
+const pickedOptionOf = (partyState, playerId) => {
+  const window = optionWindowOf(partyState, playerId);
+  return window?.picked != null ? window : null;
 };
 
 export default {
@@ -206,19 +229,17 @@ export default {
   hints: {
     skillWindow: {
       active: (partyState, playerId) => Boolean(skillWindowOf(partyState, playerId)),
-      text: (partyState, playerId) => skillWindowOf(partyState, playerId)?.text ?? '',
+      text: (partyState, playerId) =>
+        HINTS.choose.skillWindow({ text: skillWindowOf(partyState, playerId)?.text }),
     },
     pickTarget: {
       active: (partyState, playerId) => isTargetingMine(partyState, playerId),
       text: partyState =>
-        partyState.targeting?.kind === 'cells'
-          ? 'Выберите клетку среди подсвеченных'
-          : 'Выберите цель среди подсвеченных бойцов',
+        HINTS.choose.pickTarget({ cells: partyState.targeting?.kind === 'cells' }),
     },
     chooseAction: {
       active: () => true,
-      text: () =>
-        'Ваш ход: возьмите карту из колоды, чтобы переместиться, или разыграйте карту атаки',
+      text: HINTS.choose.chooseAction,
     },
   },
 
@@ -236,6 +257,11 @@ export default {
     const playable = playableCardIds(partyState, playerId);
     const targets = targetingFighters(partyState, playerId);
     const optional = optionalWindowOf(partyState, playerId);
+    const options = optionWindowOf(partyState, playerId);
+
+    // кнопка нужна и там, где от окна можно отказаться, и там, где отметка ждёт подтверждения:
+    // отметка обязательного окна делает кнопку доступной (иначе выбор было бы нечем применить)
+    const finishable = Boolean(optional) || Boolean(options && options.picked != null);
 
     return {
       deck: { clickable: true },
@@ -247,8 +273,7 @@ export default {
       disabledCardIds: handCardIds(partyState, playerId).filter(
         cardId => !playable.includes(cardId),
       ),
-      // от необязательного окна («вы можете») можно отказаться общей кнопкой
-      controls: optional
+      controls: finishable
         ? {
             ok: {
               visible: true,
@@ -263,8 +288,22 @@ export default {
 
   ok: {
     label: 'Закончить эффект',
-    enabled: (partyState, playerId) => Boolean(optionalWindowOf(partyState, playerId)),
-    onPress: (partyState, action) => declineTargetingWindow(partyState, action.playerId),
+    enabled: (partyState, playerId) =>
+      Boolean(optionalWindowOf(partyState, playerId) || pickedOptionOf(partyState, playerId)),
+    /**
+     * Общая кнопка окна: отметку варианта она подтверждает (правила `picked` применяют выбор),
+     * окно без отметки — закрывает отказом (необязательное свойство или способность).
+     */
+    onPress: (partyState, action) => {
+      const playerId = action.playerId;
+      if (pickedOptionOf(partyState, playerId)) {
+        return endGameIfFinished(closePickedWindow(partyState, playerId));
+      }
+      if (optionWindowOf(partyState, playerId)?.required === true) {
+        throw new Error('UI_OK: обязательное свойство карты закрывается только выбором варианта');
+      }
+      return declineTargetingWindow(partyState, playerId);
+    },
   },
 
   moves: {
@@ -324,6 +363,9 @@ export default {
     Если правило открыло обязательное окно выбора (SET_TARGETING required), слот живёт до отметки цели
     в момент picked, иначе эффект заканчивается сразу. Пока такое окно открыто, другое действие объявить
     нельзя (эффект оплачен), а цель разбирается по source окна: правила способности или правила карты.
+    У окна вариантов свойства (kind: 'options') клик по варианту только **отмечает** его: правила момента
+    picked применяет общая кнопка (`UI_OK`) — один и тот же путь для всех окон свойства, и в бою тоже
+    (shared/phases/defense.js §5a).
  4. Способность героя: правила скилла прогоняют входы хуков — turnStart (начало хода) и turnEnd (конец
     хода). Если правило открыло окно выбора цели, кандидаты подсвечены, а сверху висит текст способности
     (hint skillWindow). Клик по подсвеченному бойцу отмечает цель (SET_TARGETING pick), движок прогоняет

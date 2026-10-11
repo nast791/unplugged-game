@@ -56,6 +56,22 @@ describe('оценка свойства: таблица действий', () =>
       3,
     );
     expect(optionWorth(card([{ action: 'SET_MOVEMENT', op: 'open' }]), 'pick').value).toBe(1.5);
+    // длинный шаг, проход сквозь строй и проход с уроном/кражей оценка читает из самого действия
+    expect(
+      optionWorth(
+        card([
+          {
+            action: 'SET_MOVEMENT',
+            op: 'open',
+            budget: 4,
+            throughEnemies: true,
+            damageOnPass: 1,
+            healOnPass: 1,
+          },
+        ]),
+        'pick',
+      ).value,
+    ).toBe(4.75);
     expect(optionWorth(card([{ action: 'REVIVE_FIGHTER', group: 'crow' }]), 'pick').value).toBe(4);
     // урон чужому бойцу: сторона выведена из переменной факта FIGHTERS
     expect(
@@ -234,16 +250,18 @@ describe('польза эффекта: карта впустую не играе
     return state;
   };
 
-  it('Ифрит: «Пламя преисподней» даёт ноль, если духов нет, и ценность при трёх', () => {
+  it('Ифрит: «Пепельный ветер» не гаснет без духов, а с роем шаг длиннее и ценнее', () => {
     const state = stateOf();
     const card = cardById('ifrit_11');
 
+    // духов нет: свойство всё равно выполняется (одна клетка), поэтому карта не впустую
     const empty = effectWorth(card, state, '0');
-    expect(empty.fires).toBe(0);
     expect(empty.known).toBe(true);
-    expect(empty.value).toBe(0);
+    expect(empty.fires).toBeGreaterThan(0);
+    expect(empty.value).toBeGreaterThan(0);
 
-    // три духа по одному hp — ровно то, что требует карта
+    // три духа по одному hp — шаг становится длиннее, и оценка это видит: бюджет читается
+    // из самого действия (`SET_MOVEMENT`), как и проход сквозь строй с уроном и кражей
     for (const id of ['ash_1', 'ash_2', 'ash_3']) {
       player(state, '0').fighters.push(
         fighter({
@@ -259,7 +277,7 @@ describe('польза эффекта: карта впустую не играе
 
     const ready = effectWorth(card, state, '0');
     expect(ready.fires).toBeGreaterThan(0);
-    expect(ready.value).toBeGreaterThan(0);
+    expect(ready.value).toBeGreaterThan(empty.value);
   });
 
   it('Снежная королева: карта не срабатывает, пока герой заморожен', () => {

@@ -1,4 +1,5 @@
 import { SET_CARDS } from '#shared/actions/cards.js';
+import { HINTS } from '#shared/constants/hints.js';
 import {
   handCardIds,
   handLimitFor,
@@ -16,7 +17,10 @@ export default {
     discardCards: {
       active: () => true,
       text: (partyState, playerId) =>
-        `Рука больше ${handLimitFor(partyState, playerId)} карт: сбросьте ещё ${mustDiscardCount(partyState, playerId)}`,
+        HINTS.handLimit.discardCards({
+          limit: handLimitFor(partyState, playerId),
+          count: mustDiscardCount(partyState, playerId),
+        }),
     },
   },
 

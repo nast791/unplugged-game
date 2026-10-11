@@ -88,24 +88,25 @@ describe('карта dorothy_11 «Золотая шапка»', () => {
     expect(card.rules[0].moment).toBe('effect');
     expect(isMoment(card.rules[0].moment)).toBe(true);
     expect(card.hook).toBeUndefined();
-    // «Золотая шапка» — единственная карта колоды с усилением 3 (`docs/hero-algorithm.md` §6)
+    // тройка усиления есть у «Золотой шапки» и «Зелёных очков» (`docs/hero-algorithm.md` §6)
     expect(card).toMatchObject({ type: 'effect', value: null, bonus: 3, fighter: 'dorothy' });
   });
 
-  it('открывает перенос пары: бюджет 2 каждому, действие тратится один раз', () => {
+  it('открывает перенос пары: бюджет 4 каждому, действие тратится один раз', () => {
     const played = play(buildState());
 
     expect(played.turn.actionsLeft).toBe(1);
     expect(played.movement).toMatchObject({
       playerId: '0',
-      budget: 2,
+      budget: 4,
       optional: true,
       fighters: ['dorothy', 'toto'],
     });
     expect(movableFighterIds(played, '0')).toEqual(['dorothy', 'toto']);
-    // Дороти со своей клетки достаёт 2 и 3, но 3 занята Тото
-    expect(movementDestinations(played, '0', 'dorothy')).toEqual(['2']);
-    // Тото с 3 идёт до двух клеток: 2, 4 и 5 (1 занята Дороти)
+    // Дороти с 1 проходит сквозь своего Тото (сквозь своих можно), но не встаёт на его клетку,
+    // а Бета на 6 — враг, сквозь него нельзя: остаются 2, 4 и 5
+    expect(movementDestinations(played, '0', 'dorothy')).toEqual(['2', '4', '5']);
+    // Тото с 3 идёт в обе стороны: 2, 4 и 5 (1 занята Дороти, 6 закрыта Бетой)
     expect(movementDestinations(played, '0', 'toto')).toEqual(['2', '4', '5']);
   });
 
@@ -135,8 +136,9 @@ describe('карта dorothy_11 «Золотая шапка»', () => {
 
     const played = play(state);
 
-    expect(played.movement).toMatchObject({ fighters: ['dorothy'], budget: 2 });
+    expect(played.movement).toMatchObject({ fighters: ['dorothy'], budget: 4 });
     expect(movableFighterIds(played, '0')).toEqual(['dorothy']);
-    expect(movementDestinations(played, '0', 'dorothy')).toEqual(['2', '3']);
+    // Бета на 6 держит дальний конец линии: без собаки Дороти идёт на 2, 3, 4 и 5
+    expect(movementDestinations(played, '0', 'dorothy')).toEqual(['2', '3', '4', '5']);
   });
 });

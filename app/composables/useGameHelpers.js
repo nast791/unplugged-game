@@ -1,11 +1,6 @@
 import { computed } from 'vue';
 import { useGameView } from './useGameView.js';
 
-/**
- * Computed поверх адаптированного view: чей сейчас ход, кто ты, сколько действий и чем кончилась партия.
- * Наружу отдаём только то, что читает `useGameSession`. Правил игры здесь нет: всё, что решает движок,
- * клиент берёт из `runUi` (`useGameSession.ui`), а не считает сам.
- */
 export const useGameHelpers = () => {
   const { view, playerId } = useGameView();
 

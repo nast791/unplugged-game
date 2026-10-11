@@ -6,8 +6,8 @@ const zoneCount = zone => zone?.count ?? (Array.isArray(zone?.cards) ? zone.card
 
 /**
  * Проекция сервера → формат клиента: хук как `phase`, объект `turn` как числа, зоны как массивы карт.
- * Из зон клиент читает только свою руку (карты) и число карт в колоде, поэтому закрытые колода и сброс
- * в view не переносятся — иначе они висели бы в состоянии клиента без дела.
+ * Из зон клиент читает свою руку, свой сброс (он открыт всем ролям — `shared/constants/deck.js`) и число
+ * карт в колоде; карты закрытой колоды в view не переносятся — иначе лежали бы в состоянии клиента зря.
  */
 export const adaptPartyView = raw => {
   if (!raw) return null;
@@ -24,7 +24,9 @@ export const adaptPartyView = raw => {
     players: (raw.players ?? []).map(({ deck, discard, hand, ...p }) => ({
       ...p,
       hand: zoneCards(hand),
+      discard: zoneCards(discard),
       deckCount: zoneCount(deck),
+      discardCount: zoneCount(discard),
     })),
   };
 };

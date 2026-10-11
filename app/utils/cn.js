@@ -29,6 +29,15 @@ const twMerge = extendTailwindMerge({
       'dsh-columns-width': [{ 'columns-w': [isIntegerToken] }],
       'dsh-gap-size': [{ gap: [isIntegerToken] }],
       'dsh-border-width': [{ border: [isIntegerToken] }],
+      /**
+       * Ширина рамки одной стороны — своя группа у tailwind-merge (`border-w-l` и т. д.), и она тоже
+       * считает `border-l-6` цветом: без этих строк правка `ui` не могла бы положить акцентную полоску
+       * поверх общей рамки пресета (`border-2 border-line` + `border-l-6 border-l-accent`).
+       */
+      'dsh-border-width-l': [{ 'border-l': [isIntegerToken] }],
+      'dsh-border-width-r': [{ 'border-r': [isIntegerToken] }],
+      'dsh-border-width-t': [{ 'border-t': [isIntegerToken] }],
+      'dsh-border-width-b': [{ 'border-b': [isIntegerToken] }],
       'dsh-blur': [{ blur: [isIntegerToken] }, { 'backdrop-blur': [isIntegerToken] }],
       'dsh-rounded-all': [{ rounded: [isIntegerToken] }],
       'dsh-rounded-top': [{ 'rounded-t': [isIntegerToken] }],

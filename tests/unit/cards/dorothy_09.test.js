@@ -81,7 +81,7 @@ describe('карта dorothy_09 «Зелёные очки»', () => {
     expect(card.rules[0].moment).toBe('effect');
     expect(isMoment(card.rules[0].moment)).toBe(true);
     expect(card.hook).toBeUndefined();
-    expect(card).toMatchObject({ type: 'effect', value: null, bonus: 2, fighter: 'any' });
+    expect(card).toMatchObject({ type: 'effect', value: null, bonus: 3, fighter: 'any' });
   });
 
   it('действие целиком: карта в сбросе, из колоды приходят 2 карты', () => {

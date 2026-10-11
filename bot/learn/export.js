@@ -19,11 +19,12 @@
  *
  * `qvalue` — **дневник ученика**: партии играет текущий артефакт тренера (`bot/play/qvalue.js`), а не
  * ручная политика, поэтому состояния в дневнике — свои, а не учительские. Варианты при этом
- * перечисляются жадным предлагателем, как в рантайме (`PROPOSES_GREEDY`), а в заголовок уезжает
- * отпечаток модели: по дневнику видно, какая версия его написала.
+ * перечисляются **предлагателем рантайма** (`bot/play/decide.js: PROPOSER_POLICY`, сейчас `trade`) —
+ * тем же, что перечисляет живой ход в браузере, — а в заголовок уезжает отпечаток модели и имя
+ * предлагателя: по дневнику видно, какая версия его написала и с каким рантаймом он совместим.
  */
-import { createWriteStream, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createGzip } from 'node:zlib';
 import {
   ACTION_FEATURES as ACTION_DIM,
@@ -33,12 +34,13 @@ import {
   rivalOf,
 } from '../play/actionFeatures.js';
 import { actionsFor, playDuel } from '../play/duel.js';
-import { PLAN_POLICIES, SEARCH_POLICIES } from '../play/decide.js';
+import { PLAN_POLICIES, SEARCH_POLICIES, proposalPolicy } from '../play/decide.js';
 import { cardIdOf } from '../play/metrics.js';
 import { heroIds } from '../play/pool.js';
 import { hasQValue } from '../play/qvalue.js';
+import { tableOf } from '../play/artifact.js';
 import weights from '../play/qvalue-weights.js';
-import { leafScore, searchAction, searchBudget } from '../play/search.js';
+import { leafScore, pairedRootValues, searchAction, searchBudget } from '../play/search.js';
 import { baseFeatureNames, featuresOf } from '../play/value.js';
 
 const numberArg = (name, fallback) => {
@@ -55,14 +57,26 @@ const flag = name => process.argv.includes(`--${name}`);
 const round = value => Math.round((Number(value) || 0) * 10000) / 10000;
 
 /**
+ * Куда складывать пробы, если просят: `--probe-dir=…` пишет рядом с дневником **то же состояние**, из
+ * которого посчитаны признаки варианта. Это не отладка ради отладки — без состояния нельзя проверить
+ * главное свойство контракта: числа в дневнике обязаны совпасть с числами, которыми играет **рантайм**
+ * (`tests/unit/bot/proposer.test.js` пересчитывает признаки варианта оценкой ученика на этом состоянии).
+ */
+const probeDir = stringArg('probe-dir', '') || null;
+
+/**
  * Отпечаток модели: без него по дневнику не видно, **какая версия** его написала, а сравнивать потом
  * нужно именно с ней. Модель спрашивают две политики — `qvalue` (она ей играет) и `qprior` (она даёт
  * приор корня поиску). `null` — дневник писала ручная политика.
+ *
+ * Артефакт берётся **из параметра**, если он задан (`--artifact=…`): без этого дневник «версия против
+ * версии» нёс бы в заголовке отпечаток вшитой в бандл модели и врал бы о том, кто его написал.
  */
-const modelStamp = policy =>
-  (policy === 'qvalue' || policy === 'qprior') && hasQValue(weights)
-    ? { kind: weights.kind ?? null, meta: weights.meta ?? {} }
-    : null;
+const modelStamp = (policy, artifact = null) => {
+  if (policy !== 'qvalue' && policy !== 'qprior') return null;
+  const table = artifact == null ? weights : tableOf(artifact);
+  return hasQValue(table) ? { kind: table.kind ?? null, meta: table.meta ?? {} } : null;
+};
 
 const SEARCHING = SEARCH_POLICIES;
 
@@ -78,18 +92,12 @@ const actionKey = payload => {
 };
 
 /**
- * Политики, которые варианты **не взвешивают сами**: поиск и планировщик хода выбирают из жадного
- * списка, `qvalue` переставляет готовые веса моделью (`bot/play/decide.js: actionsFor`). Перечислять для
- * дневника нужно ровно тот же список, что видит рантайм: признак «мнение политики»
- * (`bot/play/actionFeatures.js`) считается по весам варианта, и у `qvalue` в игре это веса жадного
- * предлагателя, а не собственный softmax модели. Иначе в дневник уехали бы другие числа.
- *
- * **`trade` — предлагатель рантайма** (`bot/play/ai.js: think` перечисляет ей): это тот же жадный плюс
- * оценка размена (§36–§38), поэтому дневник, собранный ей, учит ученика ровно на том мнении политики,
- * которое он видит в игре. Без этого признаки (§35–§38) до ученика не доезжали: он учился на весах
- * старого жадного.
+ * Кем перечислялись варианты дневника: та же политика, что у живого хода (`bot/play/decide.js:
+ * proposalPolicy`). Признак «мнение политики» (`bot/play/actionFeatures.js`) считается по весам
+ * варианта, поэтому имя предлагателя уезжает в заголовок: по дневнику видно, с каким рантаймом он
+ * совместим, а смена предлагателя делает старый дневник недействительным.
  */
-const PROPOSES_GREEDY = new Set([...SEARCHING, ...PLAN_POLICIES, 'qvalue', 'trade']);
+const proposerOf = policy => proposalPolicy(policy);
 
 /**
  * Один прогон партии: играет `policy`, а рядом с каждым решением собирает контракт.
@@ -100,7 +108,10 @@ const PROPOSES_GREEDY = new Set([...SEARCHING, ...PLAN_POLICIES, 'qvalue', 'trad
  * партиях: исход партии один на сотню решений, а «что принёс ход» известно после каждого хода — и это
  * плотная цель для оценки, а не редкая и шумная.
  */
-const exportGame = (spec, { policy, policyB, searchEvery, oracle }) => {
+const exportGame = (
+  spec,
+  { policy, policyB, searchEvery, oracle, artifact, artifactB, oraclePaired, oracleEval },
+) => {
   const rows = [];
   let decisions = 0;
   let missed = 0;
@@ -108,6 +119,14 @@ const exportGame = (spec, { policy, policyB, searchEvery, oracle }) => {
   // ход, который ещё не кончился: игрок → индексы его строк, ждущих оценку на границе хода
   const pending = new Map();
   let owner = null;
+
+  /**
+   * Какая сторона какой моделью играет: та же логика, что в `bot/play/duel.js` — политика `policy` (и
+   * артефакт `artifact`) достаётся тому, кто ходит первым, а первым ходит `heroB` на чётных сидах.
+   */
+  const firstHeroId = seed % 2 === 0 ? spec.heroB : spec.heroA;
+  const artifactOf = playerId =>
+    policyB != null && String(playerId) !== String(firstHeroId) ? artifactB : artifact;
 
   /** Ход игрока кончился на этом состоянии — все его решения в ходу получают ценность хода. */
   const closeTurn = (playerId, state) => {
@@ -122,9 +141,10 @@ const exportGame = (spec, { policy, policyB, searchEvery, oracle }) => {
     ...spec,
     policy,
     policyB,
-    // перечисление должно совпасть с тем, что делала партия: у поиска и `qvalue` оно жадное
-    // (`PROPOSES_GREEDY`), у остальных — своё, плюс те же производные от сида `style` и `skipAllowed`,
-    // что считает `playDuel`
+    artifact,
+    artifactB, // перечисление должно совпасть с тем, что делала партия и что делает живой ход: у поиска,
+    // планировщика и ученика оно от предлагателя рантайма (`bot/play/decide.js: proposalPolicy`), у
+    // остальных — своё, плюс те же производные от сида `style` и `skipAllowed`, что считает `playDuel`
     onStep: ({ step, state, playerId, payload, options }) => {
       // смена активного игрока — граница хода: предыдущий ход закрывается оценкой этого состояния
       const active = state.turn?.playerId == null ? null : String(state.turn.playerId);
@@ -134,9 +154,12 @@ const exportGame = (spec, { policy, policyB, searchEvery, oracle }) => {
       }
 
       const candidates = actionsFor(state, playerId, {
-        policy: PROPOSES_GREEDY.has(policy) ? 'greedy' : policy,
+        policy: proposerOf(policy),
         style: (seed % 4) + 1,
         skipAllowed: seed % 5 === 0,
+        // тем же артефактом, каким играет эта сторона: иначе признаки варианта считались бы не той
+        // моделью, которой идёт партия (`bot/play/artifact.js`)
+        artifact: artifactOf(playerId),
       });
       const key = actionKey(payload);
       const chosen = candidates.findIndex(entry => JSON.stringify(entry.action) === key);
@@ -149,12 +172,17 @@ const exportGame = (spec, { policy, policyB, searchEvery, oracle }) => {
       // удачным». Это и есть «учиться на своих ошибках» с критиком: ученик ходит сам, критик оценивает.
       let source = null;
       if (oracle != null) {
-        const decision = searchAction(
-          state,
-          playerId,
-          candidates.map(entry => ({ action: entry.action, weight: entry.weight })),
-          oracle === 'qprior' ? { ...searchBudget(), priorFrom: 'qvalue' } : searchBudget(),
-        );
+        // **Честный оракул** (§46): варианты оцениваются не поодиночке в своих мирах (там разница между
+        // ними тонет в разнице чужих рук — §29), а все в **одних и тех же** мирах (`pairedRootValues`).
+        // Плюс лист с геометрией, если его просили (`ORACLE_EVAL=position|qvalue`): на картах надёжность
+        // цели растёт с 64% до 81%. Дороже в разы — потому и отдельный флаг `--oracle-paired`.
+        const write = candidates.map(entry => ({ action: entry.action, weight: entry.weight }));
+        const budget = { ...searchBudget() };
+        if (oracle === 'qprior') budget.priorSource = 'qvalue';
+        if (oracleEval != null) budget.evaluation = oracleEval;
+        const decision = oraclePaired
+          ? pairedRootValues(state, playerId, write, budget)
+          : searchAction(state, playerId, write, budget);
         source = new Map(
           (decision?.rows ?? []).map(row => [
             row.key,
@@ -195,6 +223,27 @@ const exportGame = (spec, { policy, policyB, searchEvery, oracle }) => {
         }),
       });
 
+      // проба: то же состояние и то же перечисление, из которого посчитаны признаки строки дневника
+      if (probeDir != null) {
+        writeFileSync(
+          join(probeDir, `${seed}-${step}.json`),
+          JSON.stringify({
+            v: 1,
+            seed,
+            step,
+            playerId: String(playerId),
+            policy,
+            proposer: proposerOf(policy),
+            state,
+            candidates: candidates.map(entry => ({
+              action: entry.action,
+              weight: entry.weight,
+              features: actionFeatures(state, playerId, entry, { priorScale }),
+            })),
+          }),
+        );
+      }
+
       // ценность хода считается только у решений **своего** хода: защита в чужом бою к ходу не относится
       if (active != null && active === String(playerId)) {
         const waiting = pending.get(active) ?? [];
@@ -222,6 +271,14 @@ const main = async () => {
   const searchEvery = Math.max(1, numberArg('search-every', 1));
   // оракул: политика, которая на каждом решении ученика считает ценность всех вариантов (обычно `search`)
   const oracle = stringArg('oracle', '') || null;
+  // честный оракул (§46): все варианты оцениваются в одних и тех же мирах (`pairedRootValues`), а лист
+  // можно сменить на геометрию (`--oracle-eval=position`) или на оценку ученика (`qvalue`)
+  const oraclePaired = flag('oracle-paired');
+  const oracleEval = stringArg('oracle-eval', '') || null;
+  // артефакты сторон (`bot/play/artifact.js`): пусто — вшитый в бандл. Так пишется дневник самоигры
+  // «версия против версии»: одна модель за одного героя, другая за другого
+  const artifact = stringArg('artifact', '') || null;
+  const artifactB = stringArg('artifact-b', '') || null;
   const out = stringArg('out', 'trainer/data/samples.jsonl');
   const gzip = flag('gzip') || out.endsWith('.gz');
   const requested = stringArg('heroes', '')
@@ -232,6 +289,7 @@ const main = async () => {
 
   // поток, а не массив: 3000 партий дают сотни тысяч строк, и держать их в памяти незачем
   mkdirSync(dirname(out), { recursive: true });
+  if (probeDir != null) mkdirSync(probeDir, { recursive: true });
   const file = createWriteStream(out);
   const sink = gzip ? createGzip() : null;
   if (sink) sink.pipe(file);
@@ -252,24 +310,46 @@ const main = async () => {
       heroes,
       policy,
       policyB,
-      model: modelStamp(policy),
+      // кем перечислялись варианты: признак 19 вектора варианта — веса этой политики, и по заголовку
+      // видно, с каким рантаймом дневник совместим (смена предлагателя делает дневник недействительным)
+      proposer: proposerOf(policy),
+      model: modelStamp(policy, artifact),
+      // какими артефактами игрались партии: пусто — вшитый в бандл. Без этой записи дневник
+      // «версия против версии» не отличить от обычного самообучения
+      artifact,
+      artifactB,
       // контракт несёт ценность хода и (с оракулом) ценность **каждого** варианта
       turnValue: true,
       oracle,
+      // как считал оракул: парная оценка в одних мирах и каким листом — по заголовку видно, «честный»
+      // это дневник или прежний (поодиночке, ручным листом)
+      oraclePaired,
+      oracleEval,
     }),
   );
 
+  const startedAt = Date.now();
   for (let index = 0; index < games; index += 1) {
     const heroA = heroes[index % heroes.length];
     const heroB = heroes[(index + 1) % heroes.length];
     const seed = from + index;
-    const game = exportGame({ seed, heroA, heroB }, { policy, policyB, searchEvery, oracle });
+    const game = exportGame(
+      { seed, heroA, heroB },
+      { policy, policyB, searchEvery, oracle, artifact, artifactB, oraclePaired, oracleEval },
+    );
     missed += game.missed;
     for (const row of game.rows) {
       write(JSON.stringify(row));
       rows += 1;
     }
-    if ((index + 1) % 100 === 0) console.log(`  партий ${index + 1}/${games}, строк ${rows}`);
+    // прогресс — в stderr: он не буферизуется блоками, поэтому виден сразу даже когда вывод забирают
+    // (`Select-Object -Last`), а сам поток дневника остаётся чистым. Дорогой оракул (парный, §46)
+    // считает партию десятками секунд, и без этого «жив ли прогон» непонятно
+    if ((index + 1) % 25 === 0 || index + 1 === games) {
+      process.stderr.write(
+        `  партий ${index + 1}/${games}, строк ${rows}, прошло ${Math.round((Date.now() - startedAt) / 1000)} с\n`,
+      );
+    }
   }
 
   (sink ?? file).end();

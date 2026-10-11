@@ -96,8 +96,12 @@ const battlePause = start => {
   return runAction(battle, { type: 'UI_OK', playerId: '1' });
 };
 
+/** Клик по варианту только отмечает его: эффект применяет общая кнопка подтверждения (`UI_OK`). */
 const choose = (pause, optionId) =>
-  runAction(pause, { type: 'PICK', kind: 'option', id: optionId, playerId: '0' });
+  runAction(runAction(pause, { type: 'PICK', kind: 'option', id: optionId, playerId: '0' }), {
+    type: 'UI_OK',
+    playerId: '0',
+  });
 
 const coilStates = state => player(state, '0').items.map(item => item.state);
 const hp = (state, playerId, fighterId) =>

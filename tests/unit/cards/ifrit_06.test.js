@@ -115,24 +115,24 @@ describe('карта ifrit_06 «Пепельная стая»', () => {
     expect(card.rules.map(rule => rule.moment)).toEqual([
       'duringCombat',
       'duringCombat',
-      'afterCombat',
+      'duringCombat',
     ]);
     for (const rule of card.rules) expect(isMoment(rule.moment)).toBe(true);
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({
       type: 'hybrid',
       value: 2,
-      bonus: 2,
+      bonus: 3,
       quantity: 3,
       fighter: 'ash',
     });
-    // тиры взаимоисключающие: 3 духа — +2, 2 духа — +1, 1 дух — добор после боя
+    // тиры взаимоисключающие: 3 духа — +3, 2 духа — +2, 1 дух — +1
     expect(card.rules[0].when[0].params).toMatchObject({ group: 'ash', min: 3, max: 3 });
     expect(card.rules[1].when[0].params).toMatchObject({ group: 'ash', min: 2, max: 2 });
     expect(card.rules[2].when[0].params).toMatchObject({ group: 'ash', min: 1, max: 1 });
-    expect(card.rules[0].then[0]).toMatchObject({ action: 'SET_COMBAT', delta: 2 });
-    expect(card.rules[1].then[0]).toMatchObject({ action: 'SET_COMBAT', delta: 1 });
-    expect(card.rules[2].then[0]).toMatchObject({ action: 'SET_CARDS', op: 'draw', count: 1 });
+    expect(card.rules[0].then[0]).toMatchObject({ action: 'SET_COMBAT', delta: 3 });
+    expect(card.rules[1].then[0]).toMatchObject({ action: 'SET_COMBAT', delta: 2 });
+    expect(card.rules[2].then[0]).toMatchObject({ action: 'SET_COMBAT', delta: 1 });
   });
 
   it('карта открывает выбор атакующего: духов трое, значит выбирает игрок', () => {
@@ -147,18 +147,27 @@ describe('карта ifrit_06 «Пепельная стая»', () => {
     expect(opened.combat.attackerFighterId).toBeNull();
   });
 
-  it('три живых духа — значение +2, атака 4', () => {
+  it('три живых духа — значение +3, атака 5', () => {
     const after = fight(buildState({ spirits: [1, 2, 3] }));
+
+    expect(after.lastCombat.attackValue).toBe(5);
+    expect(after.lastCombat.combatDamage).toBe(5);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
+    // добора нет: карта больше не добирает ни на одном тире
+    expect(handIds(after)).toEqual([]);
+  });
+
+  it('два живых духа — значение +2, атака 4', () => {
+    const after = fight(buildState({ spirits: [1, 2] }));
 
     expect(after.lastCombat.attackValue).toBe(4);
     expect(after.lastCombat.combatDamage).toBe(4);
     expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
-    // добора не было: тир «один дух» не сработал
     expect(handIds(after)).toEqual([]);
   });
 
-  it('два живых духа — значение +1, атака 3', () => {
-    const after = fight(buildState({ spirits: [1, 2] }));
+  it('один живой дух — значение +1, атака 3', () => {
+    const after = fight(buildState({ spirits: [1] }));
 
     expect(after.lastCombat.attackValue).toBe(3);
     expect(after.lastCombat.combatDamage).toBe(3);
@@ -166,18 +175,8 @@ describe('карта ifrit_06 «Пепельная стая»', () => {
     expect(handIds(after)).toEqual([]);
   });
 
-  it('один живой дух — прибавки нет, после битвы добор 1 карты', () => {
-    const after = fight(buildState({ spirits: [1] }));
-
-    expect(after.lastCombat.attackValue).toBe(2);
-    expect(after.lastCombat.combatDamage).toBe(2);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(12);
-    // верх колоды (deck_2) ушёл в руку
-    expect(handIds(after)).toEqual(['deck_2']);
-  });
-
-  it('дух бьёт в защиту: число карты не растёт, добор идёт после битвы', () => {
-    // Бета защищается картой 3: дух не пробивает защиту, но правило «остался один дух» всё равно
+  it('дух бьёт в защиту: число карты не растёт, тир считается по живым духам', () => {
+    // Бета защищается картой 3: дух не пробивает защиту, но правило тира всё равно
     // срабатывает — оно смотрит на живых, а не на исход боя
     const state = buildState({ spirits: [1], deckCards: [deckCard(1)] });
     player(state, '1').hand = zone([
@@ -199,9 +198,10 @@ describe('карта ifrit_06 «Пепельная стая»', () => {
     });
 
     expect(after.lastCombat.defenseValue).toBe(3);
-    expect(after.lastCombat.attackValue).toBe(2);
+    expect(after.lastCombat.attackValue).toBe(3);
     expect(after.lastCombat.winner).toBe('defender');
     expect(player(after, '0').fighters.map(entry => entry.id)).toEqual(['ifrit', 'ash_1']);
-    expect(handIds(after)).toEqual(['deck_1']);
+    // карта больше не добирает: рука пуста
+    expect(handIds(after)).toEqual([]);
   });
 });

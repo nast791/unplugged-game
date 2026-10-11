@@ -38,18 +38,15 @@ export default defineNuxtConfig({
     '#shared': fileURLToPath(new URL('./shared', import.meta.url)),
   },
   /**
-   * Раскладка компонентов по конвенции владельца: `atoms` — универсальные кирпичики (имя всегда с `A`),
-   * `molecules` — небольшие сборки из атомов, `organisms` — секции. У этих каталогов префикс пути выключен,
-   * поэтому имя компонента равно имени файла (`ALoader`, `Logo`, `Menu`, `Footer`). У `game` префикс задан
-   * руками: файл остаётся `game/Board.vue` (на него ссылаются документы), а компонент — `<GameBoard>`,
-   * как его и зовёт `pages/game.vue`.
+   * **Автоимпорта компонентов нет** (решение владельца): `components: []` отключает обход каталогов, и
+   * каждый компонент импортируется там, где используется, — `import AButton from '~/components/atoms/AButton.vue'`.
+   * Так видно, откуда взялся тег, и не бывает двух имён у одного файла (префикс пути против имени файла).
+   *
+   * Ядро и модули этой настройки не касаются: `NuxtLink`, `ClientOnly`, `NuxtPage`, `NuxtLayout` приходят
+   * из Nuxt, `Icon` — из `@nuxt/icon` (у них свои `addComponent`, публичного импорта у них нет).
+   * `v-stage` и прочие компоненты konva ставит плагин `app/plugins/konva.client.js` (`vue-konva`).
    */
-  components: [
-    { path: '~/components/atoms', pathPrefix: false },
-    { path: '~/components/molecules', pathPrefix: false },
-    { path: '~/components/organisms', pathPrefix: false },
-    { path: '~/components/game', prefix: 'Game' },
-  ],
+  components: [],
   /** Версия сборки в подвале лобби: `npm_package_version` есть только при запуске через pnpm-скрипты. */
   runtimeConfig: {
     public: {
@@ -150,7 +147,7 @@ export default defineNuxtConfig({
   },
   css: ['~/assets/styles.css'],
   nuxtQuery: {
-    autoImports: ['useQuery', 'useMutation', 'useQueries'],
+    autoImports: ['useQuery', 'useQueryClient', 'useMutation', 'useQueries'],
     devtools: true,
     queryClientOptions: {
       defaultOptions: {
@@ -175,11 +172,12 @@ export default defineNuxtConfig({
   },
   icon: {
     /**
-     * Иконки — SVG из локальной коллекции Lucide (`@iconify-json/lucide`): без сети и без растровых
-     * картинок (`docs/ui-plan.md` §2.6). `clientBundle.scan` кладёт в бандл только те иконки, которые
-     * реально встречаются в шаблонах.
+     * Иконки — SVG из локальных коллекций (`@iconify-json/lucide`, `@iconify-json/game-icons`,
+     * `@iconify-json/arcticons`): без сети и без растровых картинок (`docs/ui-plan.md` §2.6).
+     * `clientBundle.scan` берёт имена из шаблонов, а значки из контента (предметы, тип карты) приходят
+     * строками — их отдаёт серверная сборка коллекции.
      */
-    serverBundle: { collections: ['lucide'] },
-    clientBundle: { scan: true },
+    serverBundle: { collections: ['lucide', 'game-icons'] },
+    clientBundle: { scan: true, icons: ['arcticons:mistplay'] },
   },
 });

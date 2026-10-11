@@ -1,4 +1,5 @@
 import { SET_FIGHTER_CELL } from '#shared/actions/fighter.js';
+import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer, playerHeroes, resolveOkBackControls } from '#shared/helpers/base.js';
 import {
   clearHeroOnNumberedCell,
@@ -13,11 +14,11 @@ export default {
   hints: {
     chooseHero: {
       active: (partyState, playerId) => !hasPickPreview(partyState, playerId),
-      text: () => 'Выберите одного из героев, который будет размещен на номерной клетке поля',
+      text: HINTS.pickNumHero.chooseHero,
     },
     confirmHero: {
       active: (partyState, playerId) => hasPickPreview(partyState, playerId),
-      text: () => 'Подтвердите выбор героя или нажмите «Назад»',
+      text: HINTS.pickNumHero.confirmHero,
     },
   },
 

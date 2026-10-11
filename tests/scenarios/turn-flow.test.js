@@ -48,6 +48,7 @@ describe('scenario: ход через publicApi.runAction', () => {
       optional: false,
       throughEnemies: false,
       damageOnPass: null,
+      healOnPass: null,
       damagedFighterIds: [],
       moves: [],
       source: null,

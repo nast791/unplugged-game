@@ -261,3 +261,105 @@ describe('11 «Метель из осколков»: проход сквозь �
     expect(state.movement).toBeNull();
   });
 });
+
+describe('13 «Вечность»: ворона возвращается на любую свободную клетку с 1 hp', () => {
+  /** Линия 8—9—10—11: лёд только под бойцами, свободные клетки — лес: лёд для карты не нужен. */
+  const eternityMap = {
+    id: 'eternity',
+    nodes: [
+      { id: 8, neighbors: [9], terrain: 'ice' },
+      { id: 9, neighbors: [8, 10], terrain: 'forest' },
+      { id: 10, neighbors: [9, 11], terrain: 'ice' },
+      { id: 11, neighbors: [10], terrain: 'forest' },
+    ],
+  };
+
+  const eternity = () => {
+    const state = createState({ map: eternityMap });
+    player(state, '0').fighters = [
+      fighter({
+        id: 'snow-queen',
+        name: 'Снежная королева',
+        type: 'hero',
+        currentPosition: 8,
+        currentHp: 16,
+        startHp: 16,
+        attackRange: 3,
+      }),
+    ];
+    player(state, '0').lost = [
+      fighter({
+        id: 'crow_1',
+        name: 'Crow',
+        type: 'assistant',
+        group: 'crow',
+        currentPosition: null,
+        currentHp: 0,
+        startHp: 2,
+        move: 3,
+        attackRange: 1,
+      }),
+    ];
+    player(state, '1').fighters = [
+      fighter({
+        id: 'foe',
+        name: 'Foe',
+        type: 'hero',
+        currentPosition: 10,
+        currentHp: 5,
+        startHp: 5,
+      }),
+    ];
+    return state;
+  };
+
+  it('окно открывается на свободных клетках, а не только на льду', () => {
+    const opened = run(eternity(), '13', 'effect', '0');
+
+    expect(opened.targeting.kind).toBe('cells');
+    expect(opened.targeting.required).toBe(true);
+    expect(opened.targeting.candidates.map(entry => entry.cellId)).toEqual(['9', '11']);
+  });
+
+  it('выбранная клетка поднимает ворону с 1 здоровьем и приносит карту', () => {
+    const opened = run(eternity(), '13', 'effect', '0');
+    const handBefore = hand(player(opened, '0')).length;
+    opened.targeting.picked = ['11'];
+
+    const next = run(opened, '13', 'picked', '0');
+    const crow = player(next, '0').fighters.find(entry => entry.id === 'crow_1');
+
+    expect(crow.currentPosition).toBe('11');
+    expect(crow.currentHp).toBe(1);
+    expect(player(next, '0').lost).toEqual([]);
+    expect(hand(player(next, '0'))).toHaveLength(handBefore + 1);
+  });
+
+  it('свободных клеток нет — окна нет, ворона остаётся убитой', () => {
+    const state = eternity();
+    // занимаем обе свободные клетки: поднимать ворону некуда
+    player(state, '1').fighters.push(
+      fighter({
+        id: 'foe_2',
+        name: 'Foe 2',
+        type: 'hero',
+        currentPosition: 9,
+        currentHp: 5,
+        startHp: 5,
+      }),
+      fighter({
+        id: 'foe_3',
+        name: 'Foe 3',
+        type: 'hero',
+        currentPosition: 11,
+        currentHp: 5,
+        startHp: 5,
+      }),
+    );
+
+    const after = run(state, '13', 'effect', '0');
+
+    expect(after.targeting ?? null).toBeNull();
+    expect(player(after, '0').lost).toHaveLength(1);
+  });
+});

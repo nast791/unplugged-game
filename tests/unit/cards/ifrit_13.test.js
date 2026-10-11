@@ -17,7 +17,7 @@ const lineMap = {
   ],
 };
 
-/** Та же линия, но области разрезаны: 1—2 лёд, 3—4 лава. Клетка 4 не делит область с Ифритом. */
+/** Та же линия, но области разрезаны: 1—2 лёд, 3—4 лава. Проверяет, что область ни при чём. */
 const splitMap = {
   id: 'split',
   nodes: [
@@ -46,7 +46,7 @@ const unit = (id, cell, hp, extra = {}) => ({
 
 /**
  * Защита противника с условным свойством: «во время битвы: если цель стоит на клетке 3 или дальше,
- * значение карты +1». Нужна для проверки третьего режима — отмены чужих свойств.
+ * значение карты +1». Нужна для проверки режима отмены чужих свойств.
  * Текст намеренно без кириллицы: это тестовая карта, её же кладут в тесты на парсинг текстов.
  */
 const conditionalDefense = {
@@ -79,10 +79,11 @@ const slot = (id, name, order, fighters, hand = []) => ({
 /**
  * Ифрит на 2 держит «Счёт ударов»; ход Ифрита. `actionsTotal`/`actionsLeft` — состояние ДО объявления
  * действия: карта спишет одно действие сама (`SET_ACTIONS −1`), а `spent` считается как
- * `actionsTotal − actionsLeft`. Отсюда рабочие наборы:
- *   первое действие — `4/3` или `2/2` (после удара spent 1);
- *   второе — `4/4` (после удара spent 2);
- *   третье — `4/2` (после удара spent 3).
+ * `actionsTotal − actionsLeft` ПОСЛЕ списания, то есть `actionsTotal − actionsLeft + 1`. Отсюда рабочие
+ * наборы:
+ *   первое действие — `2/2` или `4/4` (spent 1) — 1 урон выбранному врагу после битвы;
+ *   второе — `4/3` (spent 2) — свойства карты оппонента не действуют;
+ *   третье — `4/2` (spent 3) — +2, если боец двигался в этом ходу.
  * `movedThisTurn` — флаг «боец двигался в этом ходу»; `betaHand` — карты защиты Беты;
  * `enemies` — бойцы игрока 1 (по умолчанию только Бета).
  */
@@ -177,15 +178,15 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
       'duringCombat',
       'afterCombat',
       'picked',
-      'duringCombat',
       'immediately',
+      'duringCombat',
     ]);
     for (const rule of card.rules) expect(isMoment(rule.moment)).toBe(true);
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({
       type: 'hybrid',
-      value: 2,
-      bonus: 2,
+      value: 5,
+      bonus: 1,
       quantity: 2,
       fighter: 'ifrit',
     });
@@ -200,10 +201,10 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
       fact: 'AP',
       params: { min: 0, spentMin: 1, spentMax: 1 },
     });
-    // первое действие — не «1 урон цели боя», а окно по врагам В ОБЛАСТИ Ифрита
+    // первое действие — окно по врагам: не «в области Ифрита», а по любому бойцу противника
     expect(card.rules[1].when[2]).toMatchObject({
       fact: 'FIGHTERS',
-      params: { side: 'opponent', areaOf: 'ifrit', min: 1 },
+      params: { side: 'opponent', min: 1 },
       var: 'foes',
     });
     expect(card.rules[1].then[0]).toMatchObject({
@@ -212,17 +213,25 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
       candidates: '$foes',
       count: 1,
       required: true,
+      // единственный враг на столе — движок отметит его сам
+      auto: true,
     });
-    // отметку бойца в области обрабатывает отдельное правило `picked`
+    // отметку бойца обрабатывает отдельное правило `picked`
     expect(card.rules[2].when[0]).toMatchObject({ fact: 'PICKED', var: 'picked' });
     expect(card.rules[2].then[0]).toMatchObject({
       action: 'SET_HEALTH',
       fighterIds: '$picked',
       delta: -1,
     });
+    // второе действие — отмена чужих свойств, третье — +2 за движение
     expect(card.rules[3].when[0]).toMatchObject({
       fact: 'AP',
       params: { min: 0, spentMin: 2, spentMax: 2 },
+    });
+    expect(card.rules[3].then[0]).toMatchObject({
+      action: 'SET_COMBAT',
+      op: 'cancelEffects',
+      side: 'opponent',
     });
     expect(card.rules[4].when[0]).toMatchObject({
       fact: 'AP',
@@ -230,26 +239,28 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
     });
     expect(card.rules[4].then[0]).toMatchObject({
       action: 'SET_COMBAT',
-      op: 'cancelEffects',
-      side: 'opponent',
+      op: 'value',
+      side: 'self',
+      delta: 2,
     });
-    // текст карты описывает именно выбор бойца в области
-    expect(card.text).toContain('выбранному бойцу противника в области Ифрита');
+    // текст карты описывает выбор любого бойца противника, а не только в области
+    expect(card.text).toContain('выбранному бойцу противника');
+    expect(card.text).not.toContain('в области Ифрита');
   });
 
-  it('в защиту значение карты противника снижается на 1: 5 → 4', () => {
-    const after = defend({ value: 5 });
+  it('в защиту значение карты противника снижается на 1: 7 → 6', () => {
+    const after = defend({ value: 7 });
 
-    expect(after.lastCombat.attackValue).toBe(4);
-    expect(after.lastCombat.defenseValue).toBe(2);
+    expect(after.lastCombat.attackValue).toBe(6);
+    expect(after.lastCombat.defenseValue).toBe(5);
+    // 6 против 5 — атакующий проходит на 1
     expect(after.lastCombat.winner).toBe('attacker');
-    // 5 − 1 − 2 = 2 урона
-    expect(after.lastCombat.combatDamage).toBe(2);
-    expect(fighterOf(after, '0', 'ifrit').currentHp).toBe(12);
+    expect(after.lastCombat.combatDamage).toBe(1);
+    expect(fighterOf(after, '0', 'ifrit').currentHp).toBe(13);
   });
 
   it('в защиту карта не двигает своё значение: без среза урона было бы на 1 больше', () => {
-    // та же атака, но Ифрит защищается картой без свойства
+    // та же атака 7, но Ифрит защищается картой без свойства (5): проходит 2 вместо 1
     const state = buildState({ actionsTotal: 2, actionsLeft: 2 });
     state.turn = { ...state.turn, playerId: '1', actedRound: ['1'] };
     player(state, '1').hand = zone([
@@ -257,7 +268,7 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
         id: 'beta_atk',
         instanceId: 'beta_atk_1',
         type: 'attack',
-        value: 5,
+        value: 7,
         bonus: 1,
         fighter: 'beta',
       },
@@ -266,7 +277,7 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
       id: 'plain_def',
       instanceId: 'plain_def_1',
       type: 'defense',
-      value: 2,
+      value: 5,
       bonus: 1,
       fighter: 'ifrit',
     };
@@ -285,25 +296,26 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
       playerId: '0',
     });
 
-    expect(after.lastCombat.attackValue).toBe(5);
-    expect(after.lastCombat.combatDamage).toBe(3);
-    expect(fighterOf(after, '0', 'ifrit').currentHp).toBe(11);
+    expect(after.lastCombat.attackValue).toBe(7);
+    expect(after.lastCombat.combatDamage).toBe(2);
+    expect(fighterOf(after, '0', 'ifrit').currentHp).toBe(12);
   });
 
-  it('первым действием в атаку: окно по врагам в области Ифрита, 1 урон выбранному', () => {
-    // кроме цели боя (Беты на 3) в области Ифрита стоит второй враг на 1
+  it('первым действием в атаку: окно по всем врагам, 1 урон выбранному', () => {
+    // кроме цели боя (Беты на 3) на поле второй враг на 4 — он тоже кандидат, область ни при чём
     const state = buildState({
       actionsTotal: 2,
       actionsLeft: 2,
-      enemies: [unit('beta', 3, 14), unit('gamma', 1, 14)],
+      map: splitMap,
+      enemies: [unit('beta', 3, 14), unit('gamma', 4, 14)],
     });
 
     const opened = battleAndPass(state, 'beta');
 
-    expect(opened.lastCombat.attackValue).toBe(2);
-    expect(opened.lastCombat.combatDamage).toBe(2);
+    expect(opened.lastCombat.attackValue).toBe(5);
+    expect(opened.lastCombat.combatDamage).toBe(5);
     expect(opened.lastCombat.targetFighterId).toBe('beta');
-    // окно обязательное, кандидаты — все враги в области
+    // окно обязательное, кандидаты — все враги, включая стоящего в другой области
     expect(opened.targeting).toMatchObject({
       playerId: '0',
       kind: 'fighters',
@@ -328,88 +340,61 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
     // выбираем не цель боя: 1 урон уходит именно гамме
     const after = extraHit(opened, 'gamma');
 
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(12);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
     expect(fighterOf(after, '1', 'gamma').currentHp).toBe(13);
     expect(after.targeting ?? null).toBeNull();
     expect(after.combat ?? null).toBeNull();
   });
 
-  it('первым действием можно добить и цель самой битвы: 2 + 1 = 3 урона', () => {
-    const after = battleAndHit(buildState({ actionsTotal: 2, actionsLeft: 2 }), 'beta', 'beta');
+  it('первым действием враг один — движок отмечает его сам, окна игрок не видит', () => {
+    const after = battle(buildState({ actionsTotal: 2, actionsLeft: 2 }));
 
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(11);
+    // 5 от карты и 1 от свойства: выбор безальтернативный, клика нет
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+    expect(after.targeting ?? null).toBeNull();
   });
 
-  it('первым действием врага в области нет — окна нет и урона нет', () => {
-    // гамма стоит на 4, она в лавовой области: с Ифритом (лёд 1—2) область не общая
-    const opened = battleAndPass(
+  it('первым действием можно добить и цель самой битвы: 5 + 1 = 6 урона', () => {
+    const after = battleAndHit(
       buildState({
         actionsTotal: 2,
         actionsLeft: 2,
-        map: splitMap,
         enemies: [unit('beta', 3, 14), unit('gamma', 4, 14)],
       }),
       'beta',
-    );
-
-    expect(opened.targeting ?? null).toBeNull();
-    expect(fighterOf(opened, '1', 'beta').currentHp).toBe(12);
-    expect(fighterOf(opened, '1', 'gamma').currentHp).toBe(14);
-  });
-
-  it('вторым действием без движения бонуса нет: карта держит своё значение 2', () => {
-    const after = battle(buildState({ actionsTotal: 4, actionsLeft: 3, movedThisTurn: false }));
-
-    expect(after.lastCombat.attackValue).toBe(2);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(12);
-  });
-
-  it('вторым действием с движением — +2, атака 4', () => {
-    const after = battle(buildState({ actionsTotal: 4, actionsLeft: 3, movedThisTurn: true }));
-
-    expect(after.lastCombat.attackValue).toBe(4);
-    expect(after.lastCombat.combatDamage).toBe(4);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
-  });
-
-  it('первым действием в атаку свойство «после битвы» не путается со вторым', () => {
-    // тот же бой, но действие первое: +2 за движение не применяется, зато есть окно после битвы
-    const after = battleAndHit(
-      buildState({ actionsTotal: 2, actionsLeft: 2, movedThisTurn: true }),
-      'beta',
       'beta',
     );
 
-    expect(after.lastCombat.attackValue).toBe(2);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(11);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+    expect(fighterOf(after, '1', 'gamma').currentHp).toBe(14);
   });
 
-  it('третьим действием в атаку свойства карты противника отменяются', () => {
-    // условная защита Беты дала бы +1 и снизила урон; третьим действием свойство отменено
-    const state = buildState({
-      actionsTotal: 4,
-      actionsLeft: 2,
-      betaHand: [conditionalDefense],
-    });
+  it('третьим действием без движения бонуса нет: карта держит своё значение 5', () => {
+    const after = battle(buildState({ actionsTotal: 4, actionsLeft: 2, movedThisTurn: false }));
 
-    const opened = attack(state);
-    const after = runAction(opened, {
-      type: 'PICK',
-      kind: 'card',
-      id: 'beta_tricky_1',
-      playerId: '1',
-    });
-
-    expect(after.lastCombat.attackValue).toBe(2);
-    expect(after.lastCombat.defenseValue).toBe(0);
-    expect(after.lastCombat.combatDamage).toBe(2);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(12);
-    // бой не завис: очередь дошла до закрытия
-    expect(after.combat ?? null).toBeNull();
-    expect(discard(player(after, '0')).map(entry => entry.id)).toEqual(['ifrit_13']);
+    expect(after.lastCombat.attackValue).toBe(5);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
   });
 
-  it('без третьего действия та же условная защита срабатывает: урона меньше', () => {
+  it('третьим действием с движением — +2, атака 7', () => {
+    const after = battle(buildState({ actionsTotal: 4, actionsLeft: 2, movedThisTurn: true }));
+
+    expect(after.lastCombat.attackValue).toBe(7);
+    expect(after.lastCombat.combatDamage).toBe(7);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(7);
+  });
+
+  it('первым действием в атаку свойство «после битвы» не путается с третьим', () => {
+    // тот же бой, но действие первое: +2 за движение (третий режим) не применяется,
+    // зато работает окно после битвы — враг один, поэтому урон наносится без клика
+    const after = battle(buildState({ actionsTotal: 2, actionsLeft: 2, movedThisTurn: true }));
+
+    expect(after.lastCombat.attackValue).toBe(5);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+  });
+
+  it('вторым действием в атаку свойства карты противника отменяются', () => {
+    // условная защита Беты дала бы +1 и снизила урон; вторым действием свойство отменено
     const state = buildState({
       actionsTotal: 4,
       actionsLeft: 3,
@@ -424,8 +409,34 @@ describe('карта ifrit_13 «Счёт ударов»', () => {
       playerId: '1',
     });
 
+    expect(after.lastCombat.attackValue).toBe(5);
+    expect(after.lastCombat.defenseValue).toBe(0);
+    expect(after.lastCombat.combatDamage).toBe(5);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
+    // бой не завис: очередь дошла до закрытия
+    expect(after.combat ?? null).toBeNull();
+    expect(discard(player(after, '0')).map(entry => entry.id)).toEqual(['ifrit_13']);
+  });
+
+  it('без второго действия та же условная защита срабатывает: урона меньше', () => {
+    const state = buildState({
+      actionsTotal: 4,
+      actionsLeft: 4,
+      betaHand: [conditionalDefense],
+    });
+
+    const opened = attack(state);
+    const after = runAction(opened, {
+      type: 'PICK',
+      kind: 'card',
+      id: 'beta_tricky_1',
+      playerId: '1',
+    });
+
+    expect(after.lastCombat.attackValue).toBe(5);
     expect(after.lastCombat.defenseValue).toBe(1);
-    expect(after.lastCombat.combatDamage).toBe(1);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(13);
+    expect(after.lastCombat.combatDamage).toBe(4);
+    // это первое действие хода: следом сработало свойство «после битвы» (враг один, без клика)
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
   });
 });

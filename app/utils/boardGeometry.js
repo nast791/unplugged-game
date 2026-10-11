@@ -55,6 +55,20 @@ export const SHADOW = {
   },
 };
 
+/**
+ * Подсветка расстановки: клетку области можно занять — **мягкое свечение наружу** цвета `free`
+ * (`shadowBlur`), на ней уже стоит свой боец — серая обводка без свечения. Обводку самой клетки кольцо
+ * не трогает: `free` — цвет свечения, а не второй рамки поверх родной границы.
+ * Состояние читается силой свечения: `glow` — у всей области, вдвое — у клетки активного бойца,
+ * втрое — под курсором при перетаскивании.
+ */
+export const PLACEMENT = {
+  free: '#22d3ee',
+  busy: '#94a3b8',
+  stroke: 3,
+  glow: 14,
+};
+
 /** Отрезок, обрезанный по кружкам: линия упирается в границы, а не в центры. */
 export const trimSegment = (from, to, radius) => {
   const dx = to.x - from.x;
@@ -477,6 +491,29 @@ export const clickTarget = node => {
     current = typeof current.getParent === 'function' ? current.getParent() : null;
   }
   return null;
+};
+
+/**
+ * Клетка под точкой экрана: обратное преобразование сцены (сдвиг и масштаб зума) плюс ближайший кружок в
+ * радиусе. Нужна перетаскиванию аватарки: браузер отдаёт только координаты курсора, а доска живёт в
+ * координатах поля. Клик по доске в эту же клетку приводит `clickTarget` — попадания совпадают.
+ */
+export const cellAtPoint = (nodes, radius, transform, point) => {
+  const scaleX = Number(transform?.scaleX ?? transform?.scale) || 1;
+  const scaleY = Number(transform?.scaleY ?? transform?.scale) || 1;
+  const x = (Number(point?.x) - Number(transform?.x ?? 0)) / scaleX;
+  const y = (Number(point?.y) - Number(transform?.y ?? 0)) / scaleY;
+
+  let found = null;
+  let best = Infinity;
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) continue;
+    const distance = Math.hypot(x - node.x, y - node.y);
+    if (!(distance <= radius) || distance >= best) continue;
+    best = distance;
+    found = String(node.id);
+  }
+  return found;
 };
 
 /**

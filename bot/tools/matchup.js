@@ -35,16 +35,25 @@ export const runMatrix = ({
   policy = 'random',
   policyB = null,
   maxSteps = undefined,
+  artifact = null,
+  artifactB = null,
   onPair,
 } = {}) => {
   const pairResults = matchups(heroes).map(({ heroA, heroB }) => {
     // пара пишется в отчёт: без неё находку не повторить (сид один, а партий много)
-    const reports = runSweep(seeds, { heroA, heroB, mapId, policy, policyB, maxSteps }).map(
-      report => ({
-        ...report,
-        matchup: `${heroA} против ${heroB}`,
-      }),
-    );
+    const reports = runSweep(seeds, {
+      heroA,
+      heroB,
+      mapId,
+      policy,
+      policyB,
+      maxSteps,
+      artifact,
+      artifactB,
+    }).map(report => ({
+      ...report,
+      matchup: `${heroA} против ${heroB}`,
+    }));
     if (onPair) onPair({ heroA, heroB, reports });
     return { heroA, heroB, reports };
   });

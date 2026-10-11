@@ -22,6 +22,7 @@
  */
 import { noiseMargin } from './matchup.js';
 import { runMatrixParallel } from '../learn/parallel.js';
+import { artifactName } from '../play/artifact.js';
 import { heroIds as poolHeroIds, heroName } from '../play/pool.js';
 import { percent } from '../play/metrics.js';
 import { failuresOf, groupByReason, plural, showReport } from './sweep.js';
@@ -47,6 +48,11 @@ const maxSteps = numberArg('max-steps', null);
 const mapId = stringArg('map', 'generated');
 const policy = stringArg('policy', 'qvalue');
 const policyB = stringArg('policy-b', 'greedy');
+// Артефакты сторон: `--artifact` — держатель `--policy`, `--artifact-b` — держатель `--policy-b`.
+// Пусто — вшитый в бандл (`bot/play/artifact.js`). Так меряется «новая версия против старой» и
+// «ученик за одного героя против ученика за другого»: одна и та же политика, разные модели.
+const artifact = stringArg('artifact', '') || null;
+const artifactB = stringArg('artifact-b', '') || null;
 const top = stringArg('top', null);
 const depths = (stringArg('depth', '') ?? '')
   .split(',')
@@ -121,7 +127,7 @@ const sumOf = table => {
 };
 
 /** Одна серия: политика `side` ходит первой, `other` — второй (и наоборот во встречной). */
-const measure = async (label, side, other) => {
+const measure = async (label, side, other, artifacts = {}) => {
   const started = Date.now();
   const { pairResults, mirrorPairs } = await runMatrixParallel({
     heroes,
@@ -131,6 +137,8 @@ const measure = async (label, side, other) => {
     policyB: other,
     maxSteps: maxSteps ?? undefined,
     workers,
+    artifact: artifacts.a ?? null,
+    artifactB: artifacts.b ?? null,
   });
   const reports = [
     ...pairResults.flatMap(pair => pair.reports),
@@ -171,13 +179,19 @@ const deltaNoise = gamesPerHero => 1.96 * Math.sqrt((2 * 0.25) / Math.max(1, gam
 const runOne = async depth => {
   if (depth != null) process.env.QVALUE_DEPTH = String(depth);
   if (top != null) process.env.QVALUE_TOP = String(top);
+  const suffix =
+    artifact == null && artifactB == null
+      ? ''
+      : `, артефакт ${artifactName(artifact)} против ${artifactName(artifactB)}`;
   const label =
-    depth == null ? policy : `${policy} (глубина ${depth}${top ? `, верхушка ${top}` : ''})`;
+    depth == null
+      ? `${policy}${suffix}`
+      : `${policy} (глубина ${depth}${top ? `, верхушка ${top}` : ''}${suffix})`;
 
   console.log(`\n### ${label} против ${policyB}`);
 
-  const main = await measure(label, policy, policyB);
-  const base = await measure(policyB, policyB, policy);
+  const main = await measure(label, policy, policyB, { a: artifact, b: artifactB });
+  const base = await measure(policyB, policyB, policy, { a: artifactB, b: artifact });
   const perHero = Math.round(main.games / heroes.length);
 
   console.log(

@@ -87,13 +87,17 @@ const battlePause = (start = state()) => {
   return runAction(battle, { type: 'UI_OK', playerId: '1' });
 };
 
+/** Клик по варианту только отмечает его: эффект применяет общая кнопка подтверждения (`UI_OK`). */
 const choose = (pause, optionId) =>
-  runAction(pause, {
-    type: 'PICK',
-    kind: 'option',
-    id: optionId,
-    playerId: '0',
-  });
+  runAction(
+    runAction(pause, {
+      type: 'PICK',
+      kind: 'option',
+      id: optionId,
+      playerId: '0',
+    }),
+    { type: 'UI_OK', playerId: '0' },
+  );
 
 const coilStates = state => player(state, '0').items.map(item => item.state);
 const heroHp = state => player(state, '0').fighters[0]?.currentHp;
@@ -125,6 +129,29 @@ describe('карта tesla_01 «Поток энергии»', () => {
     expect(paused.combat.effects[0].status).toBe('waiting');
     // отметка не из списка отклоняется
     expect(() => choose(paused, 'burn')).toThrow(/не среди кандидатов/);
+  });
+
+  it('отметка обязательного варианта ждёт подтверждения общей кнопкой', () => {
+    const paused = battlePause();
+    const onlyMarked = runAction(paused, {
+      type: 'PICK',
+      kind: 'option',
+      id: 'charge',
+      playerId: '0',
+    });
+
+    expect(onlyMarked.targeting).toMatchObject({ required: true, picked: 'charge' });
+    // клик сам эффект не применяет: катушки ещё не заряжены, окно открыто
+    expect(coilStates(onlyMarked)).toEqual(['inactive', 'inactive']);
+    // отметка включает общую кнопку: обязательное окно подтверждается ею
+    expect(runUi(onlyMarked, '0').controls.ok).toMatchObject({ visible: true, enabled: true });
+
+    const confirmed = runAction(onlyMarked, { type: 'UI_OK', playerId: '0' });
+
+    expect(coilStates(confirmed)).toEqual(['active', 'active']);
+    expect(confirmed.targeting).toBeNull();
+    // подтверждение отмеченного варианта даёт то же, что раньше давал клик
+    expect(coilStates(confirmed)).toEqual(coilStates(choose(paused, 'charge')));
   });
 
   it('вариант «активировать обе» заряжает обе катушки', () => {

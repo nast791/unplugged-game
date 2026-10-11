@@ -1,3 +1,4 @@
+import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer } from '#shared/helpers/base.js';
 import { handCardIds } from '#shared/helpers/turn.js';
 
@@ -33,10 +34,7 @@ export default {
   hints: {
     finished: {
       active: () => true,
-      text: partyState => {
-        const name = winnerName(partyState);
-        return name == null ? 'Партия завершена' : `Партия завершена: победа — ${name}`;
-      },
+      text: partyState => HINTS.finished.finished({ name: winnerName(partyState) }),
     },
   },
 

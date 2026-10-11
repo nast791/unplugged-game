@@ -11,7 +11,7 @@ export default [
     id: 'ifrit_01',
     title: 'Столб огня',
     type: 'attack',
-    value: 5,
+    value: 6,
     bonus: 1,
     quantity: 2,
     fighter: 'ifrit',
@@ -23,8 +23,8 @@ export default [
     id: 'ifrit_02',
     title: 'Жар из-под земли',
     type: 'attack',
-    value: 3,
-    bonus: 1,
+    value: 4,
+    bonus: 3,
     quantity: 3,
     fighter: 'ifrit',
     text: 'ВО ВРЕМЯ БИТВЫ: Если Ифрит стоит на клетке со стихией лавы, значение карты +2; если на клетке со стихией пустыни — +1.',
@@ -47,7 +47,7 @@ export default [
     title: 'Вечный огонь',
     type: 'attack',
     value: 3,
-    bonus: 1,
+    bonus: 2,
     quantity: 2,
     fighter: 'ifrit',
     text: 'ПОСЛЕ БИТВЫ: Если Ифрит стоит на клетке со стихией лавы, положите эту карту обратно в руку со значением на 1 меньше. При значении 0 карта остаётся в сбросе.',
@@ -66,8 +66,8 @@ export default [
     id: 'ifrit_04',
     title: 'Плата пеплом',
     type: 'attack',
-    value: 3,
-    bonus: 1,
+    value: 4,
+    bonus: 3,
     quantity: 3,
     fighter: 'ifrit',
     text: 'МГНОВЕННО: Можете убить своего пепельного духа; если убили, значение карты +1.',
@@ -123,30 +123,30 @@ export default [
     ],
   },
   {
-    // карта духов: свойство зависит от того, сколько духов ещё живо (3 → 4/4, 2 → 3/3, 1 → добор)
+    // карта духов: свойство зависит от того, сколько духов ещё живо (3 → +3, 2 → +2, 1 → +1)
     id: 'ifrit_06',
     title: 'Пепельная стая',
     type: 'hybrid',
     value: 2,
-    bonus: 2,
+    bonus: 3,
     quantity: 3,
     fighter: 'ash',
-    text: 'ВО ВРЕМЯ БИТВЫ: Если на поле три пепельных духа, значение карты +2; если два — +1. ПОСЛЕ БИТВЫ: Если остался один дух, возьмите 1 карту.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если на поле три пепельных духа, значение карты +3; если два — +2; если один — +1.',
     rules: [
       {
         moment: 'duringCombat',
         when: [{ fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 3, max: 3 } }],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 3 }],
       },
       {
         moment: 'duringCombat',
         when: [{ fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 2, max: 2 } }],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
       },
       {
-        moment: 'afterCombat',
+        moment: 'duringCombat',
         when: [{ fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 1, max: 1 } }],
-        then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 }],
       },
     ],
   },
@@ -158,7 +158,7 @@ export default [
     value: 2,
     bonus: 2,
     quantity: 2,
-    fighter: 'ash',
+    fighter: 'any',
     text: 'МГНОВЕННО: Противник сбрасывает 1 случайную карту.',
     rules: [
       {
@@ -169,7 +169,7 @@ export default [
     ],
   },
   {
-    // выигранная битва отодвигает того, кто подошёл в упор (перемещение необязательное)
+    // добор за битву, а победа отодвигает того, кто подошёл в упор (перемещение необязательное)
     id: 'ifrit_08',
     title: 'Стена огня',
     type: 'hybrid',
@@ -177,8 +177,12 @@ export default [
     bonus: 2,
     quantity: 2,
     fighter: 'any',
-    text: 'ПОСЛЕ БИТВЫ: Если вы победили, можете сдвинуть бойца противника из этой битвы на 1 клетку.',
+    text: 'ПОСЛЕ БИТВЫ: Доберите 1 карту. Если вы победили, можете также сдвинуть бойца противника из этой битвы на 1 клетку.',
     rules: [
+      {
+        moment: 'afterCombat',
+        then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
+      },
       {
         moment: 'afterCombat',
         when: [
@@ -194,15 +198,15 @@ export default [
     ],
   },
   {
-    // победа как источник лечения: единственный хил колоды, и его мало
+    // победа как источник лечения и как сдвиг чужого бойца в свою стихию
     id: 'ifrit_09',
     title: 'Пепельный покров',
     type: 'hybrid',
-    value: 3,
-    bonus: 1,
+    value: 5,
+    bonus: 2,
     quantity: 2,
     fighter: 'any',
-    text: 'ПОСЛЕ БИТВЫ: Если вы победили, восстановите 1 здоровье своему бойцу, участвовавшему в битве.',
+    text: 'ПОСЛЕ БИТВЫ: Если вы победили, восстановите 1 здоровье своему бойцу, участвовавшему в битве. Также, если вы победили, поставьте бойца противника из этой битвы на любую свободную клетку лавы или пустыни.',
     rules: [
       {
         moment: 'afterCombat',
@@ -211,6 +215,41 @@ export default [
           { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
         ],
         then: [{ action: 'SET_HEALTH', fighterIds: '$ours', delta: 1 }],
+      },
+      {
+        moment: 'afterCombat',
+        when: [
+          { fact: 'COMBAT', params: { winner: 'self' } },
+          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
+          // боец противника мог погибнуть в бою, а замороженному телепорт закрыт
+          { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: false }, min: 1, var: 'alive' },
+          // свободная клетка лавы или пустыни: список стихий читает факт CELLS
+          {
+            fact: 'CELLS',
+            params: { terrain: ['lava', 'desert'], free: true, min: 1 },
+            var: 'cells',
+          },
+        ],
+        then: [
+          {
+            action: 'SET_TARGETING',
+            op: 'open',
+            kind: 'cells',
+            candidates: '$cells',
+            count: 1,
+            required: true,
+          },
+        ],
+      },
+      {
+        moment: 'picked',
+        when: [
+          { fact: 'PICKED', var: 'picked' },
+          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
+        ],
+        then: [
+          { action: 'SET_FIGHTER_CELL', fighterId: '$foe', cellId: '$picked', teleport: true },
+        ],
       },
     ],
   },
@@ -258,17 +297,17 @@ export default [
     ],
   },
   {
-    // духи не только плата: сколько их живо, столько клеток он и пройдёт — и сквозь строй.
-    // Бонус 4 — единственный в колоде (`docs/hero-algorithm.md` §6) и стоит здесь не случайно:
-    // без живых духов свойство мертво, поэтому сбросить карту под усиление почти ничего не стоит
+    // духи не только плата: сколько их живо плюс один, столько клеток он и пройдёт — и сквозь строй,
+    // забирая здоровье у каждого, через кого прошёл. Бонус 3: без живых духов свойство слабеет до
+    // одной клетки, а сбросить карту под усиление дёшево
     id: 'ifrit_11',
     title: 'Пепельный ветер',
     type: 'effect',
     value: null,
-    bonus: 4,
+    bonus: 3,
     quantity: 2,
     fighter: 'ifrit',
-    text: 'Сдвиньте Ифрита: он может пройти на столько клеток, сколько живых пепельных духов на поле, в том числе сквозь бойцов противника.',
+    text: 'Переместите Ифрита: он может пройти на столько клеток, сколько живых пепельных духов на поле + 1, в том числе сквозь бойцов противника. Проходя сквозь бойца противника, он крадёт у него 1 здоровье.',
     rules: [
       {
         moment: 'effect',
@@ -278,8 +317,10 @@ export default [
             action: 'SET_MOVEMENT',
             op: 'open',
             fighters: ['ifrit'],
-            budget: 3,
+            budget: 4,
             throughEnemies: true,
+            damageOnPass: 1,
+            healOnPass: 1,
             optional: true,
           },
         ],
@@ -292,8 +333,10 @@ export default [
             action: 'SET_MOVEMENT',
             op: 'open',
             fighters: ['ifrit'],
-            budget: 2,
+            budget: 3,
             throughEnemies: true,
+            damageOnPass: 1,
+            healOnPass: 1,
             optional: true,
           },
         ],
@@ -306,8 +349,27 @@ export default [
             action: 'SET_MOVEMENT',
             op: 'open',
             fighters: ['ifrit'],
+            budget: 2,
+            throughEnemies: true,
+            damageOnPass: 1,
+            healOnPass: 1,
+            optional: true,
+          },
+        ],
+      },
+      {
+        // духов не осталось — свойство всё равно работает: «сколько духов + 1» = одна клетка
+        moment: 'effect',
+        when: [{ fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 0, max: 0 } }],
+        then: [
+          {
+            action: 'SET_MOVEMENT',
+            op: 'open',
+            fighters: ['ifrit'],
             budget: 1,
             throughEnemies: true,
+            damageOnPass: 1,
+            healOnPass: 1,
             optional: true,
           },
         ],
@@ -376,11 +438,11 @@ export default [
     id: 'ifrit_13',
     title: 'Счёт ударов',
     type: 'hybrid',
-    value: 2,
-    bonus: 2,
+    value: 5,
+    bonus: 1,
     quantity: 2,
     fighter: 'ifrit',
-    text: 'ВО ВРЕМЯ БИТВЫ: В защиту значение карты противника снижается на 1. В атаку свойство зависит от номера действия хода: первым — после битвы 1 урон выбранному бойцу противника в области Ифрита; вторым — +2, если ваш боец начал ход на другой клетке; третьим — свойства карты оппонента не действуют.',
+    text: 'ВО ВРЕМЯ БИТВЫ: В защиту значение карты противника снижается на 1. В атаку свойство зависит от номера действия хода: первым — после битвы 1 урон выбранному бойцу противника; вторым — свойства карты оппонента не действуют; третьим — +2, если ваш боец начал ход на другой клетке.',
     rules: [
       {
         moment: 'duringCombat',
@@ -389,16 +451,12 @@ export default [
       },
       {
         // первое действие хода (потрачено ровно одно действие, см. AP { spentMin, spentMax }):
-        // добить выбранного бойца противника в области Ифрита — не «любого на столе»
+        // добить выбранного бойца противника — выбор настоящий, поэтому окно обязательное
         moment: 'afterCombat',
         when: [
           { fact: 'AP', params: { min: 0, spentMin: 1, spentMax: 1 } },
           { fact: 'COMBAT', params: { role: 'attacker' } },
-          {
-            fact: 'FIGHTERS',
-            params: { side: 'opponent', areaOf: 'ifrit', min: 1 },
-            var: 'foes',
-          },
+          { fact: 'FIGHTERS', params: { side: 'opponent', min: 1 }, var: 'foes' },
         ],
         then: [
           {
@@ -407,6 +465,8 @@ export default [
             candidates: '$foes',
             count: 1,
             required: true,
+            // единственный враг на столе — движок отмечает его сам, окна игрок не видит
+            auto: true,
           },
         ],
       },
@@ -416,22 +476,22 @@ export default [
         then: [{ action: 'SET_HEALTH', fighterIds: '$picked', delta: -1 }],
       },
       {
-        moment: 'duringCombat',
-        when: [
-          { fact: 'AP', params: { min: 0, spentMin: 2, spentMax: 2 } },
-          { fact: 'COMBAT', params: { role: 'attacker' } },
-          { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'], movedThisTurn: true }, min: 1 },
-        ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
-      },
-      {
         moment: 'immediately',
         when: [
-          { fact: 'AP', params: { min: 0, spentMin: 3, spentMax: 3 } },
+          { fact: 'AP', params: { min: 0, spentMin: 2, spentMax: 2 } },
           { fact: 'COMBAT', params: { role: 'attacker' } },
           { fact: 'COMBAT', params: { effects: 'opponent' }, min: 1 },
         ],
         then: [{ action: 'SET_COMBAT', op: 'cancelEffects', side: 'opponent' }],
+      },
+      {
+        moment: 'duringCombat',
+        when: [
+          { fact: 'AP', params: { min: 0, spentMin: 3, spentMax: 3 } },
+          { fact: 'COMBAT', params: { role: 'attacker' } },
+          { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'], movedThisTurn: true }, min: 1 },
+        ],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
       },
     ],
   },

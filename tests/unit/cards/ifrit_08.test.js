@@ -103,9 +103,12 @@ const fighterOf = (state, playerId, fighterId) =>
 
 describe('карта ifrit_08 «Стена огня»', () => {
   it('описана правилами, момент — из списка', () => {
-    expect(card.rules).toHaveLength(1);
-    expect(card.rules[0].moment).toBe('afterCombat');
-    expect(isMoment(card.rules[0].moment)).toBe(true);
+    // первое правило — добор после битвы (без условий), второе — сдвиг атакующего на победе
+    expect(card.rules).toHaveLength(2);
+    for (const rule of card.rules) {
+      expect(rule.moment).toBe('afterCombat');
+      expect(isMoment(rule.moment)).toBe(true);
+    }
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({
       type: 'hybrid',
@@ -114,8 +117,9 @@ describe('карта ifrit_08 «Стена огня»', () => {
       quantity: 2,
       fighter: 'any',
     });
-    expect(card.rules[0].when[0]).toMatchObject({ fact: 'COMBAT', params: { winner: 'self' } });
-    expect(card.rules[0].then[0]).toMatchObject({
+    expect(card.rules[0].then[0]).toMatchObject({ action: 'SET_CARDS', op: 'draw', count: 1 });
+    expect(card.rules[1].when[0]).toMatchObject({ fact: 'COMBAT', params: { winner: 'self' } });
+    expect(card.rules[1].then[0]).toMatchObject({
       action: 'SET_MOVEMENT',
       op: 'open',
       fighters: '$alive',
@@ -138,8 +142,8 @@ describe('карта ifrit_08 «Стена огня»', () => {
       visible: true,
       label: 'Закончить эффект',
     });
-    // бой ждёт решения игрока, шаг очереди — в ожидании
-    expect(after.combat.effects.map(entry => entry.status)).toEqual(['waiting']);
+    // бой ждёт решения игрока: шаг добора применён, шаг перемещения — в ожидании
+    expect(after.combat.effects.map(entry => entry.status)).toEqual(['applied', 'waiting']);
   });
 
   it('атакующего можно сдвинуть на соседнюю клетку, и бой после этого закрывается', () => {
@@ -164,7 +168,7 @@ describe('карта ifrit_08 «Стена огня»', () => {
     expect(after.movement ?? null).toBeNull();
     expect(String(fighterOf(after, '1', 'beta').currentPosition)).toBe('3');
     // отказ виден в отчёте боя: очередь свойств остаётся в `lastCombat`
-    expect(after.lastCombat.effects.map(entry => entry.status)).toEqual(['declined']);
+    expect(after.lastCombat.effects.map(entry => entry.status)).toEqual(['applied', 'declined']);
   });
 
   it('при поражении окна нет: сдвигать некого', () => {

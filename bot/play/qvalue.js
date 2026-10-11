@@ -18,6 +18,7 @@
  * а не «уместность здесь». Весит килобайты и считается за микросекунды — то есть может уехать в браузер,
  * где `vs_ai` считает ход в бюджете 200 мс.
  */
+import { tableOf } from './artifact.js';
 import weights from './qvalue-weights.js';
 import { ACTION_FEATURES, actionFeatures, heroOf, rivalOf } from './actionFeatures.js';
 import { cardIdOf } from './metrics.js';
@@ -60,6 +61,17 @@ const prepared = table => {
     bvalue: floats(table.bvalue),
     heroEmbed: rows(table.heroEmbed),
     cardEmbed: rows(table.cardEmbed),
+    // головы по виду решения (§49): у одноуровневого артефакта их нет, и рантайм играет как раньше
+    W1Cell: table.twoHeads === true ? floats(table.W1Cell) : null,
+    b1Cell: table.twoHeads === true ? floats(table.b1Cell) : null,
+    W2Cell: table.twoHeads === true ? floats(table.W2Cell) : null,
+    b2Cell: table.twoHeads === true ? floats(table.b2Cell) : null,
+    WscoreCell: table.twoHeads === true ? floats(table.WscoreCell) : null,
+    bscoreCell: table.twoHeads === true ? floats(table.bscoreCell) : null,
+    // ворота «состояние × действие» (§50): вектор варианта умножается на вес, посчитанный из позиции
+    Wgate: table.gated === true ? floats(table.Wgate) : null,
+    bgate: table.gated === true ? floats(table.bgate) : null,
+    gateIndex: table.gated === true ? (table.summaryIndex ?? []).map(Number) : null,
   };
   mlpCache.set(table, shape);
   return shape;
@@ -95,34 +107,70 @@ export const mlpScore = (table, { stateFeatures, action, hero, rival, card }) =>
   let at = 0;
   for (let index = 0; index < stateDim; index += 1)
     input[at++] = Number(stateFeatures?.[index]) || 0;
-  for (let index = 0; index < actionDim; index += 1) input[at++] = Number(action?.[index]) || 0;
+
+  /**
+   * **Ворота «состояние × действие»** (§50): у каждого варианта свой входной вес, посчитанный из сводки
+   * позиции — `a' = a · σ(G · summary + g0)`. Это то же, что делает тренер (`trainer/model.py`), и то,
+   * чего у сети не было: взаимодействие признаков позиции и действия, **своё для каждой позиции**, а не
+   * общее внутри первого слоя. При нулевых весах ворот σ(0) = 0,5 — общая половинная шкала действий,
+   * которую ствол компенсирует первым слоем (то есть старт эквивалентен прежнему поведению).
+   */
+  const gate = shape.Wgate == null ? null : new Float64Array(actionDim);
+  if (gate != null) {
+    const index = shape.gateIndex ?? [];
+    for (let column = 0; column < actionDim; column += 1) {
+      let sum = shape.bgate?.[column] ?? 0;
+      for (let slot = 0; slot < index.length; slot += 1) {
+        sum +=
+          (shape.Wgate[column * index.length + slot] ?? 0) *
+          (Number(stateFeatures?.[index[slot]]) || 0);
+      }
+      gate[column] = 1 / (1 + Math.exp(-sum));
+    }
+  }
+
+  for (let index = 0; index < actionDim; index += 1) {
+    const raw = Number(action?.[index]) || 0;
+    input[at++] = gate == null ? raw : raw * gate[index];
+  }
   for (const value of heroRow) input[at++] = value;
   for (const value of rivalRow) input[at++] = value;
   for (const value of cardRow) input[at++] = value;
 
+  // **маршрут головы** (§49): признак 3 вектора действия — «это клетка», он же отличает шаги в тренере.
+  // Порог 0,25, а не 0,5: с воротами признак клетки при нулевых воротах равен 0,5 (σ(0) · 1)
+  const useCell =
+    shape.W1Cell != null && (Number(action?.[3]) || 0) * (gate == null ? 1 : gate[3]) > 0.25;
+  const W1 = useCell ? shape.W1Cell : shape.W1;
+  const b1 = useCell ? shape.b1Cell : shape.b1;
+  const W2 = useCell ? shape.W2Cell : shape.W2;
+  const b2 = useCell ? shape.b2Cell : shape.b2;
+  const Wscore = useCell ? shape.WscoreCell : shape.Wscore;
+  const bscore = useCell ? shape.bscoreCell : shape.bscore;
+
   const hidden = Math.max(1, Number(table.hidden) || 1);
   const first = new Float64Array(hidden);
   for (let row = 0; row < hidden; row += 1) {
-    let sum = shape.b1[row] ?? 0;
+    let sum = b1[row] ?? 0;
     const offset = row * input.length;
     for (let column = 0; column < input.length; column += 1) {
-      sum += (shape.W1[offset + column] ?? 0) * input[column];
+      sum += (W1[offset + column] ?? 0) * input[column];
     }
     first[row] = sum > 0 ? sum : 0;
   }
 
   const second = new Float64Array(hidden);
   for (let row = 0; row < hidden; row += 1) {
-    let sum = shape.b2[row] ?? 0;
+    let sum = b2[row] ?? 0;
     const offset = row * hidden;
     for (let column = 0; column < hidden; column += 1) {
-      sum += (shape.W2[offset + column] ?? 0) * first[column];
+      sum += (W2[offset + column] ?? 0) * first[column];
     }
     second[row] = sum > 0 ? sum : 0;
   }
 
-  let total = shape.bscore[0] ?? 0;
-  for (let row = 0; row < hidden; row += 1) total += (shape.Wscore[row] ?? 0) * second[row];
+  let total = bscore[0] ?? 0;
+  for (let row = 0; row < hidden; row += 1) total += (Wscore[row] ?? 0) * second[row];
   return total;
 };
 
@@ -195,8 +243,14 @@ export const valueOf = (table, stateFeatures) => {
  * быть одни и те же, иначе поиск подсказывают не тем, чем играет ученик. Вес 0 — вето политики, такие
  * варианты модель не оценивает вовсе; `null` — артефакта нет или предлагать нечего.
  */
-export const scoreOptions = (state, playerId, options, { table = weights } = {}) => {
-  if (!hasQValue(table) || options.length === 0) return null;
+export const scoreOptions = (
+  state,
+  playerId,
+  options,
+  { table = weights, artifact = null } = {},
+) => {
+  const model = artifact == null ? table : tableOf(artifact);
+  if (!hasQValue(model) || options.length === 0) return null;
   const offered = options.filter(entry => Number(entry.weight) > 0);
   if (offered.length === 0) return null;
 
@@ -208,7 +262,7 @@ export const scoreOptions = (state, playerId, options, { table = weights } = {})
   return new Map(
     offered.map(entry => [
       JSON.stringify(entry.action),
-      scoreAction(table, {
+      scoreAction(model, {
         stateFeatures,
         action: actionFeatures(state, playerId, entry, { priorScale }),
         hero,
@@ -255,16 +309,53 @@ export const SELECTION_TEMPERATURE = 0.25;
  * из-под удара, встать на свою стихию). Раньше при равных оценках выбор падал на первый вариант списка,
  * то есть ход помощника выбирался произвольно.
  *
- * Примесь нормирована: `log1p(вес)/log1p(сильнейший вес)` лежит в (0, 1], поэтому `0.3` добавляет к
- * оценке не больше 0.3 — этого хватает клеткам (их оценки различаются на сотые) и почти не касается карт,
- * где разница в десятые и единицы. Замер (`--policy=qvalue --policy-b=greedy`, 1150+ партий в обе стороны):
- * примесь 0 — 50%, 0.1 — 52%, **0.3 — 54%**, 0.6 — 54% (плато). Переменная среды `QVALUE_PRIOR_MIX`
- * (0 — чистая модель) позволяет перемерить это без правок кода.
+ * Примесь нормирована: `log1p(вес)/log1p(сильнейший вес)` лежит в (0, 1], поэтому её величина — это
+ * верхняя граница вклада политики в оценку варианта. Замер (§29, 1150+ партий в обе стороны) тогда дал
+ * 0 — 50%, 0.1 — 52%, **0.3 — 54%**, 0.6 — 54%; **перемер §43 на 7 200 партиях на значение показал, что
+ * плато идёт дальше**: 0,6–2,0 — 55%, 3,0 — 56%, 6,0 и 10,0 — 54%. Поэтому значение поднято до 0,8
+ * (середина плато, а не его край), а сам механизм стал адаптивным по неуверенности модели (ниже).
+ * Переменная среды `QVALUE_PRIOR_MIX` (0 — чистая модель) позволяет перемерить это без правок кода.
  */
-export const PRIOR_MIX = 0.3;
+export const PRIOR_MIX = 0.8;
 
 const envPriorMix = () => {
   const raw = typeof process !== 'undefined' ? process?.env?.QVALUE_PRIOR_MIX : null;
+  const value = Number(raw);
+  return raw == null || raw === '' || !Number.isFinite(value) ? null : value;
+};
+
+/**
+ * **Неуверенность модели** (ген `uncertain`, §43): насколько различаются её оценки вариантов внутри одного
+ * решения. Замер `rank.js` на живом артефакте: в 11,8% решений оценки **все равны** (на решениях-клетках —
+ * 20%), согласие с целью на клетках 41%, а худший вариант выбирается в 28% решений. Значит там, где модель
+ * варианты различает, решать должна она, а где не различает — политика с её ручными правилами.
+ *
+ * Примесь поэтому не постоянная, а по разбросу: `mix = PRIOR_MIX + UNCERTAIN_MIX · (1 − разброс/порог)`.
+ * Замер вклада самой примеси (§43, `qvalue` против `greedy`, 7 200 партий на значение): 0,15 — 53%,
+ * 0,3 — 53–54%, 0,6–2,0 — 55%, **3,0 — 56%**, 6,0 и 10,0 — 54%. То есть на текущем артефакте политика
+ * **сильнее** модели в своей области, и оптимум примеси — единицы, а не доли. Поэтому `PRIOR_MIX` поднят
+ * до 0,8, а ген неуверенности добавляет **сверху** (не отнимает, как первая версия).
+ */
+export const UNCERTAIN_SPREAD = 0.15;
+export const UNCERTAIN_MIX = 0;
+
+/**
+ * Доли примеси при **разделении решений по виду** (§44): на клетках решают правила (`RULES_MIX`), на
+ * решениях с картами — модель (`MODEL_MIX`). Значение 6 на клетках означает «вес политики весит в шесть
+ * раз больше оценки модели», то есть клетку выбирают ровно те правила, что написаны в `bot/play/policy.js`.
+ * Переключатель — `BOT_GENE_BYKIND=rules|model|mix` (пусто или `mix` — прежнее поведение).
+ */
+export const RULES_MIX = 6;
+export const MODEL_MIX = 0.2;
+
+const envByKind = () => {
+  const raw = typeof process !== 'undefined' ? process?.env?.BOT_GENE_BYKIND : null;
+  const value = raw == null ? '' : String(raw).trim().toLowerCase();
+  return value === 'model' || value === 'mix' ? value : 'rules';
+};
+
+const envUncertainMix = () => {
+  const raw = typeof process !== 'undefined' ? process?.env?.BOT_GENE_UNCERTAINMIX : null;
   const value = Number(raw);
   return raw == null || raw === '' || !Number.isFinite(value) ? null : value;
 };
@@ -273,17 +364,50 @@ export const rankOptions = (
   state,
   playerId,
   options,
-  { temperature = SELECTION_TEMPERATURE, table = weights } = {},
+  { temperature = SELECTION_TEMPERATURE, table = weights, artifact = null } = {},
 ) => {
-  if (!hasQValue(table) || options.length === 0) return options;
+  const model = artifact == null ? table : tableOf(artifact);
+  if (!hasQValue(model) || options.length === 0) return options;
 
-  const scores = scoreOptions(state, playerId, options, { table });
+  const scores = scoreOptions(state, playerId, options, { table: model });
   if (scores == null) return options; // политика ничего не предложила — выдумывать нечего
 
   const offered = options.filter(entry => Number(entry.weight) > 0);
   const heat = envTemperature() ?? Number(temperature);
-  const mix = envPriorMix() ?? PRIOR_MIX;
+  const baseMix = envPriorMix() ?? PRIOR_MIX;
   const scoreOfEntry = entry => scores.get(JSON.stringify(entry.action)) ?? 0;
+
+  /**
+   * **Разделение решений по виду** (ген `byKind`, §44). Замер §29–§43: модель различает карты
+   * (согласие с целью 60%) и не различает клетки (41%, а в 20% решений оценки всех клеток совпадают —
+   * у них просто нет признаков, отличающих «шаг в тактически лучшее место»). Поэтому:
+   *
+   * - `rules` (живое значение) — на решениях-клетках решают **правила политики**: они для этого и
+   *   написаны (дистанция удара, кайт, своя стихия, удержание места), а модель там гадает;
+   * - `model` — на решениях с картами решает модель (там она сильнее правил), правила только veto;
+   * - `mix` — прежнее поведение: примесь по всем решениям одинаково.
+   *
+   * `BOT_GENE_BYKIND=0` возвращает примесь (для замера вклада), `=1` — разделение.
+   */
+  const byKindGene = envByKind();
+  const isCellsOnly = offered.every(entry => Number(entry.action?.kind === 'cell'));
+  const hasCards = offered.some(entry => entry.action?.kind === 'card');
+  const mode = byKindGene;
+
+  // неуверенность: разброс оценок модели на этом решении. Ноль и меньше порога — модель не различает
+  // варианты, и решает политика; много больше порога — решает модель, примесь только страхует от ничьей
+  const values = offered.map(scoreOfEntry);
+  const uncertainGene = envUncertainMix() ?? UNCERTAIN_MIX;
+  const spread = Math.max(...values) - Math.min(...values);
+  const uncertain = 1 - Math.min(1, spread / UNCERTAIN_SPREAD);
+
+  let mix = uncertainGene > 0 ? baseMix + uncertainGene * uncertain : baseMix;
+  // разделение по виду: клетки — правила, карты — модель. На клетках примесь становится решающей
+  // (правила только что измерены и сильнее модели там), на картах — минимальной (модель сильнее)
+  if (mode === 'rules') {
+    if (isCellsOnly) mix = Math.max(mix, RULES_MIX);
+    else if (hasCards) mix = Math.min(mix, MODEL_MIX);
+  }
 
   // примесь мнения политики: у клеток оценки модели различаются на сотые, и без примеси выбор среди них
   // случаен (§29). Компонента нормирована на сильнейший вес, поэтому примесь не перебивает модель там,

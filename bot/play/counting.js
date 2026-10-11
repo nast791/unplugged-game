@@ -56,9 +56,48 @@ const combatKnowledge = (state, viewerId, ownerId) => {
   return { seen, hidden };
 };
 
+/**
+ * Кэш остатка (§48): за одно решение `unseenOf` зовётся на каждой итерации поиска и в каждом мире
+ * (`bot/play/search.js: worldFactory`), а сам остаток между этими вызовами не меняется — меняется только
+ * **состояние**, то есть новые объекты зон. Поэтому запись ищется по **тождеству объектов** (владелец,
+ * сброс, рука, колода, карты боя): форк движка даёт новые массивы, а внутри одной точки решения они те же.
+ * Массив на карту состояния ограничен: как только объект владельца сменился, старая запись уходит.
+ */
+const unseenCache = new WeakMap();
+
+/** Переключатель кэша остатка для замера вклада (§48): `BOT_CACHE_UNSEEN=0` считает как раньше. */
+const unseenCacheOn = () =>
+  (typeof process === 'undefined' ? {} : (process.env ?? {})).BOT_CACHE_UNSEEN !== '0';
+
+const sameEntry = (entry, owner, state, viewerId) =>
+  entry.owner === owner &&
+  entry.discard === owner?.discard?.cards &&
+  entry.hand === owner?.hand?.cards &&
+  entry.deck === owner?.deck?.cards &&
+  entry.attack === state.combat?.attackCard &&
+  entry.defense === state.combat?.defenseCard &&
+  entry.stage === state.combat?.stage &&
+  String(entry.viewer) === String(viewerId);
+
 /** Остаток невиданных карт героя: `Map` id карты → сколько копий ещё может быть у соперника. */
 export const unseenOf = (state, heroId, viewerId) => {
   const owner = (state.players ?? []).find(player => String(player.heroId) === String(heroId));
+
+  const cacheable = unseenCacheOn();
+  let entries = null;
+  if (cacheable) {
+    entries = unseenCache.get(state);
+    if (entries != null) {
+      for (const entry of entries) {
+        if (entry.heroId === heroId && sameEntry(entry, owner, state, viewerId)) return entry.value;
+      }
+    } else {
+      entries = [];
+      unseenCache.set(state, entries);
+    }
+    if (entries.length > 8) entries.length = 0;
+  }
+
   const pooled = new Map();
   for (const cardId of deckList(heroId)) pooled.set(cardId, (pooled.get(cardId) ?? 0) + 1);
 
@@ -76,7 +115,7 @@ export const unseenOf = (state, heroId, viewerId) => {
   for (const card of knowledge.seen) forget(cardIdOf(card));
 
   const cards = [...pooled.values()].reduce((sum, count) => sum + count, 0);
-  return {
+  const value = {
     heroId,
     playerId: owner?.id == null ? null : String(owner.id),
     pooled,
@@ -85,6 +124,19 @@ export const unseenOf = (state, heroId, viewerId) => {
     deckSize: (owner?.deck?.cards ?? []).length,
     hiddenInPlay: knowledge.hidden,
   };
+  entries?.push({
+    heroId,
+    owner,
+    discard: owner?.discard?.cards,
+    hand: owner?.hand?.cards,
+    deck: owner?.deck?.cards,
+    attack: state.combat?.attackCard,
+    defense: state.combat?.defenseCard,
+    stage: state.combat?.stage,
+    viewer: viewerId,
+    value,
+  });
+  return value;
 };
 
 /** Сводка по соперникам: их остатки и размеры зон. */

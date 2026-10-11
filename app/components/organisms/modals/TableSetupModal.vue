@@ -1,15 +1,15 @@
 <template>
   <AModal name="table" title="Общий стол" :error="errorMessage">
-    <p class="text-14 text-dim">
+    <p class="text-16 text-dim">
       2–4 места: люди и компьютер в любом сочетании, каждый сам за себя. Поле собирает генератор по
       сиду партии.
     </p>
 
-    <p id="setup-order-hint" class="text-14 text-dim">
+    <p id="setup-order-hint" class="text-16 text-dim">
       Порядок мест — это порядок хода. Место переезжает за ручку
       <Icon
         name="lucide:grip-vertical"
-        class="inline size-14 align-text-bottom"
+        class="inline size-16 align-text-bottom"
         aria-hidden="true"
       />
       справа или стрелками рядом с ней; вместе с героем едет и управление. Плашка с именем героя
@@ -25,7 +25,7 @@
         :class="rowClass(index)"
       >
         <div class="relative flex flex-wrap items-center gap-12">
-          <span class="text-14 text-dim w-90">{{
+          <span class="text-16 text-dim w-90">{{
             randomPlaces ? 'Место —' : `Место ${index + 1}`
           }}</span>
 
@@ -43,7 +43,6 @@
           </AButton>
         </div>
 
-        <!-- Селект героя — своя строка: в общей он переносился и от этого менял ширину -->
         <div class="flex">
           <ASelect
             v-if="!randomHeroes"
@@ -52,7 +51,7 @@
             :options="heroOptions(index)"
             :aria-label="`Герой места ${index + 1}`"
           />
-          <span v-else class="text-14 text-dim min-w-200 flex-1">Случайный герой</span>
+          <span v-else class="text-16 text-dim min-w-200 flex-1">Случайный герой</span>
         </div>
 
         <div class="flex flex-wrap items-center gap-12">
@@ -136,8 +135,8 @@
     <div class="border-line flex flex-col gap-20 border-t-2 pt-20">
       <div class="flex items-start justify-between gap-16">
         <div class="flex flex-col gap-4">
-          <span class="text-16">Случайные герои</span>
-          <span class="text-14 text-dim"
+          <span class="text-18">Случайные герои</span>
+          <span class="text-16 text-dim"
             >Раздаются по сиду, выбирать не нужно — как в «Хаосе».</span
           >
         </div>
@@ -146,32 +145,51 @@
 
       <div class="flex items-start justify-between gap-16">
         <div class="flex flex-col gap-4">
-          <span class="text-16">Случайные места</span>
-          <span class="text-14 text-dim">Порядок мест тоже определяет сид, а не эта разметка.</span>
+          <span class="text-18">Случайные места</span>
+          <span class="text-16 text-dim">Порядок мест тоже определяет сид, а не эта разметка.</span>
         </div>
         <ASwitch v-model="randomPlaces" aria-label="Случайные места" />
       </div>
 
       <div class="flex items-start justify-between gap-16">
         <div class="flex flex-col gap-4">
-          <span class="text-16">Лимит времени на ход</span>
-          <span class="text-14 text-dim"
-            >Таймер для игры за одним экраном: время подсказывает, что пора передать ход. Ход при
-            истечении не заканчивается — решает игрок.</span
+          <span class="text-18">Лимит времени на расстановку</span>
+          <span class="text-16 text-dim"
+            >Один бюджет на всю первую фазу: пока бойцы не расставлены, партия не началась, и часы
+            партии ещё не идут.
+            <strong>Время вышло — кто не успел, выбывает из партии</strong> (автоматическая сдача).
+            За место компьютера не сдаём: за него играет клиент.</span
           >
         </div>
         <ASelect
-          v-model="turnLimit"
+          v-model="placementLimit"
           class="w-220"
-          :options="TURN_LIMITS"
-          aria-label="Лимит времени на ход"
+          :options="TIME_LIMITS"
+          aria-label="Лимит времени на расстановку"
         />
       </div>
 
       <div class="flex items-start justify-between gap-16">
         <div class="flex flex-col gap-4">
-          <span class="text-16">Размер поля</span>
-          <span class="text-14 text-dim"
+          <span class="text-18">Лимит времени на действие</span>
+          <span class="text-16 text-dim"
+            >Время на одно решение — объявление карты, шаг, выбор цели, ответ в бою. Ход состоит из
+            решений, поэтому лимит и считается на действие.
+            <strong>Время вышло — игрок выбывает из партии</strong> (автоматическая сдача).</span
+          >
+        </div>
+        <ASelect
+          v-model="actionLimit"
+          class="w-220"
+          :options="TIME_LIMITS"
+          aria-label="Лимит времени на действие"
+        />
+      </div>
+
+      <div class="flex items-start justify-between gap-16">
+        <div class="flex flex-col gap-4">
+          <span class="text-18">Размер поля</span>
+          <span class="text-16 text-dim"
             >«Авто» — генератор выберет сам по сиду (28–38 клеток).</span
           >
         </div>
@@ -212,25 +230,16 @@
 </template>
 
 <script setup>
-/**
- * Модалка настройки **общего стола** — одного режима, а не всех: у каждого режима своя настройка
- * (`docs/ui-plan.md` §4), поэтому и имя у неё по режиму (`table`), а не общее `setup`.
- *
- * Модалка по имени: `openModal('table')`. Внутри — атомы: `ARadioGroup` для управления местом,
- * `ASelect` для героя, поля и переключатели настроек, `AInput` для сида.
- *
- * Место переставляют ручкой (`useSortable`) или стрелками: порядок мест — это `order` в запросе на
- * создание партии, то есть очередь хода и номер стартовой клетки, поэтому перестановка не косметика.
- *
- * «Хаос» (`Случайные герои`, `Случайные места`) считается **по сиду** (`shuffleBySeed`): то же число —
- * тот же стол, и поле, которое соберёт сервер, будет от того же сида.
- *
- * Сообщение о том, почему «Начать» не работает, уходит в футер (проп `error` у `AModal`): в теле окна
- * его сдвигало скроллом.
- */
 import { VisuallyHidden } from 'reka-ui';
 import { CELLS_LIMIT } from '#shared/helpers/mapGenerator.js';
 import { shuffleBySeed } from '#shared/helpers/random.js';
+import AAvatar from '~/components/atoms/AAvatar.vue';
+import AButton from '~/components/atoms/AButton.vue';
+import AInput from '~/components/atoms/AInput.vue';
+import AModal from '~/components/atoms/AModal.vue';
+import ARadioGroup from '~/components/atoms/ARadioGroup.vue';
+import ASelect from '~/components/atoms/ASelect.vue';
+import ASwitch from '~/components/atoms/ASwitch.vue';
 import { useGameView } from '~/composables/useGameView';
 import { useSortable } from '~/composables/useSortable';
 import { closeModal } from '~/composables/ui/useModal';
@@ -243,10 +252,6 @@ const { seed } = useGameView();
 
 const heroes = computed(() => props.content?.heroes ?? []);
 
-/**
- * «Общий стол» — один режим, а не набор пресетов (`docs/ui-plan.md` §3): 2–4 места, каждое человек или
- * компьютер, каждый сам за себя. Пресет `table` в `shared/constants/modes.js` разрешает любое сочетание.
- */
 const MODE = 'table';
 
 const CONTROLS = [
@@ -254,7 +259,7 @@ const CONTROLS = [
   { value: 'ai', label: 'Компьютер' },
 ];
 
-const TURN_LIMITS = [
+const TIME_LIMITS = [
   { value: '0', label: 'Без лимита' },
   { value: '30', label: '30 секунд' },
   { value: '60', label: '1 минута' },
@@ -262,7 +267,6 @@ const TURN_LIMITS = [
   { value: '300', label: '5 минут' },
 ];
 
-/** Размер поля: «Авто» отдаёт выбор сиду, числа — ручной размер в границах генератора. */
 const CELLS_OPTIONS = [
   { value: 'auto', label: 'Авто' },
   ...Array.from({ length: CELLS_LIMIT.max - CELLS_LIMIT.min + 1 }, (_, index) => {
@@ -278,11 +282,11 @@ const filled = ref(false);
 const announcement = ref('');
 const randomHeroes = ref(false);
 const randomPlaces = ref(false);
-const turnLimit = ref('0');
+const actionLimit = ref('0');
+const placementLimit = ref('0');
 const cells = ref('auto');
 const seedText = ref('');
 
-/** Место — объект с постоянным id: на нём держится перестановка (ключ `v-for` и адрес ручки). */
 let slotSeq = 0;
 const makeSlot = (control = 'ai', heroId = '') => ({
   id: `slot_${(slotSeq += 1)}`,
@@ -297,25 +301,12 @@ const {
   targetProps,
   moveBy: reorderBy,
 } = useSortable(slots, {
-  // `swap`: место — это «кто играет и кем», при перестановке оно меняется целиком, а номера позиций
-  // остаются на месте (в режиме `insert` соседей сдвигало бы каскадом).
   mode: 'swap',
-  // Случайные места: порядок задаёт сид, переставлять нечего — ручка и стрелки выключены.
   disabled: () => randomPlaces.value,
 });
 
-/** Пак героя по id: аватар, его цвет и ссылка на страницу героя. */
 const currentHero = id => heroes.value.find(hero => hero.id === id) ?? null;
 
-/**
- * Плашка героя вместо аватара-иконки: она несёт имя, поэтому широкая и низкая. Размер задаётся парой
- * `w`/`h`, а не `size`, — правка `ui` домешивается к пресету через `cn`, где эти группы считаются
- * конфликтующими, поэтому квадрат пресета (`size-36`) она перекрывает сама, без `!`.
- *
- * Подсветка при наведении: плашка светлеет фильтром, а имя — прозрачностью поверх цвета героя (то есть
- * чуть светлеет, но не становится белым: на цветной плашке это выглядит навязчиво). Подчёркивания нет.
- * Пока портрета нет, надпись и есть «аватар»; с артом она уступит место картинке, а подсветка останется.
- */
 const HERO_PLATE = {
   avatar_root:
     'h-48 w-192 rounded-md border-transparent bg-[var(--hero-color)] transition-[filter] group-hover:brightness-110',
@@ -334,7 +325,6 @@ const rowClass = index => {
   return 'border-line';
 };
 
-/** Свободный герой: дубликаты движок не принимает, поэтому раздаём разных по умолчанию. */
 const fillHeroes = list => {
   const taken = [];
   return list.map((slot, index) => {
@@ -348,13 +338,11 @@ const fillHeroes = list => {
   });
 };
 
-/** По умолчанию стол на двоих: человек и компьютер — дальше слоты настраиваются как угодно. */
 const resetSlots = () => {
   slots.value = fillHeroes([makeSlot('human'), makeSlot('ai')]);
   error.value = '';
 };
 
-/** Контент приходит асинхронно: слоты собираем, как только появились герои. */
 watch(
   heroes,
   list => {
@@ -371,7 +359,6 @@ watch(
 
 const usedElsewhere = index => slots.value.filter((_, i) => i !== index).map(slot => slot.heroId);
 
-/** Варианты героя для места: занятые другими местами показываем недоступными, а не прячем. */
 const heroOptions = index =>
   heroes.value.map(hero => ({
     value: hero.id,
@@ -397,11 +384,9 @@ const canStart = computed(
   () =>
     slots.value.length >= 2 &&
     humansCount.value >= 1 &&
-    // С раздачей героев выбирать нечего: уникальность и заполненность обеспечены сидом.
     (randomHeroes.value || slots.value.every(slot => slot.heroId)),
 );
 
-/** Причина, по которой «Начать» выключена, либо ошибка сервера: показывается в футере. */
 const errorMessage = computed(() => {
   if (!humansCount.value) return 'Нужен хотя бы один человек за столом.';
   if (!randomHeroes.value && slots.value.some(slot => !slot.heroId)) {
@@ -412,19 +397,16 @@ const errorMessage = computed(() => {
 
 const randomSeed = () => Math.floor(Math.random() * 0x100000000);
 
-/** Кнопка «кубик»: сид видно в поле — его можно запомнить или передать другому. */
 const rollSeed = focus => {
   seedText.value = String(randomSeed());
   focus?.();
 };
 
-/** Сид партии: число из поля, а если поля нет — своё случайное (тогда оно же уходит в «Хаос»). */
 const seedValue = () => {
   const value = Number(seedText.value);
   return seedText.value !== '' && Number.isInteger(value) ? value : randomSeed();
 };
 
-/** Раздача героев по сиду: тот же стол — те же герои на тех же местах. */
 const dealHeroes = (list, seedNumber) => {
   const pool = shuffleBySeed(
     heroes.value.map(hero => hero.id),
@@ -450,8 +432,8 @@ const start = async () => {
       mode: MODE,
       seed: seedNumber,
       cells: cells.value === 'auto' ? undefined : Number(cells.value),
-      turnLimit: Number(turnLimit.value) || 0,
-      // FFA: у каждого места своя команда, порядок хода — по номеру места
+      actionLimit: Number(actionLimit.value) || 0,
+      placementLimit: Number(placementLimit.value) || 0,
       heroes: placed.map((slot, index) => ({
         heroId: slot.heroId,
         team: String.fromCharCode(65 + index),

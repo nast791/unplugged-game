@@ -51,6 +51,7 @@ import {
   SelectValue,
   SelectViewport,
 } from 'reka-ui';
+import AScroll from '~/components/atoms/AScroll.vue';
 import { useUI } from '~/composables/ui/useUI';
 
 /** Селект: `options` — `{ value, label, disabled?, separator? }`, либо свой список в слоте. */

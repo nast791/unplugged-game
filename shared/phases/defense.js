@@ -6,6 +6,7 @@ import {
   runCombatPicked,
   waitingCombatCard,
 } from '#shared/cards/run.js';
+import { HINTS } from '#shared/constants/hints.js';
 import { resolveOkBackControls } from '#shared/helpers/base.js';
 import { cardChoices } from '#shared/helpers/cards.js';
 import { defenseCardIds } from '#shared/helpers/combat.js';
@@ -58,12 +59,21 @@ const windowCellIds = (partyState, playerId) => {
 };
 
 /**
- * Ответ в окне вариантов: отметка варианта, правила карты в моменте picked делают остальное,
- * дальше окно закрывает движок и бой доигрывается.
+ * Клик по варианту свойства только **отмечает** его: окно показывает выбор, а не спрашивает.
+ * Применяет отметку общая кнопка (`ok.onPress` → `confirmOption`) — так у игрока есть один и тот же
+ * путь для всех окон свойства («отметил — подтвердил»), а отметку видит и клиент (`targeting.picked`),
+ * и бот (`ui.controls.ok` включается отметкой).
  */
-const answerOption = (partyState, playerId, optionId) => {
-  let state = SET_TARGETING(partyState, { op: 'pick', playerId, optionId });
-  state = runCombatPicked(state);
+const pickOption = (partyState, playerId, optionId) =>
+  SET_TARGETING(partyState, { op: 'pick', playerId, optionId });
+
+/**
+ * Подтверждение отмеченного варианта: правила карты в моменте `picked` делают остальное,
+ * дальше окно закрывает движок и бой доигрывается. Порядок обязателен: окно нужно закрыть **после**
+ * отметки — `runCombatPicked` ищет ждущий шаг по `source` открытого окна.
+ */
+const confirmOption = (partyState, playerId) => {
+  let state = runCombatPicked(partyState);
   state = SET_TARGETING(state, { op: 'close', playerId });
   state = advanceCombat(state);
 
@@ -145,13 +155,6 @@ const effectControls = canFinish => ({
   back: { visible: false, enabled: false, label: null },
 });
 
-/**
- * Подсказка окна: необязательное окно называет оба пути — выбор подсвеченной цели и кнопку завершения.
- * Обязательное окно зовёт только выбирать.
- */
-const windowHint = (window, pick, mandatory) =>
-  window?.required === true ? mandatory : `${pick} — или закончите эффект без выбора`;
-
 export default {
   name: 'defense',
 
@@ -159,48 +162,35 @@ export default {
     effectOption: {
       active: (partyState, playerId) => Boolean(optionWindowOf(partyState, playerId)),
       text: (partyState, playerId) =>
-        windowHint(
-          optionWindowOf(partyState, playerId),
-          'Выберите вариант свойства',
-          'Выберите один из вариантов эффекта карты',
-        ),
+        HINTS.defense.effectOption({
+          required: optionWindowOf(partyState, playerId)?.required === true,
+        }),
     },
     effectTarget: {
       active: (partyState, playerId) =>
         Boolean(cardWindowOf(partyState, playerId)) && !optionWindowOf(partyState, playerId),
       text: (partyState, playerId) =>
-        partyState.targeting?.kind === 'cells'
-          ? windowHint(
-              targetWindowOf(partyState, playerId),
-              'Выберите подсвеченную клетку',
-              'Выберите клетку среди подсвеченных',
-            )
-          : windowHint(
-              targetWindowOf(partyState, playerId),
-              'Выберите подсвеченного бойца',
-              'Выберите цель среди подсвеченных бойцов',
-            ),
+        HINTS.defense.effectTarget({
+          cells: partyState.targeting?.kind === 'cells',
+          required: targetWindowOf(partyState, playerId)?.required === true,
+        }),
     },
     combatChoice: {
       active: (partyState, playerId) => Boolean(choiceOf(partyState, playerId)),
-      text: (partyState, playerId) => {
-        const choice = choiceOf(partyState, playerId);
-        return choice?.effect === 'movement'
-          ? 'Передвиньте бойцов по подсвеченным клеткам'
-          : 'Выберите карту для эффекта — или закончите эффект без выбора';
-      },
+      text: (partyState, playerId) =>
+        HINTS.defense.combatChoice({
+          movement: choiceOf(partyState, playerId)?.effect === 'movement',
+        }),
     },
     noDefenseCards: {
       active: (partyState, playerId) =>
         partyState.combat?.stage === 'defense' && defenseCardIds(partyState, playerId).length === 0,
-      text: () => 'Карт защиты нет: закончите действие — защита 0 и весь урон по бойцу',
+      text: HINTS.defense.noDefenseCards,
     },
     defend: {
       active: (partyState, playerId) => Boolean(isDefender(partyState, playerId)),
-      text: (partyState, playerId) =>
-        partyState.combat?.defenseRequired === true
-          ? 'Защиту съели: выложите другую карту защиты или гибрид'
-          : 'Защититесь картой defense|hybrid или закончите действие без карты',
+      text: partyState =>
+        HINTS.defense.defend({ afterCancel: partyState.combat?.defenseRequired === true }),
     },
   },
 
@@ -243,7 +233,9 @@ export default {
         cardId => !playable.includes(cardId),
       ),
       controls: options
-        ? effectControls(options.required !== true)
+        ? // окно вариантов: отметка включает общую кнопку (она и подтверждает выбор),
+          // у обязательного окна без отметки кнопки нет — закрывается только выбором
+          effectControls(options.picked != null || options.required !== true)
         : choice
           ? // одна общая кнопка: ничего не выбрано — отказ, выбрано — эффект заканчивается
             effectControls(canFinishChoice(choice))
@@ -259,7 +251,9 @@ export default {
     label: 'Закончить действие',
     enabled: (partyState, playerId) => {
       const options = optionWindowOf(partyState, playerId);
-      if (options) return options.required !== true;
+      // отметка включает кнопку: подтвердить выбор можно и в обязательном окне,
+      // а отказаться (без отметки) — только в необязательном
+      if (options) return options.picked != null || options.required !== true;
       const target = targetWindowOf(partyState, playerId);
       if (target) return target.required !== true;
       const choice = choiceOf(partyState, playerId);
@@ -270,7 +264,14 @@ export default {
     },
     onPress: (partyState, action) => {
       const options = optionWindowOf(partyState, action.playerId);
-      if (options) return declineOption(partyState, action.playerId);
+      if (options) {
+        // выбор отмечен — общая кнопка его подтверждает и доигрывает свойство
+        if (options.picked != null) return confirmOption(partyState, action.playerId);
+        if (options.required === true) {
+          throw new Error('UI_OK: обязательное свойство карты закрывается только выбором варианта');
+        }
+        return declineOption(partyState, action.playerId);
+      }
 
       const target = targetWindowOf(partyState, action.playerId);
       if (target) {
@@ -297,7 +298,7 @@ export default {
         if (action.kind !== 'option') {
           throw new Error(`PICK: в окне эффекта выбирают вариант (пришло "${action.kind}")`);
         }
-        return answerOption(partyState, action.playerId, action.id);
+        return pickOption(partyState, action.playerId, action.id);
       }
 
       // окно цели, открытое картой боя: клик по бойцу или клетке из подсвеченных
@@ -341,10 +342,12 @@ export default {
     applied | skipped | waiting | declined). Игрок кликает карту руки (SET_COMBAT pick) или отказывается
     (SET_COMBAT skip), после чего бой продолжается с того же места.
  5a. выбор варианта эффекта («активировать катушки» или «деактивировать»): правило открывает обычное окно
-    выбора с kind: 'options', клиент рисует варианты из ui.choices. Обязательное окно (required: true) общая
-    кнопка не закрывает, необязательное («вы можете») — закрывает и помечает шаг declined. Отметка варианта
-    (PICK kind: 'option') прогоняет правила карты в моменте picked — там ветки правил проверяют выбранное
-    через PICKED { is: '...' } — затем окно закрывается и бой доигрывается.
+    выбора с kind: 'options', клиент рисует варианты из ui.choices. Клик по варианту только **отмечает** его
+    (PICK kind: 'option' → targeting.picked): правила карты применяет общая кнопка (UI_OK), она и разбирает
+    момент picked — там ветки правил проверяют выбранное через PICKED { is: '...' } — затем окно закрывается
+    и бой доигрывается. Отметка включает кнопку, в том числе у обязательного окна; у необязательного окна
+    без отметки та же кнопка отказывается от свойства (шаг помечается declined), обязательное закрывается
+    только отметкой.
  5b. выбор цели картой боя (kind: 'fighters' | 'cells'): так «Плата пеплом» спрашивает, какого духа сжечь,
     а «Счёт ударов» — кого добить в области Ифрита. Клик по подсвеченному бойцу или клетке (PICK) прогоняет
     picked, окно закрывается и бой доигрывается; у необязательного окна общая кнопка помечает шаг declined,

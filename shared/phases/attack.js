@@ -1,4 +1,5 @@
 import { SET_COMBAT } from '#shared/actions/combat.js';
+import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer } from '#shared/helpers/base.js';
 import { attackCandidates, attackTargets } from '#shared/helpers/combat.js';
 import { handCardIds, isMomentMine } from '#shared/helpers/turn.js';
@@ -40,16 +41,18 @@ export default {
   hints: {
     pickAttacker: {
       active: partyState => partyState.combat?.stage === 'attacker',
-      text: () => 'Выберите бойца, который атакует этой картой',
+      text: HINTS.attack.pickAttacker,
     },
     pickTarget: {
       active: partyState => partyState.combat?.stage === 'target',
-      text: () => 'Выберите цель среди подсвеченных бойцов противника',
+      text: HINTS.attack.pickTarget,
     },
     waitingDefense: {
       active: partyState => partyState.combat?.stage === 'defense',
       text: partyState =>
-        `Ожидание защиты игрока ${playerName(partyState, partyState.combat?.defenderPlayerId)}`,
+        HINTS.attack.waitingDefense({
+          name: playerName(partyState, partyState.combat?.defenderPlayerId),
+        }),
     },
   },
 

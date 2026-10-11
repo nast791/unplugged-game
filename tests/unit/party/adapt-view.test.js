@@ -18,7 +18,7 @@ const duel = () =>
   );
 
 describe('adaptPartyView: проекция сервера → view клиента', () => {
-  it('хук становится phase, объект turn — числами, из зон остаются рука и число карт в колоде', () => {
+  it('хук становится phase, объект turn — числами, из зон остаются рука, сброс и число карт в колоде', () => {
     const state = duel();
     const [first, second] = state.players;
     const raw = view(state, first.id);
@@ -37,12 +37,21 @@ describe('adaptPartyView: проекция сервера → view клиент�
     expect(mine.hand.length).toBeGreaterThan(0);
     expect(mine.hand[0].instanceId ?? mine.hand[0].id).toBeTruthy();
     expect(enemy.hand).toEqual([]);
-    // колода закрыта всем: клиент показывает её размером
+    // колода закрыта всем: клиент показывает её размером; сброс открыт всем и приезжает картами
     expect(mine.deckCount).toBeGreaterThan(0);
     expect(typeof enemy.deckCount).toBe('number');
+    expect(mine.discard).toEqual([]);
+    expect(mine.discardCount).toBe(0);
 
-    // deck/discard/счётчики клиенту не нужны — адаптер их не считает
-    for (const key of ['deck', 'discard', 'handCount', 'discardCount']) {
+    // сброс непустой: карты доезжают до клиента — из них собирается стопка и модалка сброса
+    state.players[0].discard.cards.push(state.players[0].deck.cards.pop());
+    const withDiscard = adaptPartyView(view(state, first.id));
+    const after = withDiscard.players.find(p => String(p.id) === String(first.id));
+    expect(after.discard).toHaveLength(1);
+    expect(after.discardCount).toBe(1);
+
+    // закрытая колода и счётчики, которых клиенту не нужно, в состояние не едут
+    for (const key of ['deck', 'handCount']) {
       expect(mine).not.toHaveProperty(key);
     }
   });

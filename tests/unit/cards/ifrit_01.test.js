@@ -83,7 +83,7 @@ describe('карта ifrit_01 «Столб огня»', () => {
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({
       type: 'attack',
-      value: 5,
+      value: 6,
       bonus: 1,
       quantity: 2,
       fighter: 'ifrit',
@@ -91,14 +91,14 @@ describe('карта ifrit_01 «Столб огня»', () => {
     });
   });
 
-  it('атака 5 без условий: урон проходит по цели', () => {
+  it('атака 6 без условий: урон проходит по цели', () => {
     const after = battle(buildState());
 
-    expect(after.lastCombat.attackValue).toBe(5);
+    expect(after.lastCombat.attackValue).toBe(6);
     expect(after.lastCombat.defenseValue).toBe(0);
-    expect(after.lastCombat.combatDamage).toBe(5);
+    expect(after.lastCombat.combatDamage).toBe(6);
     expect(after.lastCombat.winner).toBe('attacker');
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(7);
   });
 
   it('свойств нет — стихия и духи на число не влияют', () => {
@@ -108,7 +108,7 @@ describe('карта ifrit_01 «Столб огня»', () => {
 
     const after = battle(state);
 
-    expect(after.lastCombat.attackValue).toBe(5);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+    expect(after.lastCombat.attackValue).toBe(6);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(7);
   });
 });

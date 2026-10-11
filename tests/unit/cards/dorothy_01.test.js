@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SET_HEALTH } from '#shared/actions/health.js';
 import { isMoment } from '#shared/constants/moments.js';
-import { runFact } from '#shared/facts/run.js';
 import { runAction } from '#shared/publicApi.js';
 import dorothyCards from '../../../server/content/heroes/dorothy/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
@@ -9,8 +8,8 @@ import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 const card = dorothyCards.find(entry => entry.id === 'dorothy_01');
 
 /**
- * Линия 1—2—3—4—5: клетки 1—3 лёд, 4—5 лава.
- * Дороти на 2, Бета на 3 (соседняя клетка), Тото — на 1 (область Дороти) или на 5 (чужая область).
+ * Линия 1—2—3—4—5: Дороти на 2, Бета на 3 (соседняя), Тото — на 1 или на 5.
+ * После боя Тото и Бета меняются местами, где бы собака ни стояла.
  */
 const lineMap = {
   id: 'line',
@@ -51,8 +50,9 @@ const slot = (id, name, order, fighters, hand = [], lost = []) => ({
   lost,
 });
 
-/** Дороти и Тото игрока 0 против Беты игрока 1; `totoCell` — где стоит собака. */
-const buildState = ({ totoCell = 1 } = {}) =>
+/** Дороти и Тото игрока 0 против Беты игрока 1; `totoCell` — где стоит собака.
+ *  `assistantHp` — вместо героя-Беты на соседней клетке стоит помощник с таким здоровьем. */
+const buildState = ({ totoCell = 1, assistantHp = null } = {}) =>
   createState({
     phase: PHASES.turn,
     map: lineMap,
@@ -64,7 +64,17 @@ const buildState = ({ totoCell = 1 } = {}) =>
         [unit('dorothy', 2, 12), unit('toto', totoCell, 6, { type: 'assistant', group: 'toto' })],
         [{ ...card, instanceId: 'dorothy_01_1' }],
       ),
-      slot('1', 'Бета', 2, [unit('beta', 3, 13)]),
+      slot(
+        '1',
+        'Бета',
+        2,
+        assistantHp == null
+          ? [unit('beta', 3, 13)]
+          : [
+              unit('harpies_1', 3, assistantHp, { type: 'assistant', group: 'harpies' }),
+              unit('beta', 4, 13),
+            ],
+      ),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -92,48 +102,65 @@ const fighterOf = (state, playerId, fighterId) =>
 
 describe('карта dorothy_01 «Тото отвлекает»', () => {
   it('описана правилами, момент — из списка', () => {
-    expect(card.rules).toHaveLength(1);
-    expect(card.rules[0].moment).toBe('duringCombat');
-    expect(isMoment(card.rules[0].moment)).toBe(true);
+    expect(card.rules).toHaveLength(3);
+    for (const rule of card.rules) {
+      expect(rule.moment).toBe('afterCombat');
+      expect(isMoment(rule.moment)).toBe(true);
+    }
     expect(card.hook).toBeUndefined();
-    expect(card).toMatchObject({ type: 'attack', value: 3, bonus: 1, fighter: 'dorothy' });
+    expect(card).toMatchObject({ type: 'attack', value: 4, bonus: 4, fighter: 'dorothy' });
+    expect(card.rules[0].then.map(step => step.action)).toEqual(['SWAP_FIGHTERS']);
+    // обмен сложился — одно действие; обмен не сложился (нет Тото или бойца противника) — два
+    expect(card.rules[1].then).toEqual([{ action: 'SET_ACTIONS', delta: 1 }]);
+    expect(card.rules[2].then).toEqual([{ action: 'SET_ACTIONS', delta: 2 }]);
+    expect(card.rules[2].any).toHaveLength(2);
+    // «Тото или боец противника уже не на поле» — `max` пишется на самом факте
+    expect(card.rules[2].any[0][0]).toMatchObject({
+      fact: 'FIGHTERS',
+      params: { group: 'toto' },
+      max: 0,
+    });
   });
 
-  it('Дороти в области Тото — условия нет, атака 3', () => {
+  it('после боя меняет Бету и Тото местами и даёт дополнительное действие', () => {
     const after = battle(buildState({ totoCell: 1 }));
 
-    expect(after.lastCombat.attackValue).toBe(3);
-    expect(after.lastCombat.combatDamage).toBe(3);
-    expect(after.lastCombat.winner).toBe('attacker');
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
+    // бой: 13 − 4, Бета жива и меняется клеткой с собакой
+    expect(after.lastCombat.combatDamage).toBe(4);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
+    // обмен не приводит клетки к строке: бойцы меняются теми значениями, что стоят в состоянии
+    expect(Number(fighterOf(after, '1', 'beta').currentPosition)).toBe(1);
+    expect(Number(fighterOf(after, '0', 'toto').currentPosition)).toBe(3);
+    // карта стоила действие и вернула его
+    expect(after.turn.actionsLeft).toBe(2);
   });
 
-  it('Дороти вне области Тото — +2, атака 5', () => {
+  it('собака стоит далеко — обмен всё равно работает', () => {
     const after = battle(buildState({ totoCell: 5 }));
 
-    expect(after.lastCombat.attackValue).toBe(5);
-    expect(after.lastCombat.combatDamage).toBe(5);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+    expect(Number(fighterOf(after, '1', 'beta').currentPosition)).toBe(5);
+    expect(Number(fighterOf(after, '0', 'toto').currentPosition)).toBe(3);
+    expect(after.turn.actionsLeft).toBe(2);
   });
 
-  it('Тото убит — факт пуст, условие выполняется само: +2', () => {
+  it('Тото убит — обмена нет, но карта даёт 2 действия вместо 1', () => {
     const state = killToto(buildState({ totoCell: 1 }));
-
-    // собака ушла с поля в `lost`, поэтому ориентир «область Тото» больше не находится
     expect(fighterOf(state, '0', 'toto')).toBeUndefined();
     expect(player(state, '0').lost.map(entry => entry.id)).toEqual(['toto']);
 
-    const fact = runFact(
-      state,
-      'FIGHTERS',
-      { fighterIds: ['dorothy'], areaOf: 'toto', max: 0 },
-      { playerId: '0' },
-    );
-    expect(fact.ok).toBe(true);
-    expect(fact.value).toEqual([]);
-
     const after = battle(state);
-    expect(after.lastCombat.attackValue).toBe(5);
-    expect(after.lastCombat.combatDamage).toBe(5);
+
+    expect(Number(fighterOf(after, '1', 'beta').currentPosition)).toBe(3);
+    // карта стоила действие и вернула два: 2 − 1 + 2
+    expect(after.turn.actionsLeft).toBe(3);
+  });
+
+  it('боец противника погиб в бою — обмена нет, тоже 2 действия', () => {
+    const after = battle(buildState({ assistantHp: 1 }));
+
+    // помощник в 1 hp не пережил бой (атака 4), меняться не с кем
+    expect(fighterOf(after, '1', 'harpies_1')).toBeUndefined();
+    expect(Number(fighterOf(after, '0', 'toto').currentPosition)).toBe(1);
+    expect(after.turn.actionsLeft).toBe(3);
   });
 });

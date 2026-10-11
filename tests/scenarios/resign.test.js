@@ -193,4 +193,30 @@ describe('scenario: сдача партии (RESIGN)', () => {
     expect(ap(state)).toBe(2);
     expect(state.winner).toBeNull();
   });
+
+  /**
+   * Так работает лимит времени на расстановку (`app/utils/timeLoss.js` + `resignByTimeout`): при двух
+   * местах сдача того, кто не успел, завершает партию победой второго — и расстановка при этом
+   * не ждёт сдавшегося (у него нет бойцов, поэтому `allPlayersPlacementReady` его пропускает).
+   */
+  it('сдача во время расстановки при двух игроках завершает партию победой успевшего', () => {
+    const players = threePlayers().slice(0, 2);
+    players[0].fighters.push(fighter({ id: 'a_pawn', type: 'assistant', currentPosition: 2 }));
+    players[0].placementReady = false;
+    players[1].placementReady = true;
+
+    const state = createState({
+      phase: PHASES.gameStart,
+      map: threePlayerMap,
+      players,
+      turn: { playerId: null, actedRound: [] },
+    });
+
+    const next = runAction(state, { type: 'RESIGN', playerId: '0' });
+
+    expect(next.hook).toBe(PHASES.gameEnd);
+    expect(next.winner).toBe('1');
+    expect(player(next, '0').fighters).toHaveLength(0);
+    expect(player(next, '0').resigned).toBe(true);
+  });
 });

@@ -3,7 +3,8 @@
  * число копий стережёт `tests/unit/content/deck-size.test.js`.
  *
  * Механики всех тринадцати карт в движке есть: пороги осколков, заморозка, отмена свойств, добор,
- * обмен картой в бою, клетка льда, замешивание, усиление только что сброшенной карты (`remember` →
+ * обмен картой в бою, клетка по стихии и возврат бойца с заданным здоровьем (`REVIVE_FIGHTER { hp }`),
+ * замешивание, усиление только что сброшенной карты (`remember` →
  * `$remembered`), «погибла от этой карты» (момент `lost` карты-источника), обзор чужой руки
  * (окно `kind: 'options'` по `CARDS { zone: 'hand' }`) и проход с уроном (`damageOnPass`).
  *
@@ -88,7 +89,7 @@ export default [
     bonus: 2,
     quantity: 2,
     fighter: 'snow-queen',
-    text: 'ВО ВРЕМЯ БИТВЫ: При 4 и более осколках атакующий заморожен — он не может перемещаться или телепортироваться до конца своего хода. ПОСЛЕ БИТВЫ: При 8 и более осколков он ещё и получает 1 урон.',
+    text: 'ВО ВРЕМЯ БИТВЫ: При 4 и более осколках атакующий заморожен — он не может перемещаться или телепортироваться до конца своего хода. ПОСЛЕ БИТВЫ: При 6 и более осколков он ещё и получает 1 урон.',
     rules: [
       {
         moment: 'duringCombat',
@@ -101,7 +102,7 @@ export default [
       {
         moment: 'afterCombat',
         when: [
-          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 8 } },
+          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 6 } },
           { fact: 'COMBAT', params: { select: 'attacker' }, var: 'foe' },
           // атакующий мог погибнуть в бою — тогда добивать некого
           { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1, var: 'alive' },
@@ -182,7 +183,7 @@ export default [
     title: 'Стужа в сердце',
     type: 'defense',
     value: 3,
-    bonus: 1,
+    bonus: 3,
     quantity: 2,
     fighter: 'snow-queen',
     text: 'ВО ВРЕМЯ БИТВЫ: Оппонент сбрасывает 1 случайную карту из руки; значение карты увеличивается на усиление сброшенной карты.',
@@ -216,7 +217,7 @@ export default [
     quantity: 3,
     fighter: 'any',
     tags: ['shard'],
-    text: 'ВО ВРЕМЯ БИТВЫ: Если ваш боец в этой битве стоит на клетке со стихией льда, значение карты становится 4. При 9 и более осколках значение становится 7 на любой клетке.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если ваш боец в этой битве стоит на клетке со стихией льда, значение карты становится 4. При 7 и более осколках значение становится 7 на любой клетке.',
     rules: [
       {
         moment: 'duringCombat',
@@ -230,7 +231,7 @@ export default [
         // Лёд и порог осколков независимы: правило не требует стоять на льду. Если сработали оба,
         // значение выставит последнее правило (7) — поэтому порядок здесь важен, а не накопителен.
         moment: 'duringCombat',
-        when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 9 } }],
+        when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 7 } }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 7 }],
       },
     ],
@@ -240,8 +241,8 @@ export default [
     id: 'snow-queen_07',
     title: 'Снежная тропа',
     type: 'hybrid',
-    value: 3,
-    bonus: 2,
+    value: 5,
+    bonus: 4,
     quantity: 2,
     fighter: 'any',
     text: 'ПОСЛЕ БИТВЫ: Если вы победили, возьмите карту.',
@@ -258,8 +259,8 @@ export default [
     id: 'snow-queen_08',
     title: 'Жертва',
     type: 'attack',
-    value: 3,
-    bonus: 1,
+    value: 4,
+    bonus: 3,
     quantity: 2,
     fighter: 'crow',
     text: 'ПОСЛЕ БИТВЫ: Нанесите этой вороне 1 урон. Если она погибает от этого эффекта, получите 1 действие в этом ходу.',
@@ -325,7 +326,7 @@ export default [
     ],
   },
   {
-    // контр-игра включается с пяти осколков — раньше умения
+    // контр-игра включается с четырёх осколков — раньше умения (пять, §7)
     id: 'snow-queen_10',
     title: 'Трещина',
     type: 'hybrid',
@@ -333,12 +334,12 @@ export default [
     bonus: 1,
     quantity: 2,
     fighter: 'snow-queen',
-    text: 'ВО ВРЕМЯ БИТВЫ: При 5 и более осколках отмените эффекты карты оппонента.',
+    text: 'ВО ВРЕМЯ БИТВЫ: При 4 и более осколках отмените эффекты карты оппонента.',
     rules: [
       {
         moment: 'duringCombat',
         when: [
-          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } },
+          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 4 } },
           // отменять нечего, если у карты противника нет свойств
           { fact: 'COMBAT', params: { effects: 'opponent' }, min: 1 },
         ],
@@ -390,12 +391,12 @@ export default [
     bonus: 1,
     quantity: 2,
     fighter: 'snow-queen',
-    text: 'При 6 и более осколках нанесите 2 урона каждому бойцу оппонента в области королевы, затем замешайте 3 карты с осколком из сброса в колоду.',
+    text: 'При 5 и более осколках нанесите 2 урона каждому бойцу оппонента в области королевы, затем замешайте 2 карты с осколком из сброса в колоду.',
     rules: [
       {
         moment: 'effect',
         when: [
-          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 6 } },
+          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } },
           {
             fact: 'FIGHTERS',
             params: { side: 'opponent', areaOf: 'snow-queen' },
@@ -408,7 +409,7 @@ export default [
       {
         moment: 'effect',
         when: [
-          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 6 } },
+          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } },
           {
             fact: 'CARDS',
             params: { zone: 'discard', tag: 'shard', min: 1 },
@@ -422,7 +423,7 @@ export default [
             from: 'discard',
             to: 'deck',
             cardIds: '$shards',
-            count: 3,
+            count: 2,
           },
           { action: 'SET_CARDS', op: 'shuffle', zone: 'deck' },
         ],
@@ -430,7 +431,7 @@ export default [
     ],
   },
   {
-    // возврат вороны: сначала на свободный лёд, если льда нет — в область королевы
+    // возврат вороны: любая свободная клетка карты, ворона встаёт с 1 hp (`REVIVE_FIGHTER { hp }`)
     id: 'snow-queen_13',
     title: 'Вечность',
     type: 'effect',
@@ -438,32 +439,15 @@ export default [
     bonus: 1,
     quantity: 2,
     fighter: 'snow-queen',
-    text: 'Верните поверженную Кристальную ворону на любую свободную клетку льда с 1 здоровьем, затем возьмите карту.',
+    text: 'Верните поверженную Кристальную ворону на любую свободную клетку с 1 здоровьем, затем возьмите карту.',
     rules: [
       {
         moment: 'effect',
         when: [
           { fact: 'LOST', params: { group: 'crow' }, min: 1 },
-          { fact: 'CELLS', params: { terrain: 'ice', free: true, min: 1 }, var: 'cells' },
-        ],
-        then: [
-          {
-            action: 'SET_TARGETING',
-            op: 'open',
-            kind: 'cells',
-            candidates: '$cells',
-            count: 1,
-            required: true,
-          },
-        ],
-      },
-      {
-        // свободного льда нет — ворона возвращается в область королевы
-        moment: 'effect',
-        when: [
-          { fact: 'LOST', params: { group: 'crow' }, min: 1 },
-          { fact: 'CELLS', params: { terrain: 'ice', free: true }, max: 0 },
-          { fact: 'CELLS', params: { areaOf: 'snow-queen', free: true, min: 1 }, var: 'cells' },
+          // лёд больше не требуется: генератор раздаёт стихии зонам, и свободной клетки льда в партии
+          // может не оказаться вовсе — тогда окно не открывалось и карта выпадала из игры целиком
+          { fact: 'CELLS', params: { free: true, min: 1 }, var: 'cells' },
         ],
         then: [
           {
@@ -478,9 +462,13 @@ export default [
       },
       {
         moment: 'picked',
-        when: [{ fact: 'PICKED', var: 'picked' }],
+        when: [
+          { fact: 'PICKED', var: 'picked' },
+          // ворону могли вернуть до этого окна — поднимать тогда некого
+          { fact: 'LOST', params: { group: 'crow' }, min: 1 },
+        ],
         then: [
-          { action: 'REVIVE_FIGHTER', group: 'crow', cellId: '$picked' },
+          { action: 'REVIVE_FIGHTER', group: 'crow', cellId: '$picked', hp: 1 },
           { action: 'SET_CARDS', op: 'draw', count: 1 },
         ],
       },

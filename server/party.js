@@ -122,7 +122,13 @@ const projectTargeting = (targeting, you) => {
     required: targeting.required === true,
   };
   if (playerId !== String(you.id)) return base;
-  return { ...base, candidates: structuredClone(targeting.candidates ?? []) };
+  return {
+    ...base,
+    kind: targeting.kind ?? 'fighters',
+    count: Number(targeting.count) || 1,
+    picked: targeting.picked ?? null,
+    candidates: structuredClone(targeting.candidates ?? []),
+  };
 };
 
 const projectState = (state, you) => {

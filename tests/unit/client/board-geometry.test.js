@@ -3,11 +3,13 @@ import {
   MARKER,
   MAX_RADIUS,
   MIN_RADIUS,
+  PLACEMENT,
   SHADOW,
   STROKE,
   PATTERN_TILES,
   bendFor,
   bendOf,
+  cellAtPoint,
   cellPatterns,
   clickTarget,
   curvePoints,
@@ -96,6 +98,50 @@ describe('геометрия доски: палитра яркая и контр
     expect(new Set(colors).size).toBe(colors.length);
     const luminances = TERRAIN_IDS.map(id => colorLuminance(terrainColor(id)));
     expect(Math.max(...luminances) - Math.min(...luminances)).toBeGreaterThan(0.3);
+  });
+});
+
+describe('геометрия доски: клетка под точкой экрана (перетаскивание аватарки)', () => {
+  const nodes = [
+    { id: 1, x: 100, y: 100 },
+    { id: 2, x: 300, y: 100 },
+  ];
+  const radius = 40;
+
+  it('точка в кружке даёт его id, и сдвиг сцены учитывается', () => {
+    expect(cellAtPoint(nodes, radius, { x: 0, y: 0, scaleX: 1, scaleY: 1 }, { x: 110, y: 95 })).toBe(
+      '1',
+    );
+    // сцена сдвинута на (50, 20): та же точка экрана — уже другая клетка мира
+    expect(cellAtPoint(nodes, radius, { x: 50, y: 20 }, { x: 150, y: 120 })).toBe('1');
+    expect(cellAtPoint(nodes, radius, { x: 50, y: 20 }, { x: 110, y: 95 })).toBeNull();
+  });
+
+  it('зум сцены учитывается: при масштабе 2 попадание считается в координатах поля', () => {
+    const transform = { x: 0, y: 0, scaleX: 2, scaleY: 2 };
+    expect(cellAtPoint(nodes, radius, transform, { x: 200, y: 200 })).toBe('1');
+    expect(cellAtPoint(nodes, radius, transform, { x: 600, y: 200 })).toBe('2');
+    // 100 px экрана = 50 px поля: мимо первого кружка (радиус 40)
+    expect(cellAtPoint(nodes, radius, transform, { x: 100, y: 200 })).toBeNull();
+  });
+
+  it('мимо кружков — null, а из двух близких берётся ближайший', () => {
+    expect(cellAtPoint(nodes, radius, {}, { x: 200, y: 100 })).toBeNull();
+    expect(cellAtPoint(nodes, radius, {}, {})).toBeNull();
+    expect(cellAtPoint([], radius, {}, { x: 100, y: 100 })).toBeNull();
+
+    const close = [
+      { id: 'a', x: 100, y: 100 },
+      { id: 'b', x: 130, y: 100 },
+    ];
+    expect(cellAtPoint(close, 40, {}, { x: 128, y: 100 })).toBe('b');
+    expect(cellAtPoint(close, 40, {}, { x: 104, y: 100 })).toBe('a');
+  });
+
+  it('подсветка расстановки голубая, а занятая клетка — серая без свечения', () => {
+    expect(PLACEMENT.free).toBe('#22d3ee');
+    expect(PLACEMENT.busy).not.toBe(PLACEMENT.free);
+    expect(PLACEMENT.glow).toBeGreaterThan(0);
   });
 });
 

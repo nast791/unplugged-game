@@ -2,7 +2,7 @@ import { runAction } from '#shared/publicApi.js';
 import { cellDistances } from './actionFeatures.js';
 import { stillnessWeight } from './axes.js';
 import { unseenOf } from './counting.js';
-import { actorOf, actionsFor, nextRandom, pickWeighted } from './decide.js';
+import { actorOf, actionsFor, nextRandom, pickWeighted, proposalPolicy } from './decide.js';
 import { cardById } from './pool.js';
 import { resourceOf, resourceProgress, resourceReady } from './resources.js';
 import { defaultWeights, scoreOf, stillHero } from './value.js';
@@ -372,6 +372,62 @@ const rolloutScore = (state, viewerId, budget) => {
 const keyOf = action => JSON.stringify(action);
 
 /**
+ * Отпечаток позиции: всё **открытое** — чей ход и сколько действий осталось, бойцы с позициями и
+ * здоровьем, зоны (рука, колода, сброс), счётчик хода. Нужен, чтобы увидеть варианты корня, ведущие в
+ * **одно и то же** состояние: у Медузы три гарпии в одной области дают одинаковый шаг, и такая пара
+ * вариантов только дробит статистику между двумя записями вместо одной (§53).
+ */
+const stateFingerprint = state =>
+  JSON.stringify({
+    hook: state.hook,
+    turn: [state.turn?.playerId, state.turn?.actionsLeft, state.turn?.index],
+    combat: [state.combat?.stage, state.combat?.attackerFighterId, state.combat?.targetFighterId],
+    movement: [state.movement?.playerId ?? null, state.movement?.moves?.length ?? 0],
+    targeting: [state.targeting?.playerId ?? null, state.targeting?.picked ?? null],
+    fighters: (state.players ?? []).map(player =>
+      (player.fighters ?? []).map(fighter => [
+        fighter.id,
+        fighter.currentPosition,
+        fighter.currentHp,
+      ]),
+    ),
+    zones: (state.players ?? []).map(player => [
+      player.hand?.cards?.length ?? 0,
+      player.deck?.cards?.length ?? 0,
+      player.discard?.cards?.length ?? 0,
+    ]),
+  });
+
+/**
+ * **Схлопывание одинаковых вариантов** (§53): если два предложенных хода приводят к одному состоянию
+ * (например, ход одной из трёх одинаковых гарпий на ту же клетку), по последствиям они неразличимы, и
+ * два узла корня только делят между собой визиты. Оставляем первый по порядку предлагателя, остальные
+ * получают ноль доигрываний — их число возвращается наружу (`deduped`).
+ */
+const dedupeCandidates = (state, viewerId, candidates) => {
+  const seen = new Set();
+  const kept = [];
+  let deduped = 0;
+  for (const entry of candidates) {
+    let after;
+    try {
+      after = runAction(state, { ...entry.action, playerId: viewerId });
+    } catch {
+      kept.push(entry);
+      continue;
+    }
+    const key = stateFingerprint(after);
+    if (seen.has(key)) {
+      deduped += 1;
+      continue;
+    }
+    seen.add(key);
+    kept.push(entry);
+  }
+  return { kept, deduped };
+};
+
+/**
  * Переменные среды читаются через `typeof`: этот модуль попадает и в браузер (`bot/play/ai.js` → режим
  * `vs_ai`), где `process` нет вовсе. В браузере бюджеты остаются умолчаниями, в Node работают флаги.
  */
@@ -379,6 +435,21 @@ const env = typeof process === 'undefined' ? {} : (process.env ?? {});
 
 const envNumber = name => {
   const value = Number(env[name]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+/**
+ * Коэффициент приора корня: сколько «весит» мнение модели рядом с оценкой доигрываний (`SEARCH_PRIOR`).
+ * Отдельно от `prior` (коэффициента весов политики) — это разные сигналы и мерятся они порознь.
+ */
+const envPriorMix = () => {
+  const value = Number(env.SEARCH_PRIOR_MIX);
+  return Number.isFinite(value) && value >= 0 && env.SEARCH_PRIOR_MIX != null ? value : null;
+};
+
+/** Уверенность приора: насколько быстро он перестаёт спорить с доигрываниями (`SEARCH_PRIOR_TAU`). */
+const envPriorTau = () => {
+  const value = Number(env.SEARCH_PRIOR_TAU);
   return Number.isFinite(value) && value > 0 ? value : null;
 };
 
@@ -403,8 +474,50 @@ export const searchBudget = () => {
     // приоритет политики при равных средних: иначе поиск, которому всё равно, выбирает «не проиграть»
     prior: Number(env.SEARCH_PRIOR ?? 0.02),
     // откуда берётся приор: `weights` — вес варианта у политики, `qvalue` — оценка ученика (`rootPriors`)
-    priorFrom: env.SEARCH_PRIOR_FROM ?? 'weights',
-    // нетерпение: выигрышные исходы дисконтируются по числу ходов, проигрышные — нет
+    priorSource: env.SEARCH_PRIOR_FROM ?? 'weights',
+    /**
+     * **Модель как приор решения** (`SEARCH_PRIOR_MIX`): во сколько раз мнение модели весомее оценки
+     * доигрываний у корня; ноль — модель в решении не участвует (прежнее поведение, эталон замеров).
+     * `prior_mix · p_a / (visits + τ)` — приор спорит с доигрыванием только пока визитов мало, то есть
+     * ровно там, где бюджет времени не успел собрать статистику: 30 мс — это ~35 доигрываний на решение
+     * (5–7 на вариант корня, замер `.workbuddy/prior-probe.mjs`), и средние по ним — шум.
+     */
+    priorMix: envPriorMix() ?? 0.8,
+    priorTau: envPriorTau() ?? 4,
+    /**
+     * **Сколько вариантов корня считать** (`SEARCH_TOP`, 0 — все): модель отбирает верхушку по своему
+     * мнению, поиск тратит на неё все доигрывания, а не размазывает бюджет по всем вариантам списка.
+     * Это другое применение модели, чем приор: не «подсказать порядок», а **сузить перебор** — при
+     * бюджете 30 мс доигрываний хватает единицам вариантов, и выбор «на что их потратить» решает исход.
+     */
+    top: Number(env.SEARCH_TOP ?? 0),
+    /**
+     * **Парная переоценка корня** (`SEARCH_PAIRED`, §52): доигрываний на вариант, которые после основного
+     * поиска оценивают **все раскрытые варианты в одних и тех же мирах** (`pairedRootValues`). Ноль —
+     * выключено (прежнее поведение). Зачем: замер сходимости показал, что при 200 мс (~35 доигрываний)
+     * поиск играет на четверть иначе, чем тот же поиск с 96 мирами, — выбор дрожит от того, какие миры
+     * попались варианту. Парная оценка вычитает общий шум миров: разница между вариантами перестаёт тонуть
+     * в разнице чужих рук. Это тот же приём, которым пользуется оракул в обучении (§46), но здесь он
+     * уточняет решение, а не метку.
+     */
+    paired: envNumber('SEARCH_PAIRED') ?? 0,
+    // доля веса парной оценки в итоговом решении корня: 1 — только парная, 0 — только средние UCT
+    pairedMix: Number(env.SEARCH_PAIRED_MIX ?? 1),
+    /**
+     * **Схлопывание одинаковых вариантов** (`SEARCH_DEDUP=1`, §53): варианты, ведущие в одно состояние,
+     * получают один узел корня вместо нескольких. Это не ускорение ради скорости, а честная статистика:
+     * копии делили визиты и искажали UCT (см. замер ошибки в `searchAction`).
+     */
+    dedup: env.SEARCH_DEDUP === '1',
+    /**
+     * **Пул миров** (`SEARCH_WORLD_POOL`, §54): сколько миров набирать на решение. Ноль/единица —
+     * прежнее поведение: новое доигрывание — новый мир. Больше — миры берутся по кругу из пула, и на
+     * каждый мир приходится много доигрываний. Замер §52 показал, что при 200 мс поиск **не сходится**
+     * (ответ при 24 мирах совпадает с ответом при 96 лишь в 71%): разброс между вариантами тонет в
+     * разнице миров. Пул уменьшает эту разницу, не подменяя статистику: каждое доигрывание свежее, ГПСЧ
+     * тратится как обычно, меняется только выбор мира — в отличие от кэша оценок (§53), который врал.
+     */
+    worldPool: envNumber('SEARCH_WORLD_POOL') ?? 0, // нетерпение: выигрышные исходы дисконтируются по числу ходов, проигрышные — нет
     gamma: Number(env.SEARCH_GAMMA ?? '0.995'),
     // оценка листа: ручная формула или обученная модель (`bot/play/value.js`)
     evaluation: env.SEARCH_EVAL ?? 'heuristic',
@@ -412,6 +525,9 @@ export const searchBudget = () => {
     // так поиск думает ход целиком, а не первые `depth` шагов (политика `turn`, §25)
     turnEnd: env.SEARCH_TURN_END === '1',
     replyTurn: env.SEARCH_TURN_REPLY === '1',
+    // каким артефактом считает ученик (`bot/play/qvalue.js`): лист `qvalue` и приор корня `qprior`
+    // читают его, поэтому в матче «версия против версии» артефакт обязан быть у каждой стороны свой
+    artifact: env.SEARCH_ARTIFACT ?? null,
   };
 };
 
@@ -425,18 +541,21 @@ export const searchBudget = () => {
  * «чем это кончится, если он сыграет здесь». Нет вариантов или артефакта — падаем на ручную формулу,
  * чтобы поиск не зависел от наличия модели.
  */
-const qvalueLeaf = (state, viewerId) => {
+const qvalueLeaf = (state, viewerId, artifact = null) => {
   let options = [];
   try {
-    options = actionsFor(state, viewerId, { policy: 'greedy' }).filter(
-      entry => Number(entry.weight) > 0,
-    );
+    // перечисление — предлагателем рантайма (`proposalPolicy`): лист ученика обязан смотреть на тот же
+    // список вариантов, каким играет рантайм, иначе он оценивает не ту игру
+    options = actionsFor(state, viewerId, {
+      policy: proposalPolicy('qvalue'),
+      artifact,
+    }).filter(entry => Number(entry.weight) > 0);
   } catch {
     return leafScore(state, viewerId);
   }
   if (options.length === 0) return leafScore(state, viewerId);
 
-  const scores = scoreOptions(state, viewerId, options);
+  const scores = scoreOptions(state, viewerId, options, { artifact });
   if (scores == null) return leafScore(state, viewerId);
 
   const values = options.map(entry => scores.get(keyOf(entry.action)) ?? 0);
@@ -457,7 +576,7 @@ const evaluate = (state, viewerId, budget) => {
   }
   if (budget.evaluation === 'plain') return leafScorePlain(state, viewerId);
   if (budget.evaluation === 'position') return leafScorePosition(state, viewerId);
-  if (budget.evaluation === 'qvalue') return qvalueLeaf(state, viewerId);
+  if (budget.evaluation === 'qvalue') return qvalueLeaf(state, viewerId, budget.artifact ?? null);
   return leafScore(state, viewerId);
 };
 
@@ -574,9 +693,9 @@ export const rootPriors = (state, viewerId, candidates, budget = searchBudget())
       ]),
     );
 
-  if (budget.priorFrom !== 'qvalue') return byWeights();
+  if (budget.priorSource !== 'qvalue') return byWeights();
 
-  const scores = scoreOptions(state, viewerId, candidates);
+  const scores = scoreOptions(state, viewerId, candidates, { artifact: budget.artifact ?? null });
   if (scores == null) return byWeights();
 
   const values = candidates.map(entry => scores.get(keyOf(entry.action)) ?? 0);
@@ -590,6 +709,38 @@ export const rootPriors = (state, viewerId, candidates, budget = searchBudget())
       budget.prior * Math.log(exp[index] / total),
     ]),
   );
+};
+
+/**
+ * **Мнение модели в единицах оценки** (`rootAdvantages`): та же мысль, что играет ученик (`qvalue`),
+ * только приором, а не решением. Свип §47 показал, почему прежний приор корня не работал: он входил
+ * добавкой `prior · log p` к среднему по визитам. При бюджете времени (30 мс ≈ 35 доигрываний, 5–7 на
+ * вариант) средние — шум, и коэффициент приора на них не влияет: 22–26 побед из 48 при приоре от 0 до 30
+ * (`.workbuddy/prior-sweep.mjs`). То есть модель **не отвергалась** — её просто не было в решении.
+ *
+ * Здесь она в решении есть, и в том же виде, в каком играет сама: `−(Q(s, a) + 0,8 · log1p(вес))`, то
+ * есть «насколько вариант хуже сильнейшего по мнению модели» (у лучшего нуль, у остальных минус). Число
+ * кладётся рядом со средней доигрываний, а вес приора падает с числом визитов (`mix / (visits + τ)`):
+ * пока статистики нет — решает модель, как только доигрываний накопилось — решает поиск. Это и есть
+ * «поиск решает, модель — приор», а не «модель вместо поиска».
+ */
+export const rootAdvantages = (state, viewerId, candidates, budget = searchBudget()) => {
+  const zeros = new Map(candidates.map(entry => [keyOf(entry.action), 0]));
+  if (!(Number(budget.priorMix) > 0) || candidates.length === 0) return zeros;
+
+  const scores = scoreOptions(state, viewerId, candidates, { artifact: budget.artifact ?? null });
+  if (scores == null) return zeros;
+
+  const mix = Number(budget.priorMix);
+  const scale = Math.max(...candidates.map(entry => Number(entry.weight) || 0)) || 1;
+  const logScale = Math.log1p(scale) || 1;
+  const mixedOf = entry =>
+    (scores.get(keyOf(entry.action)) ?? 0) +
+    mix * (Math.log1p(Math.max(0, Number(entry.weight) || 0)) / logScale);
+
+  // отсчёт от сильнейшего варианта: приор не поднимает весь корень, а расставляет варианты между собой
+  const best = Math.max(...candidates.map(mixedOf));
+  return new Map(candidates.map(entry => [keyOf(entry.action), mixedOf(entry) - best]));
 };
 
 /** Выбор ребёнка узла по UCB. Свои узлы максимизируют оценку, чужие — минимизируют. */
@@ -619,9 +770,11 @@ const ucbChild = (node, legal, { rootKey, priorByKey, exploration }) => {
  * Если ни одно действие не набрало доигрываний, возвращается `null`: вызывающий играет как раньше.
  */
 export const searchAction = (state, viewerId, entries, rawBudget = searchBudget()) => {
-  const candidates = (entries ?? []).filter(entry => entry?.action != null);
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return { action: candidates[0].action, iterations: 0, rows: [] };
+  const offeredCandidates = (entries ?? []).filter(entry => entry?.action != null);
+  if (offeredCandidates.length === 0) return null;
+  // один вариант — решать нечего, и это не «нулевое доигрывание»: ответ совпадает с предложенным
+  if (offeredCandidates.length === 1)
+    return { action: offeredCandidates[0].action, iterations: 0, rows: [] };
 
   /**
    * «Думать свой ход целиком» имеет смысл только **внутри** своего хода. В чужом бою (защита, ответное
@@ -634,13 +787,71 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
       ? { ...rawBudget, turnEnd: false, replyTurn: false }
       : rawBudget;
 
+  /**
+   * Схлопывание вариантов, ведущих в одно состояние (§53): это не «ускорение», а **честная статистика**.
+   * Замер показал цену ошибки: если вместо схлопывания переиспользовать оценку повторного мира (кэш),
+   * поиск проигрывает 36% против 64% на 1 800 партиях — одна выборка попадает в UCT десять раз, и
+   * расклад визитов перестаёт отражать реальность. Здесь же у варианта просто **не появляется** второй
+   * узел: доигрывания, которые ушли бы в копию, достаются настоящим вариантам.
+   */
+  let candidates = offeredCandidates;
+  let deduped = 0;
+  if (budget.dedup === true && offeredCandidates.length > 1) {
+    const collapsed = dedupeCandidates(state, viewerId, offeredCandidates);
+    candidates = collapsed.kept;
+    deduped = collapsed.deduped;
+  }
+  if (candidates.length === 1) {
+    return { action: candidates[0].action, iterations: 0, deduped, rows: [] };
+  }
+
   const rng = rngOf(state);
   const makeWorld = worldFactory(state, viewerId);
   const started = Date.now();
   const deadline = budget.timeMs > 0 ? started + budget.timeMs : 0;
   const rootKey = String(viewerId);
   const root = { playerId: rootKey, children: new Map(), visits: 0, value: 0 };
+  /**
+   * **Пул миров** (§54): миры набираются один раз на решение и берутся по кругу. Нужен потому, что
+   * разница между вариантами корня тонет в разнице миров: каждая итерация тянула **новый** мир, а
+   * `worldFactory` каждый раз тасует скрытые зоны. Каждое доигрывание при пуле остаётся свежим (роллаут
+   * идёт от копии мира, ГПСЧ тратится как обычно) — меняется только то, какие миры варианту достались.
+   */
+  const poolSize = Math.max(0, Math.trunc(Number(budget.worldPool) || 0));
+  let worldPool = null;
+  if (poolSize > 1) {
+    worldPool = [];
+    for (let index = 0; index < poolSize; index += 1) worldPool.push(makeWorld(rng));
+  }
+  const poolWorld = round => worldPool[round % worldPool.length];
+  // приоры: `priorByKey` — тихий сигнал UCB (как было), `advantageByKey` — мнение модели в единицах оценки
   const priorByKey = rootPriors(state, viewerId, candidates, budget);
+  const advantageByKey = rootAdvantages(state, viewerId, candidates, budget);
+  // вес мнения модели в решении: ноль — модель в решение не входит вовсе (прежнее поведение поиска)
+  const mix = Number(budget.priorMix) || 0;
+  const tau = Math.max(0, Number(budget.priorTau) || 0);
+  // **порядок развёртывания**: нераскрытые варианты берутся по мнению модели, а не по порядку весов
+  // политики. При жёстком бюджете времени доигрываний хватает на первые варианты списка, и без этого
+  // «модель как приор» до них просто не доходит: у корня оставались недоисследованные варианты.
+  const ranked =
+    mix > 0
+      ? candidates
+          .slice()
+          .sort(
+            (left, right) =>
+              (advantageByKey.get(keyOf(right.action)) ?? 0) -
+              (advantageByKey.get(keyOf(left.action)) ?? 0),
+          )
+      : candidates;
+  /**
+   * **Верхушка модели** (`SEARCH_TOP`, 0 — все варианты): считать только сильнейшие по её мнению
+   * варианты. Так модель тратит бюджет поиска туда, где видит игру, — и это **не** замена решения
+   * моделью: из верхушки выбирает доигрывание. Варианты с весом 0 (шаг в никуда) исключены ещё
+   * вызывающим (`bot/play/decide.js`), поэтому верхушка — отбор «куда смотреть», а не veto.
+   */
+  const order = budget.top > 0 ? ranked.slice(0, Math.max(1, Math.trunc(budget.top))) : ranked;
+  if (order.length <= 1)
+    return { action: order[0]?.action ?? null, iterations: 0, broken: 0, timedOut: 0, rows: [] };
 
   /**
    * Перечисление действий: миры отличаются скрытым, а список наших ходов от него не зависит. Кэш по
@@ -660,7 +871,7 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
   for (let round = 0; round < budget.iterations; round += 1) {
     if (deadline > 0 && Date.now() >= deadline) break;
 
-    let current = makeWorld(rng);
+    let current = worldPool == null ? makeWorld(rng) : poolWorld(round);
     let node = root;
     const path = [node];
     let steps = 0;
@@ -680,7 +891,12 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
       const legal = offered.length > 0 ? offered : options;
       if (legal.length === 0) break;
 
-      const untried = legal.find(entry => !node.children.has(keyOf(entry.action)));
+      // у корня нераскрытые варианты берутся **по мнению модели** (`order`: верхушка, если она задана),
+      // внутри ветки — по порядку политики
+      const untried =
+        node === root
+          ? (order.find(entry => !node.children.has(keyOf(entry.action))) ?? null)
+          : legal.find(entry => !node.children.has(keyOf(entry.action)));
       const child = untried
         ? {
             action: untried.action,
@@ -734,12 +950,54 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
   if (iterations === 0) return null;
 
   const rows = [...root.children.values()].filter(child => child.visits > 0);
-  const best = rows.reduce((leader, child) => {
-    if (leader == null) return child;
-    const score = child.value / child.visits + (priorByKey.get(keyOf(child.action)) ?? 0);
-    const leaderScore = leader.value / leader.visits + (priorByKey.get(keyOf(leader.action)) ?? 0);
-    return score > leaderScore ? child : leader;
-  }, null);
+  /**
+   * **Парная переоценка раскрытых вариантов** (§52): все варианты корня считаются **в одних и тех же**
+   * мирах (`pairedRootValues`), поэтому разброс от чужих рук вычитается, и «какая из двух клеток лучше»
+   * становится измеримой. Дорого по вариантам, поэтому берётся немного миров (`SEARCH_PAIRED`) и только
+   * после основного поиска. Бюджет — часть того же времени решения: если минутная стрелка уже вышла,
+   * шаг пропускается и решение остаётся на средних UCT.
+   */
+  let pairedByKey = null;
+  if (budget.paired > 0 && rows.length > 1 && (deadline === 0 || Date.now() < deadline)) {
+    const paired = pairedRootValues(
+      state,
+      viewerId,
+      rows.map(child => ({ action: child.action, weight: 1 })),
+      { ...budget, iterations: budget.paired },
+    );
+    if (paired != null) {
+      pairedByKey = new Map(paired.rows.map(row => [row.key, row.mean]));
+      timedOut += paired.timedOut;
+      broken += paired.broken;
+    }
+  }
+
+  /**
+   * Итоговое решение корня: средняя доигрываний плюс мнение модели, **убывающее с числом визитов**
+   * (`mix / (visits + τ)`). Так приор не «перебивает» поиск, а закрывает его слабое место — мало
+   * доигрываний на вариант при жёстком бюджете времени. Прежний приор (`priorByKey`) остаётся тихим
+   * сигналом UCB и в решении не участвует: он в тех же единицах, что и средние, и на 5–7 визитах тонет
+   * в их шуме (свип §47: приор 0 против приора 30 — 22–26 побед из 48).
+   *
+   * Если посчитана парная оценка (`pairedByKey`), она **заменяет** средние UCT с весом `pairedMix`:
+   * у неё та же шкала (те же доигрывания и тот же лист), но меньше разброс — ровно то, чего не хватало
+   * при 35 доигрываниях.
+   */
+  const meanOf = child => {
+    const mean = child.value / Math.max(1, child.visits);
+    const paired = pairedByKey?.get(keyOf(child.action));
+    if (paired == null) return mean;
+    const weight = Math.max(0, Math.min(1, Number(budget.pairedMix) || 0));
+    return weight * paired + (1 - weight) * mean;
+  };
+  const scoreOf = child =>
+    meanOf(child) +
+    (mix > 0 ? (mix * (advantageByKey.get(keyOf(child.action)) ?? 0)) / (child.visits + tau) : 0) +
+    (priorByKey.get(keyOf(child.action)) ?? 0);
+  const best = rows.reduce(
+    (leader, child) => (leader == null || scoreOf(child) > scoreOf(leader) ? child : leader),
+    null,
+  );
 
   return {
     action: best?.action ?? null,
@@ -748,6 +1006,8 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
     broken,
     timedOut,
     elapsed: Date.now() - started,
+    // сколько вариантов схлопнулось как ведущие в одно состояние (§53): ноль, если схлопывание выключено
+    deduped,
     // снялся ли лист на границе хода: вне своего хода он вырождается, и поиск считает обычным роллаутом
     turnPlan: budget.turnEnd,
     rows: rows.map(child => ({

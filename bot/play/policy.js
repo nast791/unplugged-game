@@ -80,6 +80,34 @@ const greedyBase = ({ canAttack = false, hand = 3, canDraw = true } = {}) => {
 /** Признаки позиции и усталости выключены: эталон замеров §13–§14. */
 const NO_POSITION = { stepAway: 0, hold: 0, terrain: 0, fatigue: 0 };
 
+/**
+ * Переключатели генов через переменные среды: `BOT_GENE_<ИМЯ>=0` выключает ген, `=число` задаёт его
+ * значение. Нужно для замеров: вклад каждого гена меряется отдельно, без правок кода между прогонами
+ * (тот же приём, что `BOT_EFFECT_WORTH`). Читается один раз на загрузку модуля — в браузере переменных
+ * среды нет, там гены всегда проектные.
+ */
+const envGenes = {};
+if (typeof process !== 'undefined' && process?.env) {
+  for (const [name, value] of Object.entries(process.env)) {
+    const found = /^BOT_GENE_([A-Z_]+)$/.exec(name);
+    if (found == null) continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) envGenes[found[1].toLowerCase()] = number;
+  }
+}
+
+/** Значение гена: переменная среды важнее проектного. */
+export const gene = (name, fallback) => (envGenes[name] != null ? envGenes[name] : fallback);
+
+/** Числа политики с учётом переменных среды — для отчётов и замеров вклада генов. */
+export const genesOf = weights => {
+  const out = {};
+  for (const [key, value] of Object.entries(weights ?? {})) {
+    if (typeof value === 'number') out[key] = gene(key, value);
+  }
+  return out;
+};
+
 export const policies = {
   /** Наугад: разброс весов от сида нужен, чтобы прогоны не были однообразными. */
   random: ({ style = 2 } = {}) => ({
@@ -201,6 +229,24 @@ export const policies = {
       tradeRivalFuel: 0.5,
       tradeFuel: 3,
       tradeFuelSlope: 0.4,
+      // Темп затянувшегося хода (§43): замер на сидах 21001…21060 дал 54% и с геном, и без него —
+      // то есть на текущем артефакте добавка не видна (модель сама не откладывает бой), поэтому ген
+      // оставлен нулевым: механизм есть, включается числом, но в живую политику не входит.
+      tempo: 0,
+      tempoRound: 20,
+      // Ясность правил (§43): механизмы добавлены и измерены, но вклад каждого — **ноль**. Замер
+      // (`qvalue` против `greedy`, сиды 21001…21060 и 26001…26120, по 7 200–14 400 партий на вариант):
+      // с генами и без них — 54–55% в пределах шума; единственный минус — `actionSecond` (53%).
+      // Причина: веса политики лишь примешиваются к оценке модели (см. `qvalue.js: PRIOR_MIX`), поэтому
+      // правка правил тонет в оценке. Гены оставлены нулевыми как настроенные механизмы для будущей
+      // политики без модели и для замеров через `BOT_GENE_<ИМЯ>`.
+      initiative: 0,
+      lastAction: 0,
+      actionSecond: 0,
+      deal: 0,
+      dealRound: 15,
+      focus: 0,
+      focusLow: 5,
     };
   },
 
@@ -301,6 +347,35 @@ export const policies = {
    * разница только в том, чьё мнение о вариантах получает поиск.
    */
   qprior: situation => greedyBase(situation),
+
+  /**
+   * Поиск с **парной переоценкой корня** (§52): то же перечисление и тот же лист, что у `search`, но
+   * решение корня уточняется оценкой всех раскрытых вариантов **в одних мирах**
+   * (`bot/play/search.js: pairedRootValues`). Отдельное имя нужно для честного матча: настройка среды
+   * `SEARCH_PAIRED` задала бы механизм **обеим** сторонам, и сравнивать было бы нечего.
+   */
+  spair: situation => greedyBase(situation),
+
+  /**
+   * Поиск с **кэшем повторных миров** (§53): тот же лист и то же перечисление, что у `search`, но
+   * повторно встреченный мир корня не доигрывается заново, а берёт уже посчитанную оценку
+   * (`bot/play/search.js: repeats`). Отдельное имя — для честного матча «с кэшем против без».
+   */
+  srep: situation => greedyBase(situation),
+
+  /**
+   * Поиск со **схлопыванием одинаковых вариантов** (§53): если два хода ведут в одно состояние (три
+   * одинаковые гарпии шагают на ту же клетку), у корня остаётся один узел, а не два, — визиты не делятся
+   * между неразличимыми записями. Отдельное имя — для честного матча «со схлопыванием против без».
+   */
+  sdedup: situation => greedyBase(situation),
+
+  /**
+   * Поиск на **пуле миров** (§54): миры набираются один раз на решение и берутся по кругу, поэтому на
+   * каждый мир приходится много доигрываний, а разница между вариантами корня не тонет в разнице чужих
+   * рук. Отдельное имя — для честного матча «с пулом против без».
+   */
+  sworld: situation => greedyBase(situation),
 
   /**
    * Обученная тренером оценка пары «состояние + действие» (`trainer/`, артефакт читает
@@ -434,7 +509,22 @@ export const cardCostWeight = (card, weights, { fuels = false } = {}) => {
  *   атака; своя тонкая колода, наоборот, просит поберечь карту (это тот же `rivalFuel`, что у темпа, но
  *   в цене одного боя);
  * - `tradeFuel`/`tradeFuelSlope` — исход колоды: у порога `tradeFuel` бездействие резко дорожает, а
- *   `tradeFuelSlope` добавляет плавный рост цены атаки по мере опустошения колоды (0 — только порог).
+ *   `tradeFuelSlope` добавляет плавный рост цены атаки по мере опустошения колоды (0 — только порог);
+ * - `tempo`/`tempoRound` — **темп затянувшегося хода**: к `tempoRound`-му ходу атака получает добавку
+ *   `tempo` (то есть ×(1 + `tempo`)), потому что откладывать бой при двух тонких колодах уже нечего.
+ *   Это единственный ген, который смотрит на **номер хода**, а не на запас колоды.
+ * - `initiative` — **взаимная летальность** (§43): если моя карта добивает врага, а его ожидаемый ответ
+ *   добивает моего бойца, откладывать удар нельзя — ударит тот, чей сейчас ход. Такой удар получает
+ *   множитель `1 + initiative` (страховка `tradeRisk` при этом не применяется: `kills` её и так снимает);
+ * - `lastAction` — **последнее действие хода** (§43): когда действий осталось одно, добор и маневр уже
+ *   ничего не успевают, и карта получает множитель `1 + lastAction`. Так бот перестаёт «копить на потом»
+ *   внутри хода, где копить нечего;
+ * - `actionSecond` — **после своего удара** (§43): сыгранная в этом ходу карта делает сближение дешевле
+ *   (`stepCloser` × (1 − `actionSecond`)), иначе бот после удара идёт догонять вместо размена;
+ * - `deal` — **затянувшийся безбойный ход** (§43): если к `dealRound`-му ходу боя не было, атака получает
+ *   `1 + deal` — в паре контролей партия иначе идёт к истощению обоих (разобрано в §42);
+ * - `focus`/`focusLow` — **добивание**: удар по врагу с остатком здоровья ≤ `focusLow` получает надбавку
+ *   `focus · (1 − hp / focusLow)`, то есть убрать бойца с поля важнее, чем снять 3 hp с полного.
  */
 export const attackWeight = (
   card,
@@ -450,6 +540,10 @@ export const attackWeight = (
     rivalFuel = null,
     material = null,
     rivalHand = null,
+    round = 0,
+    actionsLeft = null,
+    inFight = true,
+    enemyHp = 0,
   } = {},
 ) => {
   const attack = Number(weights?.attack) || 0;
@@ -520,9 +614,63 @@ export const attackWeight = (
       ? 1 + rivalFuelGene * 0.4 * Math.max(-1, Math.min(1, fuelLean / 8))
       : 1;
 
+  // Темп затянувшегося хода (§43): цена откладывания. Колоды кончаются у обоих, и в этой фазе «поберечь
+  // карту» уже не работает — тянуть означает ждать истощения, которое бьёт по обоим одинаково, а тот, кто
+  // ударит первым, заберёт инициативу. Сигнал — номер хода, которого у других генов не было (у `tradeFuel`
+  // и `tradeRivalFuel` считается только запас колоды).
+  const tempoGene = gene('tempo', Number(weights?.tempo) || 0);
+  const tempoRound = Math.max(1, gene('temporound', Number(weights?.tempoRound) || 20));
+  const tempoGain =
+    tempoGene > 0 ? 1 + tempoGene * Math.min(1, Math.max(0, Number(round) || 0) / tempoRound) : 1;
+
+  // взаимная летальность: добиваю его — и он добивает меня ответом. Первым бьёт тот, чей ход, поэтому
+  // цена откладывания бесконечна, а цена удара — нет
+  const initiativeGene = gene('initiative', Number(weights?.initiative) || 0);
+  const lethalTrade =
+    initiativeGene > 0 &&
+    kills &&
+    Number(threat) > 0 &&
+    Number(hp) > 0 &&
+    Number(threat) >= Number(hp)
+      ? 1 + initiativeGene
+      : 1;
+
+  // последнее действие хода: добор и маневр уже не успевают ничего, поэтому карта весит больше
+  const lastGene = gene('lastaction', Number(weights?.lastAction) || 0);
+  const lastGain =
+    lastGene > 0 && Number.isFinite(Number(actionsLeft)) && Number(actionsLeft) <= 1
+      ? 1 + lastGene
+      : 1;
+
+  // затянувшийся безбойный ход: боя ещё не было, а ход уже поздний — в паре контролей это дорога
+  // к истощению обоих, поэтому атака дешевеет (разобрано в §42)
+  const dealGene = gene('deal', Number(weights?.deal) || 0);
+  const dealRound = Math.max(1, gene('dealround', Number(weights?.dealRound) || 15));
+  const dealGain =
+    dealGene > 0 && inFight === false && (Number(round) || 0) >= dealRound ? 1 + dealGene : 1;
+
+  // добивание раненого: убрать бойца с поля важнее, чем снять те же 3 hp с полного
+  const focusGene = gene('focus', Number(weights?.focus) || 0);
+  const focusLow = Math.max(1, gene('focuslow', Number(weights?.focusLow) || 5));
+  const focusGain =
+    focusGene > 0 && Number(enemyHp) > 0 && Number(enemyHp) <= focusLow
+      ? 1 + focusGene * (1 - Number(enemyHp) / focusLow)
+      : 1;
+
   return Math.max(
     0,
-    (attack * (1 + scale) * fuelGain * cardsGain * deckGain * risk * wound -
+    (attack *
+      (1 + scale) *
+      fuelGain *
+      cardsGain *
+      deckGain *
+      risk *
+      wound *
+      tempoGain *
+      lethalTrade *
+      lastGain *
+      dealGain *
+      focusGain -
       (attack * worth * waste) / Math.max(1, average) / 2) /
       Math.max(1, cost) +
       (kills ? Number(weights?.finish) || 0 : 0) +

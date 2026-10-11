@@ -12,6 +12,11 @@
   (см. §11 и §20 C — там градиент по винрейту не сработал);
 - **две головы.** `score` (Q пары) участвует в политике и в предсказании исхода выбранного действия,
   `V(state)` — отдельная голова только на состоянии: она даёт запасной сигнал там, где действий мало.
+- **две головы по виду решения** (`two_heads`, §49). Замер §28 и разбор §44 показали, что природа решений
+  разная: на картах согласие с целью 53–75%, на клетках до признаков 0%. Флаг даёт **два ствола и две
+  головы** — `cell` для шагов и `card` для всего остального (карта, добро, боец, «закончить»), маршрут
+  берётся из первого числа вектора действия (там же, где рантайм отличает вид). Число параметров то же,
+  что у одной большой головы, поэтому сравнение честное: не «больше чисел», а «разные карты признаков».
 
 Один и тот же `score` считается для каждого варианта хода — это и есть ранжирование действий моделью.
 """
@@ -21,14 +26,37 @@ import torch.nn as nn
 
 
 class QScorer(nn.Module):
-    def __init__(self, state_dim, action_dim, heroes, cards, hidden=64, embed=8):
+    def __init__(
+        self,
+        state_dim,
+        action_dim,
+        heroes,
+        cards,
+        hidden=64,
+        embed=8,
+        two_heads=False,
+        summary_index=None,
+        gated=False,
+    ):
         super().__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.hidden = hidden
         self.embed = embed
+        self.two_heads = bool(two_heads)
         self.heroes = list(heroes)
         self.cards = list(cards)
+
+        # **скрещивание «состояние × действие»** (`gated`, §50): у действия появляется свой входной вес,
+        # который считается **из позиции**: `a' = a · σ(G · summary + g0)`. У линейной модели скрещивание
+        # задано руками (`wCross`), а у сети взаимодействие есть только внутри первого слоя — то есть
+        # фиксированное и общее для всех позиций. Здесь взаимодействие **своё для каждой позиции**.
+        self.summary_index = list(summary_index or [])
+        self.gated = bool(gated) and len(self.summary_index) > 0
+        if self.gated:
+            self.gate = nn.Linear(len(self.summary_index), action_dim)
+            nn.init.zeros_(self.gate.weight)
+            nn.init.zeros_(self.gate.bias)
 
         self.hero_embed = nn.Embedding(max(1, len(self.heroes)), embed)
         # строк на одну больше, чем карт: индекс 0 — «не карта» (`train.py`: `card_index = index + 1`),
@@ -36,14 +64,26 @@ class QScorer(nn.Module):
         self.card_embed = nn.Embedding(max(1, len(self.cards) + 1), embed)
 
         input_dim = state_dim + action_dim + 3 * embed
-        self.trunk = nn.Sequential(
-            nn.Linear(input_dim, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, hidden),
-            nn.ReLU(),
-        )
+
+        def trunk():
+            return nn.Sequential(
+                nn.Linear(input_dim, hidden),
+                nn.ReLU(),
+                nn.Linear(hidden, hidden),
+                nn.ReLU(),
+            )
+
+        self.trunk = trunk()
         self.score = nn.Linear(hidden, 1)
         self.value = nn.Linear(state_dim, 1)
+
+        if self.two_heads:
+            # второй ствол стартует **копией** первого: сравнение с одной головой идёт с одного и того же
+            # места, и разницу даёт только обучение, а не другая инициализация
+            self.cell_trunk = trunk()
+            self.cell_trunk.load_state_dict(self.trunk.state_dict())
+            self.cell_score = nn.Linear(hidden, 1)
+            self.cell_score.load_state_dict(self.score.state_dict())
 
         nn.init.zeros_(self.card_embed.weight)
         nn.init.normal_(self.hero_embed.weight, std=0.05)
@@ -77,10 +117,34 @@ class QScorer(nn.Module):
         card = self.card_embed(card_of)
 
         state = states.unsqueeze(1).expand(batch, count, self.state_dim)
+        if self.gated:
+            # сводка позиции → ворота действия: векторы вариантов взвешиваются **по позиции**
+            summary = states[:, self.summary_index]
+            gate = torch.sigmoid(self.gate(summary)).unsqueeze(1)
+            actions = actions * gate
         packed = torch.cat([state, actions, hero, rival, card], dim=2)
-        hidden = self.trunk(packed.reshape(batch * count, -1))
-        scores = self.score(hidden).reshape(batch, count)
-        scores = scores.masked_fill(mask < 0.5, -1e9)
+        flat = packed.reshape(batch * count, -1)
+
+        if not self.two_heads:
+            hidden = self.trunk(flat)
+            scores = self.score(hidden).reshape(batch, count)
+            scores = scores.masked_fill(mask < 0.5, -1e9)
+            return scores, self.value(states).squeeze(-1)
+
+        # маршрут: первый признак действия — вид (0 карта, 1 добро, 2 боец, 3 клетка, 4 «закончить»),
+        # ровно он же различает головы в рантайме (`bot/play/qvalue.js: mlpScore`). Порог 0,25, а не 0,5:
+        # с воротами признак клетки при нулевых воротах равен 0,5 (σ(0) · 1), и жёсткий порог ломал маршрут
+        route = actions[:, :, 3] > 0.25
+        flat_route = route.reshape(-1)
+        hidden = torch.empty(flat.shape[0], self.hidden, dtype=flat.dtype)
+        hidden[~flat_route] = self.trunk(flat[~flat_route])
+        if bool(flat_route.any()):
+            hidden[flat_route] = self.cell_trunk(flat[flat_route])
+        scores = torch.empty(flat.shape[0], 1, dtype=flat.dtype)
+        scores[~flat_route] = self.score(hidden[~flat_route])
+        if bool(flat_route.any()):
+            scores[flat_route] = self.cell_score(hidden[flat_route])
+        scores = scores.reshape(batch, count).masked_fill(mask < 0.5, -1e9)
 
         return scores, self.value(states).squeeze(-1)
 
@@ -90,7 +154,7 @@ class QScorer(nn.Module):
             return [round(float(value), 5) for value in tensor.detach().reshape(-1)]
 
         trunk = list(self.trunk)
-        return {
+        artifact = {
             "v": 1,
             "kind": "mlp-q",
             "stateDim": self.state_dim,
@@ -111,3 +175,30 @@ class QScorer(nn.Module):
             "bvalue": flatten(self.value.bias),
             "meta": meta,
         }
+        if self.two_heads:
+            # головы по виду решения (§49): те же ключи с суффиксом `Cell`, маршрут — признак 3 (клетка)
+            cell_trunk = list(self.cell_trunk)
+            artifact.update(
+                {
+                    "twoHeads": True,
+                    "W1Cell": flatten(cell_trunk[0].weight),
+                    "b1Cell": flatten(cell_trunk[0].bias),
+                    "W2Cell": flatten(cell_trunk[2].weight),
+                    "b2Cell": flatten(cell_trunk[2].bias),
+                    "WscoreCell": flatten(self.cell_score.weight),
+                    "bscoreCell": flatten(self.cell_score.bias),
+                }
+            )
+        if self.gated:
+            # ворота действия из сводки позиции (§50): рантайм повторяет ту же формулу, а индексы сводки
+            # уезжают в артефакт, чтобы он не зависел от порядка признаков в коде (`summaryFeatures`
+            # дописывает тренер — он знает имена)
+            artifact.update(
+                {
+                    "gated": True,
+                    "summaryIndex": list(self.summary_index),
+                    "Wgate": flatten(self.gate.weight),
+                    "bgate": flatten(self.gate.bias),
+                }
+            )
+        return artifact

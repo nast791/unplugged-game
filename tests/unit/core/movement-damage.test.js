@@ -220,6 +220,82 @@ describe('проход с уроном: damageOnPass', () => {
   });
 });
 
+/**
+ * «Пепельный ветер» Ифрита — то же перемещение, но идущий не только бьёт, а **крадёт здоровье**:
+ * `healOnPass` возвращает ему столько же за каждого пройденного бойца противника. Лечение идёт тем же
+ * `SET_HEALTH`, поэтому выше начального здоровья не поднимает, а маршрут считается и без урона:
+ * свойство живёт и одним лечением.
+ */
+const steal = (state, patch = {}) =>
+  SET_MOVEMENT(state, {
+    op: 'open',
+    playerId: '0',
+    budget: 4,
+    throughEnemies: true,
+    healOnPass: 1,
+    fighters: ['queen'],
+    ...patch,
+  });
+
+/** Королева ранена: лечение видно, а предел здоровья (16) не мешает. */
+const wound = state => {
+  fighterOf(state, '0', 'queen').currentHp = 10;
+  return state;
+};
+
+describe('проход с кражей здоровья: healOnPass', () => {
+  it('идущий получает 1 здоровья за каждого пройденного врага', () => {
+    const state = wound(steal(lineState(), { damageOnPass: 1 }));
+
+    step(state, 5);
+
+    expect(fighterOf(state, '0', 'queen').currentPosition).toBe(5);
+    expect(hpOf(state, '0', 'queen')).toBe(12);
+    // враги при этом теряют по 1: «крадёт», а не «лечится»
+    expect(hpOf(state, '1', 'rival')).toBe(14);
+    expect(hpOf(state, '1', 'rival_pawn')).toBe(5);
+  });
+
+  it('встав рядом с врагом, здоровья не крадёшь: считается только пройденное', () => {
+    const state = wound(steal(lineState(), { damageOnPass: 1 }));
+
+    step(state, 2);
+
+    expect(fighterOf(state, '0', 'queen').currentPosition).toBe(2);
+    expect(hpOf(state, '0', 'queen')).toBe(10);
+    expect(hpOf(state, '1', 'rival')).toBe(15);
+  });
+
+  it('без урона кража работает: damageOnPass для маршрута не нужен', () => {
+    const state = wound(steal(lineState()));
+
+    step(state, 5);
+
+    expect(hpOf(state, '0', 'queen')).toBe(12);
+    expect(hpOf(state, '1', 'rival')).toBe(15);
+    expect(hpOf(state, '1', 'rival_pawn')).toBe(6);
+    expect(state.movement.moves[0].route).toEqual([2, 3, 4, 5]);
+  });
+
+  it('лечение не поднимает здоровье выше начального', () => {
+    const state = steal(lineState(), { damageOnPass: 1 }); // королева цела: 16 из 16
+
+    step(state, 5);
+
+    expect(hpOf(state, '0', 'queen')).toBe(16);
+  });
+
+  it('повторный проход через тех же врагов здоровья не добавляет', () => {
+    const state = wound(steal(lineState(), { damageOnPass: 1 }));
+
+    step(state, 5);
+    const stolen = hpOf(state, '0', 'queen');
+    step(state, 1);
+
+    expect(hpOf(state, '0', 'queen')).toBe(stolen);
+  });
+});
+
 describe('карта «Метель из осколков»: эффект открывает перемещение с уроном', () => {
   it('эффект-карта ведёт королеву сквозь врагов: окно эффекта, урон, конец эффекта', () => {
     const state = lineState();

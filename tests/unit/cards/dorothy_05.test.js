@@ -142,10 +142,10 @@ describe('карта dorothy_05 «Чужая земля»', () => {
     ).toBe(false);
   });
 
-  it('атакует герой противника — +1, защита 5 и весь урон погашен', () => {
+  it('атакует герой противника — +2, защита 6 и весь урон погашен', () => {
     const after = battle(buildState({ assistant: false }));
 
-    expect(after.lastCombat.defenseValue).toBe(5);
+    expect(after.lastCombat.defenseValue).toBe(6);
     expect(after.lastCombat.attackValue).toBe(5);
     expect(after.lastCombat.combatDamage).toBe(0);
     expect(after.lastCombat.winner).toBe('defender');

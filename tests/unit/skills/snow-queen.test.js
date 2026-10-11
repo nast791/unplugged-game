@@ -159,9 +159,9 @@ describe('«Вечная мерзлота»: лимит руки только в
     expect(handLimitFor(state, '1')).toBe(7);
   });
 
-  it('шесть осколков включают режим в конце её хода, пять — выключают', () => {
+  it('пять осколков включают режим в конце её хода, четыре — выключают', () => {
     const state = withSkill(createState());
-    putInDiscard(state, '0', 6);
+    putInDiscard(state, '0', 5);
     runSkillMoment(state, '0', 'turnEnd');
     expect(handLimitFor(state, '1')).toBe(5);
 
@@ -178,7 +178,7 @@ describe('«Вечная мерзлота»: лимит руки только в
 
   it('набранные по ходу осколки включают режим к концу её хода', () => {
     const state = withSkill(createState());
-    putInDiscard(state, '0', 6);
+    putInDiscard(state, '0', 5);
 
     runSkillMoment(state, '0', 'turnEnd');
 
@@ -187,7 +187,7 @@ describe('«Вечная мерзлота»: лимит руки только в
 
   it('пять карт у врага — перебор, четыре — уже нет', () => {
     const state = withSkill(createState());
-    putInDiscard(state, '0', 6);
+    putInDiscard(state, '0', 5);
     runSkillMoment(state, '0', 'turnEnd');
 
     player(state, '1').hand.cards = Array.from({ length: 6 }, (_, index) =>

@@ -150,6 +150,26 @@ describe('facts хода', () => {
     expect(runFact(state, 'FIGHTERS', { areaOf: 'alpha' }).value).toEqual([]);
   });
 
+  it('CELLS: стихия одной строкой или списком, свободные клетки по умолчанию', () => {
+    const state = createState();
+    state.map.nodes = [
+      { id: 8, neighbors: [9], terrain: 'lava' },
+      { id: 9, neighbors: [8, 10], terrain: 'ice' },
+      { id: 10, neighbors: [9, 11], terrain: ['lava', 'desert'] },
+      { id: 11, neighbors: [10], terrain: 'desert' },
+    ];
+    // клетка 8 занята своим бойцом, 10 — чужим: свободными остаются 9 и 11
+    player(state, '0').fighters[0].currentPosition = 8;
+    player(state, '1').fighters[0].currentPosition = 10;
+
+    expect(runFact(state, 'CELLS', { terrain: 'lava' }).value).toEqual([]);
+    expect(runFact(state, 'CELLS', { terrain: ['lava', 'desert'] }).value).toEqual(['11']);
+    // free: false возвращает и занятые клетки: двухцветная 10 попадает в обе стихии
+    expect(runFact(state, 'CELLS', { terrain: 'desert', free: false }).value).toEqual(['10', '11']);
+    expect(runFact(state, 'CELLS', { terrain: 'lava', free: false }).value).toEqual(['8', '10']);
+    expect(runFact(state, 'CELLS', { terrain: ['lava', 'desert'], min: 2 }).ok).toBe(false);
+  });
+
   it('ALIVE_SIDES: сколько сторон живо', () => {
     const state = createState();
     expect(runFact(state, 'ALIVE_SIDES', {}).value).toBe(2);

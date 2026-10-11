@@ -1,6 +1,7 @@
 import { SET_COMBAT } from '#shared/actions/combat.js';
 import { SET_MOVEMENT, movementHasDestination } from '#shared/actions/movement.js';
 import { advanceCombat, runEffectMoment } from '#shared/cards/run.js';
+import { HINTS } from '#shared/constants/hints.js';
 import { resolveOkBackControls } from '#shared/helpers/base.js';
 import {
   bonusCardIds,
@@ -64,9 +65,7 @@ export default {
     moveFighters: {
       active: () => true,
       text: partyState =>
-        partyState.movement?.source == null
-          ? 'Двигайте своих бойцов по подсвеченным клеткам или закончите действие'
-          : 'Передвиньте бойцов по подсвеченным клеткам или закончите эффект',
+        HINTS.movement.moveFighters({ fromEffect: partyState.movement?.source != null }),
     },
   },
 

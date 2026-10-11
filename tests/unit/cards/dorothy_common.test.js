@@ -129,7 +129,7 @@ describe('общие карты колоды Дороти', () => {
       expect(card.hook).toBeUndefined();
       for (const rule of card.rules) expect(isMoment(rule.moment)).toBe(true);
     }
-    expect(volley).toMatchObject({ type: 'attack', value: 2, bonus: 2 });
+    expect(volley).toMatchObject({ type: 'attack', value: 3, bonus: 2 });
     expect(volley.rules.map(rule => rule.moment)).toEqual(['afterCombat']);
     expect(recall).toMatchObject({ type: 'effect', bonus: 2 });
     expect(recall.rules.map(rule => rule.moment)).toEqual(['effect', 'picked']);
@@ -148,9 +148,9 @@ describe('общие карты колоды Дороти', () => {
     let run = runAction(opened, { type: 'PICK', kind: 'fighter', id: 'beta', playerId: '0' });
     run = runAction(run, { type: 'UI_OK', playerId: '1' });
 
-    expect(run.lastCombat.combatDamage).toBe(2);
-    // бой: 13 − 2, потом залп по области — ещё 1
-    expect(fighterOf(run, '1', 'beta').currentHp).toBe(10);
+    expect(run.lastCombat.combatDamage).toBe(3);
+    // бой: 13 − 3, потом залп по области — ещё 1
+    expect(fighterOf(run, '1', 'beta').currentHp).toBe(9);
     expect(fighterOf(run, '1', 'beta_pawn').currentHp).toBe(4);
     // враг на лаве в область Дороти не попадает
     expect(fighterOf(run, '1', 'gamma').currentHp).toBe(9);
@@ -171,7 +171,7 @@ describe('общие карты колоды Дороти', () => {
     run = runAction(run, { type: 'PICK', kind: 'fighter', id: 'beta', playerId: '0' });
     run = runAction(run, { type: 'UI_OK', playerId: '1' });
 
-    expect(fighterOf(run, '1', 'beta').currentHp).toBe(11);
+    expect(fighterOf(run, '1', 'beta').currentHp).toBe(10);
     expect(fighterOf(run, '1', 'beta_pawn').currentHp).toBe(5);
   });
 
