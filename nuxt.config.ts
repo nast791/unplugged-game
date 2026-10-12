@@ -101,7 +101,7 @@ export default defineNuxtConfig({
      * `probe-dir/index.vue` и `heroes/[id].vue`: сканер страниц их видит (`pages:extend` перечисляет
      * маршруты), vue-router их матчит, а SSR-рендер падает в `pages/runtime/plugins/router.js:afterEach`
      * с пустым `to.matched`. Отключение `payloadExtraction` и `@nuxt/test-utils/module` не помогло.
-     * Разбираться с этим отдельной задачей (`TODO`), пока — `ssr: false`, как у `/game`.
+     * Разбираться с этим отдельной задачей, пока — `ssr: false`, как у `/game`.
      */
     '/heroes/**': { ssr: false },
     /** Файлы шрифтов не хешируются сборкой: кэшируем папку, новая версия приезжает новым именем. */
