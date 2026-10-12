@@ -1,5 +1,5 @@
 import { findPlayer } from '#shared/helpers/base.js';
-import { closeTargetingWindow, pickSingleCandidate } from '#shared/helpers/targeting.js';
+import { closeTargetingWindow, pickAutoCandidates } from '#shared/helpers/targeting.js';
 import { runRules } from '#shared/rules/run.js';
 
 /**
@@ -17,9 +17,9 @@ export const runSkillMoment = (partyState, playerId, moment) => {
   return runRules(partyState, skill.rules, moment, {
     playerId,
     source: skill.id,
-    // окно с одним кандидатом закрываем сами: отмечаем цель и разыгрываем момент picked
+    // окно без выбора закрываем сами: отмечаем кандидатов и разыгрываем момент picked
     autoPick: (state, ownerId) => {
-      const picked = pickSingleCandidate(state, ownerId);
+      const picked = pickAutoCandidates(state, ownerId);
       if (!picked) return state;
 
       const afterPicked = runRules(picked, skill.rules, 'picked', {

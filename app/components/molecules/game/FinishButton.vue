@@ -37,11 +37,14 @@
 <script setup>
 import { useGameSession } from '~/composables/useGameSession.js';
 
-const { okControl, pending, isGameOver, onFinishAction, choicePicked } = useGameSession();
+const { okControl, pending, isGameOver, onFinishAction, choicePicked, choiceComplete } =
+  useGameSession();
 
 const hasChoice = computed(() => choicePicked.value.length > 0);
 const active = computed(
-  () => hasChoice.value || (okControl.value.visible === true && okControl.value.enabled === true),
+  () =>
+    (hasChoice.value && choiceComplete.value) ||
+    (okControl.value.visible === true && okControl.value.enabled === true),
 );
 const busy = computed(() => pending.value || isGameOver.value);
 const label = computed(() =>

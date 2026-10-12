@@ -422,3 +422,173 @@ describe('политики: выбор действия', () => {
     }
   });
 });
+
+/**
+ * Окно на несколько целей («выберите 2 из 3»): ядро решений обязано предлагать клики по **неотмеченным**
+ * целям, пока набор не собран, и подтверждение (`UI_OK`) после него. Иначе окно либо не закрывается вовсе,
+ * либо бот кликает по уже отмеченной цели — и движок отказывает («цель уже отмечена»).
+ */
+const multiMap = {
+  id: 'multi',
+  name: 'Multi',
+  nodes: [8, 9, 10, 11].map((id, index, list) => ({
+    id,
+    terrain: 'ice',
+    x: index,
+    y: 0,
+    neighbors: [list[index - 1], list[index + 1]].filter(neighbour => neighbour != null),
+  })),
+};
+
+/** Карта «отметьте два из трёх»: три эффекта, из которых игрок выбирает два. */
+const multiOptionCard = {
+  id: 'test_choice',
+  instanceId: 'test_choice_1',
+  title: 'Три обещания',
+  type: 'effect',
+  value: 0,
+  bonus: 1,
+  options: [
+    { id: 'draw', text: 'добор' },
+    { id: 'heal', text: 'лечение' },
+    { id: 'strike', text: 'удар' },
+  ],
+  rules: [
+    {
+      moment: 'effect',
+      then: [
+        {
+          action: 'SET_TARGETING',
+          op: 'open',
+          kind: 'options',
+          candidates: [
+            { optionId: 'draw', title: 'добор' },
+            { optionId: 'heal', title: 'лечение' },
+            { optionId: 'strike', title: 'удар' },
+          ],
+          count: 2,
+          required: true,
+        },
+      ],
+    },
+    {
+      moment: 'picked',
+      when: [{ fact: 'PICKED', params: { is: 'draw' } }],
+      then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
+    },
+    {
+      moment: 'picked',
+      when: [
+        { fact: 'PICKED', params: { is: 'heal' } },
+        { fact: 'FIGHTERS', params: { side: 'self' }, var: 'mine' },
+      ],
+      then: [{ action: 'SET_HEALTH', fighterIds: '$mine', delta: 2 }],
+    },
+    {
+      moment: 'picked',
+      when: [
+        { fact: 'PICKED', params: { is: 'strike' } },
+        { fact: 'FIGHTERS', params: { side: 'opponent' }, var: 'foes' },
+      ],
+      then: [{ action: 'SET_HEALTH', fighterIds: '$foes', delta: -1 }],
+    },
+  ],
+};
+
+/** Карта «отметьте двух вражеских бойцов»: у окна настоящий выбор из трёх. */
+const multiFighterCard = {
+  id: 'test_pair',
+  instanceId: 'test_pair_1',
+  title: 'Двойной удар',
+  type: 'effect',
+  value: 0,
+  bonus: 1,
+  rules: [
+    {
+      moment: 'effect',
+      when: [{ fact: 'FIGHTERS', params: { side: 'opponent' }, var: 'foes' }],
+      then: [
+        { action: 'SET_TARGETING', op: 'open', candidates: '$foes', count: 2, required: true },
+      ],
+    },
+    {
+      moment: 'picked',
+      when: [{ fact: 'PICKED', var: 'picked' }],
+      then: [{ action: 'SET_HEALTH', fighterIds: '$picked', delta: -1 }],
+    },
+  ],
+};
+
+/** Ход с тремя врагами: карта разыграна, окно на две цели открыто. */
+const multiWindow = card1 => {
+  const state = baseState({ map: multiMap });
+  const owner = player(state, '0');
+  owner.hand.cards = [card1];
+  const enemy = player(state, '1');
+  enemy.fighters[0].currentPosition = 9;
+  enemy.fighters.push(
+    fighter({ id: 'gamma', name: 'gamma', type: 'assistant', currentPosition: 10, currentHp: 5 }),
+    fighter({ id: 'delta', name: 'delta', type: 'assistant', currentPosition: 11, currentHp: 5 }),
+  );
+  return runAction(state, { type: 'PICK', kind: 'card', id: card1.instanceId, playerId: '0' });
+};
+
+const picksOf = options => options.filter(option => option.action.type === 'PICK');
+const hpOf = (state, fighterId) =>
+  player(state, '1').fighters.find(entry => entry.id === fighterId).currentHp;
+
+describe('окно на несколько целей: ядро решений доводит набор до конца', () => {
+  it('варианты свойства: клики по неотмеченным, затем подтверждение', () => {
+    let state = multiWindow(multiOptionCard);
+    expect(state.targeting).toMatchObject({ kind: 'options', count: 2, required: true });
+
+    const first = actionsFor(state, '0', { policy: 'greedy' });
+    expect(picksOf(first).map(option => option.action.id)).toEqual(['draw', 'heal', 'strike']);
+    // набор не собран: подтверждать нечего, и общего отказа у обязательного окна нет
+    expect(first.some(option => option.action.type === 'UI_OK')).toBe(false);
+
+    state = runAction(state, { ...picksOf(first)[0].action, playerId: '0' });
+    expect(state.targeting).toMatchObject({ picked: ['draw'], complete: false });
+
+    const second = actionsFor(state, '0', { policy: 'greedy' });
+    expect(picksOf(second).map(option => option.action.id)).toEqual(['heal', 'strike']);
+    expect(second.some(option => option.action.type === 'UI_OK')).toBe(false);
+
+    state = runAction(state, { ...picksOf(second)[0].action, playerId: '0' });
+    expect(state.targeting).toMatchObject({ picked: ['draw', 'heal'], complete: true });
+
+    const done = actionsFor(state, '0', { policy: 'greedy' });
+    expect(done.map(option => option.action.type)).toEqual(['UI_OK']);
+
+    state = runAction(state, { type: 'UI_OK', playerId: '0' });
+    expect(state.targeting ?? null).toBeNull();
+    expect(state.effect ?? null).toBeNull();
+  });
+
+  it('бойцы: две отметки подряд, затем подтверждение — урон по обоим отмеченным', () => {
+    let state = multiWindow(multiFighterCard);
+    expect(state.targeting).toMatchObject({ kind: 'fighters', count: 2, required: true });
+
+    const seen = [];
+    while (state.targeting && state.targeting.complete !== true) {
+      const offers = picksOf(actionsFor(state, '0', { policy: 'greedy' }));
+      expect(offers.length).toBeGreaterThan(0);
+      seen.push(offers[0].action.id);
+      state = runAction(state, { ...offers[0].action, playerId: '0' });
+    }
+
+    // бот отметил двух разных бойцов и ни разу не повторился: третий остался нетронутым
+    expect(seen).toHaveLength(2);
+    expect(new Set(seen).size).toBe(2);
+    expect(seen).toEqual(['beta', 'gamma']);
+
+    const done = actionsFor(state, '0', { policy: 'greedy' });
+    expect(done.map(option => option.action.type)).toEqual(['UI_OK']);
+
+    state = runAction(state, { type: 'UI_OK', playerId: '0' });
+    expect(state.targeting ?? null).toBeNull();
+    expect(hpOf(state, 'beta')).toBe(12);
+    expect(hpOf(state, 'gamma')).toBe(4);
+    expect(hpOf(state, 'delta')).toBe(5);
+  });
+});

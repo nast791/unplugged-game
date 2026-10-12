@@ -119,6 +119,7 @@ export const useGameSession = () => {
       .map(String);
     return [...new Set(ids)];
   });
+  const choiceComplete = computed(() => choicePicked.value.length >= choiceCount.value);
 
   const myItems = computed(() => me.value?.items ?? []);
 
@@ -476,6 +477,7 @@ export const useGameSession = () => {
     isCardDisabled,
     choiceCount,
     choicePicked,
+    choiceComplete,
     cardFighterLabel: card => {
       if (card?.fighter == null) return 'любой';
       const binding = String(card.fighter);

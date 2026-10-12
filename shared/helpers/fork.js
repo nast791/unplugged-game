@@ -84,7 +84,12 @@ export const forkState = state => ({
   combat: forkCombat(state.combat),
   movement: forkMovement(state.movement),
   targeting: isObject(state.targeting)
-    ? { ...state.targeting, candidates: forkList(state.targeting.candidates) }
+    ? {
+        ...state.targeting,
+        candidates: forkList(state.targeting.candidates),
+        // у окна на несколько целей отметки лежат списком: движок дописывает его клик за кликом
+        picked: forkList(state.targeting.picked),
+      }
     : state.targeting,
   effect: isObject(state.effect)
     ? { ...state.effect, steps: forkList(state.effect.steps) }

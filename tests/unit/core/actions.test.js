@@ -659,7 +659,7 @@ describe('SET_TARGETING', () => {
     );
   });
 
-  it('выбор всегда про одну цель: count по умолчанию 1, другое значение отклоняется', () => {
+  it('count: по умолчанию одна цель, несколько целей окно принимает, невозможный счёт — нет', () => {
     const one = SET_TARGETING(createState(), {
       op: 'open',
       playerId: '0',
@@ -667,7 +667,28 @@ describe('SET_TARGETING', () => {
       count: 1,
     });
     expect(one.targeting.count).toBe(1);
+    // у окна на одну цель признака «набор собран» нет: отметка и есть завершение
+    expect('complete' in one.targeting).toBe(false);
 
+    const two = SET_TARGETING(createState(), {
+      op: 'open',
+      playerId: '0',
+      candidates: ['beta', 'gamma'],
+      count: 2,
+    });
+    expect(two.targeting).toMatchObject({ count: 2, picked: null, complete: false });
+
+    // `max` — тот же счёт, что `count`
+    expect(
+      SET_TARGETING(createState(), {
+        op: 'open',
+        playerId: '0',
+        candidates: ['beta', 'gamma'],
+        max: 2,
+      }).targeting.count,
+    ).toBe(2);
+
+    // целей больше, чем кандидатов: у обязательного окна не было бы выхода
     expect(() =>
       SET_TARGETING(createState(), {
         op: 'open',
@@ -675,7 +696,38 @@ describe('SET_TARGETING', () => {
         candidates: ['beta'],
         count: 2,
       }),
-    ).toThrow(/ровно одна цель/);
+    ).toThrow(/доступных кандидатов/);
+
+    expect(() =>
+      SET_TARGETING(createState(), {
+        op: 'open',
+        playerId: '0',
+        candidates: ['beta', 'gamma'],
+        count: 0,
+      }),
+    ).toThrow(/число целей не меньше 1/);
+  });
+
+  it('окно на несколько целей собирает список отметок: дубль и перебор отклоняются', () => {
+    const state = SET_TARGETING(createState(), {
+      op: 'open',
+      playerId: '0',
+      candidates: ['beta', 'gamma', 'delta'],
+      count: 2,
+      required: true,
+    });
+
+    SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'beta' });
+    expect(state.targeting).toMatchObject({ picked: ['beta'], complete: false });
+    expect(() => SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'beta' })).toThrow(
+      /уже отмечен/,
+    );
+
+    SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'gamma' });
+    expect(state.targeting).toMatchObject({ picked: ['beta', 'gamma'], complete: true });
+    expect(() => SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'delta' })).toThrow(
+      /уже отмечено 2 цели/,
+    );
   });
 
   it('open принимает и просто id бойцов', () => {

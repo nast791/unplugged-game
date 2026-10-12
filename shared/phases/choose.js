@@ -8,6 +8,7 @@ import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer } from '#shared/helpers/base.js';
 import { cardKey, hasFighterForCard, isAttackCard, isEffectCard } from '#shared/helpers/cards.js';
 import { attackCandidates, attackRejection } from '#shared/helpers/combat.js';
+import { windowCount, windowPicked, windowReady } from '#shared/helpers/targeting.js';
 import {
   endGameIfFinished,
   handCardIds,
@@ -197,6 +198,8 @@ const pickTarget = (partyState, playerId, pick) => {
 
   // окно вариантов свойства клик только отмечает: применяет выбор общая кнопка (`ok.onPress`)
   if (state.targeting?.kind === 'options') return state;
+  // окно на несколько целей собирается по отметке за клик: правила `picked` разыгрывает та же кнопка
+  if (windowCount(state.targeting) > 1) return state;
 
   return closePickedWindow(state, playerId);
 };
@@ -220,7 +223,18 @@ const closePickedWindow = (partyState, playerId) => {
 /** Окно вариантов свойства, отмеченное игроком: отметку подтверждает общая кнопка. */
 const pickedOptionOf = (partyState, playerId) => {
   const window = optionWindowOf(partyState, playerId);
-  return window?.picked != null ? window : null;
+  return window && windowReady(window) ? window : null;
+};
+
+/**
+ * Окно цели (бойцы и клетки), чей выбор готов: общая кнопка разыгрывает правила `picked`.
+ * У окна на несколько целей выбор готов, когда набран весь набор, — а у необязательного раньше срока.
+ */
+const pickedTargetWindow = (partyState, playerId) => {
+  if (!isTargetingMine(partyState, playerId)) return null;
+  const window = partyState.targeting;
+  if (window.kind === 'options') return null;
+  return windowReady(window) ? window : null;
 };
 
 export default {
@@ -235,7 +249,11 @@ export default {
     pickTarget: {
       active: (partyState, playerId) => isTargetingMine(partyState, playerId),
       text: partyState =>
-        HINTS.choose.pickTarget({ cells: partyState.targeting?.kind === 'cells' }),
+        HINTS.choose.pickTarget({
+          cells: partyState.targeting?.kind === 'cells',
+          count: windowCount(partyState.targeting),
+          picked: windowPicked(partyState.targeting).length,
+        }),
     },
     chooseAction: {
       active: () => true,
@@ -257,11 +275,12 @@ export default {
     const playable = playableCardIds(partyState, playerId);
     const targets = targetingFighters(partyState, playerId);
     const optional = optionalWindowOf(partyState, playerId);
-    const options = optionWindowOf(partyState, playerId);
+    const picked = Boolean(pickedOptionOf(partyState, playerId));
+    const pickedTargets = Boolean(pickedTargetWindow(partyState, playerId));
 
     // кнопка нужна и там, где от окна можно отказаться, и там, где отметка ждёт подтверждения:
-    // отметка обязательного окна делает кнопку доступной (иначе выбор было бы нечем применить)
-    const finishable = Boolean(optional) || Boolean(options && options.picked != null);
+    // готовый выбор (у окна на несколько целей — весь набор) делает кнопку доступной
+    const finishable = Boolean(optional) || picked || pickedTargets;
 
     return {
       deck: { clickable: true },
@@ -289,18 +308,28 @@ export default {
   ok: {
     label: 'Закончить эффект',
     enabled: (partyState, playerId) =>
-      Boolean(optionalWindowOf(partyState, playerId) || pickedOptionOf(partyState, playerId)),
+      Boolean(
+        optionalWindowOf(partyState, playerId) ||
+        pickedOptionOf(partyState, playerId) ||
+        pickedTargetWindow(partyState, playerId),
+      ),
     /**
-     * Общая кнопка окна: отметку варианта она подтверждает (правила `picked` применяют выбор),
+     * Общая кнопка окна: готовый выбор она подтверждает (правила `picked` применяют выбор),
      * окно без отметки — закрывает отказом (необязательное свойство или способность).
      */
     onPress: (partyState, action) => {
       const playerId = action.playerId;
-      if (pickedOptionOf(partyState, playerId)) {
+      if (pickedOptionOf(partyState, playerId) || pickedTargetWindow(partyState, playerId)) {
         return endGameIfFinished(closePickedWindow(partyState, playerId));
       }
       if (optionWindowOf(partyState, playerId)?.required === true) {
         throw new Error('UI_OK: обязательное свойство карты закрывается только выбором варианта');
+      }
+      const window = isTargetingMine(partyState, playerId) ? partyState.targeting : null;
+      if (window && windowCount(window) > 1 && window.required === true) {
+        throw new Error(
+          'UI_OK: обязательное окно выбора целей закрывается только полным набором целей',
+        );
       }
       return declineTargetingWindow(partyState, playerId);
     },

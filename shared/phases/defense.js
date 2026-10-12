@@ -10,6 +10,7 @@ import { HINTS } from '#shared/constants/hints.js';
 import { resolveOkBackControls } from '#shared/helpers/base.js';
 import { cardChoices } from '#shared/helpers/cards.js';
 import { defenseCardIds } from '#shared/helpers/combat.js';
+import { windowCount, windowPicked, windowReady } from '#shared/helpers/targeting.js';
 import {
   combatChoiceOf,
   endGameIfFinished,
@@ -68,9 +69,10 @@ const pickOption = (partyState, playerId, optionId) =>
   SET_TARGETING(partyState, { op: 'pick', playerId, optionId });
 
 /**
- * Подтверждение отмеченного варианта: правила карты в моменте `picked` делают остальное,
+ * Подтверждение отмеченного выбора: правила карты в моменте `picked` делают остальное,
  * дальше окно закрывает движок и бой доигрывается. Порядок обязателен: окно нужно закрыть **после**
  * отметки — `runCombatPicked` ищет ждущий шаг по `source` открытого окна.
+ * Так же закрывается и окно на несколько целей, когда набор набран (или игрок закрыл его раньше срока).
  */
 const confirmOption = (partyState, playerId) => {
   let state = runCombatPicked(partyState);
@@ -84,7 +86,8 @@ const confirmOption = (partyState, playerId) => {
  * Цель отмечена в окне, которое открыла карта боя (`fighters` или `cells`): клик по бойцу или клетке.
  * Так работают «Плата пеплом» (какого духа сжечь) и первое действие «Счёта ударов» (кого добить
  * в области Ифрита): правила карты в моменте `picked` доигрывают эффект, окно закрывается,
- * бой продолжается.
+ * бой продолжается. У окна на несколько целей клик только добавляет цель к набору — окно применяет
+ * общая кнопка (`confirmOption`), поэтому бой остаётся на паузе до неё.
  */
 const answerTargeting = (partyState, playerId, action) => {
   const window = cardWindowOf(partyState, playerId);
@@ -96,6 +99,8 @@ const answerTargeting = (partyState, playerId, action) => {
 
   const pick = wantCell ? { cellId: action.id } : { fighterId: action.id };
   let state = SET_TARGETING(partyState, { op: 'pick', playerId, ...pick });
+  if (windowCount(state.targeting) > 1) return state;
+
   state = runCombatPicked(state);
   state = SET_TARGETING(state, { op: 'close', playerId });
   state = advanceCombat(state);
@@ -161,19 +166,27 @@ export default {
   hints: {
     effectOption: {
       active: (partyState, playerId) => Boolean(optionWindowOf(partyState, playerId)),
-      text: (partyState, playerId) =>
-        HINTS.defense.effectOption({
-          required: optionWindowOf(partyState, playerId)?.required === true,
-        }),
+      text: (partyState, playerId) => {
+        const window = optionWindowOf(partyState, playerId);
+        return HINTS.defense.effectOption({
+          required: window?.required === true,
+          count: windowCount(window),
+          picked: windowPicked(window).length,
+        });
+      },
     },
     effectTarget: {
       active: (partyState, playerId) =>
         Boolean(cardWindowOf(partyState, playerId)) && !optionWindowOf(partyState, playerId),
-      text: (partyState, playerId) =>
-        HINTS.defense.effectTarget({
+      text: (partyState, playerId) => {
+        const window = targetWindowOf(partyState, playerId);
+        return HINTS.defense.effectTarget({
           cells: partyState.targeting?.kind === 'cells',
-          required: targetWindowOf(partyState, playerId)?.required === true,
-        }),
+          required: window?.required === true,
+          count: windowCount(window),
+          picked: windowPicked(window).length,
+        });
+      },
     },
     combatChoice: {
       active: (partyState, playerId) => Boolean(choiceOf(partyState, playerId)),
@@ -233,16 +246,16 @@ export default {
         cardId => !playable.includes(cardId),
       ),
       controls: options
-        ? // окно вариантов: отметка включает общую кнопку (она и подтверждает выбор),
-          // у обязательного окна без отметки кнопки нет — закрывается только выбором
-          effectControls(options.picked != null || options.required !== true)
+        ? // окно вариантов: готовый выбор включает общую кнопку (она и подтверждает выбор),
+          // у обязательного окна без выбора кнопки нет — закрывается только выбором
+          effectControls(windowReady(options) || options.required !== true)
         : choice
           ? // одна общая кнопка: ничего не выбрано — отказ, выбрано — эффект заканчивается
             effectControls(canFinishChoice(choice))
           : target
             ? // окно цели: от необязательного свойства («можете убить духа») можно отказаться,
-              // обязательное закрывается только выбором — кнопка выключена
-              effectControls(target.required !== true)
+              // обязательное закрывается только выбором — у окна на несколько целей всем набором
+              effectControls(target.required !== true || windowReady(target))
             : resolveOkBackControls(phase, partyState, playerId),
     };
   },
@@ -251,11 +264,11 @@ export default {
     label: 'Закончить действие',
     enabled: (partyState, playerId) => {
       const options = optionWindowOf(partyState, playerId);
-      // отметка включает кнопку: подтвердить выбор можно и в обязательном окне,
-      // а отказаться (без отметки) — только в необязательном
-      if (options) return options.picked != null || options.required !== true;
+      // выбор включает кнопку: подтвердить его можно и в обязательном окне,
+      // а отказаться (без выбора) — только в необязательном
+      if (options) return windowReady(options) || options.required !== true;
       const target = targetWindowOf(partyState, playerId);
-      if (target) return target.required !== true;
+      if (target) return target.required !== true || windowReady(target);
       const choice = choiceOf(partyState, playerId);
       if (choice) return canFinishChoice(choice);
       // замену защиты пасовать нельзя: карта есть — защитник обязан выложить другую
@@ -265,8 +278,8 @@ export default {
     onPress: (partyState, action) => {
       const options = optionWindowOf(partyState, action.playerId);
       if (options) {
-        // выбор отмечен — общая кнопка его подтверждает и доигрывает свойство
-        if (options.picked != null) return confirmOption(partyState, action.playerId);
+        // выбор готов — общая кнопка его подтверждает и доигрывает свойство
+        if (windowReady(options)) return confirmOption(partyState, action.playerId);
         if (options.required === true) {
           throw new Error('UI_OK: обязательное свойство карты закрывается только выбором варианта');
         }
@@ -275,6 +288,19 @@ export default {
 
       const target = targetWindowOf(partyState, action.playerId);
       if (target) {
+        const picked = windowPicked(target);
+        // окно на несколько целей применяется только полным набором: частичный выбор —
+        // это раннее закрытие необязательного окна, а обязательное ждёт весь набор
+        if (windowCount(target) > 1) {
+          if (picked.length > 0 && windowReady(target))
+            return confirmOption(partyState, action.playerId);
+          if (picked.length > 0 || target.required === true) {
+            throw new Error(
+              'UI_OK: обязательное окно выбора целей закрывается только полным набором целей',
+            );
+          }
+          return declineOption(partyState, action.playerId);
+        }
         if (target.required === true) {
           throw new Error('UI_OK: обязательное свойство карты закрывается только выбором цели');
         }
@@ -352,6 +378,10 @@ export default {
     а «Счёт ударов» — кого добить в области Ифрита. Клик по подсвеченному бойцу или клетке (PICK) прогоняет
     picked, окно закрывается и бой доигрывается; у необязательного окна общая кнопка помечает шаг declined,
     обязательное закрывается только выбором.
+ 5c. окно на несколько целей (count > 1): клик добавляет цель к набору (PICK), окно ждёт остальные,
+    а правила picked разыгрывает и окно закрывает общая кнопка — поэтому бой стоит на паузе между кликами.
+    Обязательное окно показывает кнопку только с полным набором, необязательное закрывается и частичным
+    (в picked уходит то, что успели отметить), а пустое — тот же отказ, что и у окна на одну цель.
  6. Если после урона и эффектов живой сторон осталось не больше одной — партия завершается (hook = gameEnd,
     winner). Проверка победы откладывается, пока бой не закрыт: действие доигрывается до конца, эффекты обеих
     карт срабатывают, и только потом объявляется итог (если погибли все герои — побеждает активный игрок).

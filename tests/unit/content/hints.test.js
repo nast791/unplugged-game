@@ -99,14 +99,26 @@ describe('словарь подсказок', () => {
 
   it('в подсказке с ветками каждый вариант — непустая строка', () => {
     const branches = {
-      'choose.pickTarget': [{ cells: true }, { cells: false }],
+      'choose.pickTarget': [
+        { cells: true },
+        { cells: false },
+        { cells: false, count: 2, picked: 0 },
+        { cells: true, count: 2, picked: 1 },
+      ],
       'movement.moveFighters': [{ fromEffect: true }, { fromEffect: false }],
-      'defense.effectOption': [{ required: true }, { required: false }],
+      'defense.effectOption': [
+        { required: true },
+        { required: false },
+        { required: true, count: 2, picked: 0 },
+        { required: false, count: 2, picked: 1 },
+      ],
       'defense.effectTarget': [
         { cells: true, required: true },
         { cells: true, required: false },
         { cells: false, required: true },
         { cells: false, required: false },
+        { cells: false, required: true, count: 2, picked: 1 },
+        { cells: true, required: false, count: 2, picked: 0 },
       ],
       'defense.combatChoice': [{ movement: true }, { movement: false }],
       'defense.defend': [{ afterCancel: true }, { afterCancel: false }],

@@ -57,8 +57,17 @@ export const HINTS = {
     /** Открыто окно умения героя: текст приходит из пака (см. правило 5). */
     skillWindow: ({ text }) => text ?? '',
     /** Открыт выбор цели: клетки и бойцы звучат по-разному (`cells` — что именно подсвечено). */
-    pickTarget: ({ cells }) =>
-      cells ? 'Выберите клетку среди подсвеченных' : 'Выберите цель среди подсвеченных бойцов',
+    pickTarget: ({ cells, count, picked }) => {
+      if (Number(count) > 1) {
+        const text = cells
+          ? 'Отметьте нужные клетки среди подсвеченных'
+          : 'Отметьте нужные цели среди подсвеченных бойцов';
+        return `${text} (выбрано ${Number(picked) || 0} из ${Number(count)})`;
+      }
+      return cells
+        ? 'Выберите клетку среди подсвеченных'
+        : 'Выберите цель среди подсвеченных бойцов';
+    },
     /** Обычный ход: ничего не открыто, есть действия. */
     chooseAction: () =>
       'Ваш ход: возьмите карту из колоды, чтобы переместиться, или разыграйте карту атаки',
@@ -85,11 +94,25 @@ export const HINTS = {
 
   /** `defense` — защита и паузы свойств карт боя. */
   defense: {
-    /** Открыто окно вариантов свойства: `required` — отказаться нельзя. */
-    effectOption: ({ required }) =>
-      required ? 'Выберите один из вариантов эффекта карты' : optional('Выберите вариант свойства'),
+    /** Открыто окно вариантов свойства: `required` — отказаться нельзя; `count` больше 1 — отмечают несколько. */
+    effectOption: ({ required, count, picked }) => {
+      if (Number(count) > 1) {
+        const text = `Отметьте нужные варианты эффекта карты (выбрано ${Number(picked) || 0} из ${Number(count)})`;
+        return required ? text : optional(text);
+      }
+      return required
+        ? 'Выберите один из вариантов эффекта карты'
+        : optional('Выберите вариант свойства');
+    },
     /** Окно цели эффекта: `cells` — выбор клетки, иначе бойца; `required` — отказаться нельзя. */
-    effectTarget: ({ cells, required }) => {
+    effectTarget: ({ cells, required, count, picked }) => {
+      if (Number(count) > 1) {
+        const text = cells
+          ? 'Отметьте нужные клетки среди подсвеченных'
+          : 'Отметьте нужные цели среди подсвеченных бойцов';
+        const full = `${text} (выбрано ${Number(picked) || 0} из ${Number(count)})`;
+        return required ? full : optional(full);
+      }
       if (cells)
         return required
           ? 'Выберите клетку среди подсвеченных'

@@ -1,4 +1,8 @@
 import { runAction, runUi } from '#shared/publicApi.js';
+import {
+  windowComplete as targetingComplete,
+  windowPicked as targetingPicked,
+} from '#shared/helpers/targeting.js';
 import { cardIdOf } from './metrics.js';
 import { cardTags, cardPromise, effectWorth, optionWorth } from './cards.js';
 import { expectedAttack } from './counting.js';
@@ -1007,6 +1011,7 @@ const enumerateActions = (
   // фаза боя), а если его нет — из кандидатов самого окна (так окно эффектной карты видно в фазе хода).
   // Клик по варианту только **отмечает** его: выбор применяет общая кнопка (`UI_OK`), поэтому отмеченный
   // вариант подтверждаем — иначе бот отмечал бы его по кругу и свойство не срабатывало бы вовсе.
+  // У окна на несколько целей кнопка доступна только с полным набором: остальные варианты добираем кликами.
   const optionWindow = state.targeting;
   const uiChoices = ui.choices ?? [];
   const optionCandidates =
@@ -1018,15 +1023,18 @@ const enumerateActions = (
   const optionChoices = optionCandidates.filter(choice => !choice.disabled);
   if (optionChoices.length > 0) {
     const weights = weightsFor(policy, situation);
-    if (optionWindow?.picked != null) {
+    const marked = targetingPicked(optionWindow);
+    if (marked.length > 0 && targetingComplete(optionWindow)) {
       return [{ weight: pickWeight(), action: { type: 'UI_OK' } }];
     }
-    const options = optionChoices.map(choice => ({
-      weight: optionPickWeight(weights, choice.optionId),
-      action: { type: 'PICK', kind: 'option', id: choice.optionId },
-    }));
-    // без отметки общая кнопка — это отказ от необязательного свойства: его берём только
-    // в «осторожных» прогонах, а подтверждение отметки всегда доступно (`ok.enabled` включает её сам)
+    const options = optionChoices
+      .filter(choice => !marked.includes(String(choice.optionId)))
+      .map(choice => ({
+        weight: optionPickWeight(weights, choice.optionId),
+        action: { type: 'PICK', kind: 'option', id: choice.optionId },
+      }));
+    // без отметки общая кнопка — это отказ от необязательного свойства (или закрытие неполного набора):
+    // его берём только в «осторожных» прогонах, а подтверждение готового выбора всегда доступно
     if (skipAllowed && ui.controls?.ok?.visible && ui.controls.ok.enabled) {
       options.push({ weight: pickWeight(), action: { type: 'UI_OK' } });
     }
@@ -1037,8 +1045,22 @@ const enumerateActions = (
   const targeting = state.targeting;
   if (targeting && String(targeting.playerId) === String(playerId)) {
     const weights = weightsFor(policy, situation);
+    const marked = targetingPicked(targeting);
+    /** Отметка кандидата ключом окна: у клеток cellId, у вариантов optionId, иначе fighterId. */
+    const candidateId = candidate =>
+      String(
+        targeting.kind === 'cells'
+          ? candidate.cellId
+          : targeting.kind === 'options'
+            ? candidate.optionId
+            : candidate.fighterId,
+      );
+    // набор собран: окно закрывает общая кнопка, кликать больше нечем
+    if (targetingComplete(targeting) && ui.controls?.ok?.enabled !== false) {
+      return [{ weight: weights.pick, action: { type: 'UI_OK' } }];
+    }
     const options = (targeting.candidates ?? [])
-      .filter(candidate => candidate.disabled !== true)
+      .filter(candidate => candidate.disabled !== true && !marked.includes(candidateId(candidate)))
       .map(candidate => ({
         weight:
           targeting.kind === 'fighters'

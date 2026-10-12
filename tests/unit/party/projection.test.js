@@ -84,6 +84,45 @@ describe('party.view: приватность хода', () => {
     expect(otherView.targeting.candidates).toBeUndefined();
   });
 
+  it('окно на несколько целей: владелец видит набор и признак «собран», чужой — только что выбор идёт', () => {
+    const state = createState();
+    state.targeting = {
+      playerId: '0',
+      source: 'test_twin',
+      required: true,
+      kind: 'fighters',
+      count: 2,
+      complete: false,
+      candidates: [{ fighterId: 'beta' }, { fighterId: 'gamma' }],
+      picked: ['beta'],
+    };
+
+    expect(view(state, '0').targeting).toMatchObject({
+      kind: 'fighters',
+      count: 2,
+      complete: false,
+      picked: ['beta'],
+    });
+
+    // чужим видно только, что выбор идёт: ни кандидатов, ни отметок, ни признака набора
+    const otherView = view(state, '1');
+    expect(otherView.targeting).toMatchObject({ playerId: '0', required: true });
+    expect(otherView.targeting.picked).toBeUndefined();
+    expect(otherView.targeting.complete).toBeUndefined();
+
+    // у окна на одну цель поля `complete` в проекции нет — это признак только окон на несколько целей
+    state.targeting = {
+      playerId: '0',
+      source: 'medusa_skill',
+      required: false,
+      count: 1,
+      candidates: [{ fighterId: 'beta' }],
+      picked: 'beta',
+    };
+    expect(view(state, '0').targeting).toMatchObject({ count: 1, picked: 'beta' });
+    expect('complete' in view(state, '0').targeting).toBe(false);
+  });
+
   it('окно эффекта боя: карты для усиления видит только владелец окна', () => {
     const state = createState();
     state.combat = {

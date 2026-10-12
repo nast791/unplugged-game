@@ -126,6 +126,8 @@ const projectTargeting = (targeting, you) => {
     ...base,
     kind: targeting.kind ?? 'fighters',
     count: Number(targeting.count) || 1,
+    // у окна на несколько целей есть признак «набор собран»; у окна на одну цель это видно по picked
+    ...(Number(targeting.count) > 1 ? { complete: targeting.complete === true } : {}),
     picked: targeting.picked ?? null,
     candidates: structuredClone(targeting.candidates ?? []),
   };

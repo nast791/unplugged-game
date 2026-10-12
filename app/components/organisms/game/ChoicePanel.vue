@@ -16,7 +16,7 @@
         />
 
         <span class="text-16 text-dim">
-          {{ picked.length ? 'Нажмите «Подтвердить»' : 'Выберите вариант' }}
+          {{ status }}
         </span>
       </div>
     </div>
@@ -37,4 +37,13 @@ const options = computed(() =>
   })),
 );
 const picked = choicePicked;
+const status = computed(() => {
+  const count = choiceCount.value;
+  const marked = picked.value.length;
+  if (count > 1) {
+    if (marked >= count) return 'Нажмите «Подтвердить»';
+    return marked > 0 ? `Выбрано ${marked} из ${count}` : `Выберите варианты (нужно ${count})`;
+  }
+  return marked ? 'Нажмите «Подтвердить»' : 'Выберите вариант';
+});
 </script>

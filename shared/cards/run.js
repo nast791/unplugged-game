@@ -1,7 +1,7 @@
 import { SET_COMBAT } from '#shared/actions/combat.js';
 import { combatMomentsAt } from '#shared/constants/moments.js';
 import { cardKey } from '#shared/helpers/cards.js';
-import { closeTargetingWindow, pickSingleCandidate } from '#shared/helpers/targeting.js';
+import { closeTargetingWindow, pickAutoCandidates } from '#shared/helpers/targeting.js';
 import { ruleMatches, runRules } from '#shared/rules/run.js';
 
 /** Запас шагов: эффектов в бою мало, но защищаемся от зацикливания. */
@@ -60,11 +60,11 @@ const waitingForPlayer = partyState =>
   Boolean(partyState.combat?.choice || partyState.targeting || partyState.movement);
 
 /**
- * Окно с одним кандидатом карта закрывает сама: отмечаем цель и разыгрываем её момент `picked`.
+ * Окно без выбора карта закрывает сама: отмечаем кандидатов и разыгрываем момент `picked`.
  * Так свойство карты, у которого нет выбора, не спрашивает игрока о клике.
  */
 const autoPickFor = card => (state, ownerId) => {
-  const picked = pickSingleCandidate(state, ownerId);
+  const picked = pickAutoCandidates(state, ownerId);
   if (!picked) return state;
 
   const afterPicked = runRules(picked, card?.rules ?? [], 'picked', {

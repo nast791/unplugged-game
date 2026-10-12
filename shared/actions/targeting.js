@@ -16,7 +16,12 @@ const normalizeCandidates = (candidates, kind = 'fighters') => {
 
       if (kind === 'cells') {
         const cellId = typeof entry === 'object' ? (entry.cellId ?? entry.id) : entry;
-        return cellId == null ? null : { cellId: String(cellId) };
+        if (cellId == null) return null;
+        // недоступная клетка остаётся кандидатом, но `SET_TARGETING pick` её отклоняет
+        return {
+          cellId: String(cellId),
+          ...(typeof entry === 'object' && entry.disabled === true ? { disabled: true } : {}),
+        };
       }
 
       if (kind === 'options') {
@@ -39,6 +44,7 @@ const normalizeCandidates = (candidates, kind = 'fighters') => {
           playerId: entry.playerId == null ? null : String(entry.playerId),
           name: entry.name ?? null,
           position: entry.position ?? null,
+          ...(entry.disabled === true ? { disabled: true } : {}),
         };
       }
       return { fighterId: String(entry), playerId: null, name: null, position: null };
@@ -58,11 +64,11 @@ const openTargeting = (partyState, action) => {
   }
 
   /** Сколько целей нужно отметить (`max` — тот же счёт, если правило написано через него).
-   * Пока поддержана ровно одна цель — окно закрывается по клику. */
+   * Одна цель — окно закрывается отметкой; несколько — окно собирает список по клику за раз. */
   const count = Number(action.count ?? action.max ?? 1);
-  if (count !== 1) {
+  if (!Number.isInteger(count) || count < 1) {
     throw new Error(
-      `SET_TARGETING: пока поддерживается ровно одна цель (нужно 1, пришло ${count})`,
+      `SET_TARGETING: count — целое число целей не меньше 1 (пришло ${action.count ?? action.max})`,
     );
   }
 
@@ -76,16 +82,26 @@ const openTargeting = (partyState, action) => {
     throw new Error('SET_TARGETING: нужны candidates (хотя бы один)');
   }
 
+  // окно, которое нечем собрать, открывать нельзя: у обязательного не будет выхода (`required: true`)
+  const available = candidates.filter(entry => entry.disabled !== true).length;
+  if (count > available) {
+    throw new Error(
+      `SET_TARGETING: целей ${count}, а доступных кандидатов ${available} (нужно не больше)`,
+    );
+  }
+
   partyState.targeting = {
     playerId: String(playerId),
     source: action.source ?? null,
     required: action.required === true,
-    // окно открыто «без выбора»: если кандидат один, движок отметит его сам (autoPick в runRules)
+    // окно открыто «без выбора»: если кандидатов ровно столько, сколько просит окно, движок отметит их сам (autoPick в runRules)
     auto: action.auto === true,
     kind,
     count,
     candidates,
     picked: null,
+    // признак есть только у окон на несколько целей: у окна на одну цель отметка и есть завершение
+    ...(count > 1 ? { complete: false } : {}),
   };
   return partyState;
 };
@@ -121,7 +137,27 @@ const pickTargeting = (partyState, action) => {
     throw new Error(`SET_TARGETING: вариант "${wanted}" сейчас недоступен`);
   }
 
-  targeting.picked = byCell ? chosen.cellId : byOption ? chosen.optionId : chosen.fighterId;
+  const key = byCell ? 'cellId' : byOption ? 'optionId' : 'fighterId';
+  const id = chosen[key];
+
+  // окно на несколько целей: клик добавляет цель к списку, дублей и перебора быть не может
+  if (Number(targeting.count) > 1) {
+    const noun = byCell ? 'клетка' : byOption ? 'вариант' : 'боец';
+    const picked = Array.isArray(targeting.picked) ? targeting.picked : [];
+
+    if (picked.length >= Number(targeting.count)) {
+      throw new Error(`SET_TARGETING: в окне уже отмечено ${targeting.count} цели`);
+    }
+    if (picked.includes(id)) {
+      throw new Error(`SET_TARGETING: ${noun} "${id}" уже отмечен`);
+    }
+
+    targeting.picked = [...picked, id];
+    targeting.complete = targeting.picked.length >= Number(targeting.count);
+    return partyState;
+  }
+
+  targeting.picked = id;
   return partyState;
 };
 
@@ -142,8 +178,10 @@ const closeTargeting = (partyState, action) => {
  * Движок открывает окно (`open` с кандидатами и `count`), отмечает клик (`pick`) и закрывает окно (`close`).
  * Эффект применяет тот, кто открыл выбор, а не сам выбор.
  * params: { op: 'open' | 'pick' | 'close', playerId?, source?, candidates?, count?, required?, auto?, fighterId? }
- * `count` (`max` — синоним) — сколько целей отметить; сейчас поддержана ровно одна.
- * `auto: true` — выбора нет: если кандидат ровно один, движок отмечает его сам и окна игрок не видит.
+ * `count` (`max` — синоним) — сколько целей отметить. Одна цель — отметка закрывает окно;
+ * несколько — окно собирает список (`picked` — массив id, `complete` — набран ли весь набор):
+ * закрывает такое окно общая кнопка (`UI_OK`), а `required: false` позволяет закрыть его раньше срока.
+ * `auto: true` — выбора нет: если кандидатов ровно столько, сколько просит окно, движок отмечает их сам.
  */
 export const SET_TARGETING = (partyState, action = {}) => {
   const op = action.op ?? 'open';
