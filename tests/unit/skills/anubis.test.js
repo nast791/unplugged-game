@@ -44,7 +44,7 @@ const shroud = state => ({
   state,
 });
 
-const slot = (id, name, order, fighters, items = []) => ({
+const slot = (id, name, order, fighters, items = [], lost = []) => ({
   id,
   name,
   order,
@@ -54,14 +54,20 @@ const slot = (id, name, order, fighters, items = []) => ({
   discard: zone([]),
   fighters,
   items,
+  lost,
 });
 
-/** Ход Анубиса (игрок 0): `cell` — его клетка, `foeCell` — клетка врага, `shroudState` — пелена. */
+/**
+ * Ход Анубиса (игрок 0): `cell` — его клетка, `foeCell` — клетка врага, `shroudState` — пелена,
+ * `dealtDamage` — наносил ли герой урон в этом ходу (условие суда), `amatLost` — убита ли Амат
+ * (по ней рвётся пелена).
+ */
 const buildState = ({
   cell = 1,
   foeCell = 2,
   shroudState = 'inactive',
-  moved = false,
+  dealtDamage = false,
+  amatLost = false,
   skill = anubis.skill,
 } = {}) =>
   createState({
@@ -75,10 +81,11 @@ const buildState = ({
           'Анубис',
           1,
           [
-            unit('anubis', cell, 15, { attackRange: 2, movedThisTurn: moved }),
-            unit('amat', cell, 8, { type: 'assistant', group: 'amat' }),
+            unit('anubis', cell, 15, { attackRange: 2, dealtDamageThisTurn: dealtDamage }),
+            ...(amatLost ? [] : [unit('amat', cell, 8, { type: 'assistant', group: 'amat' })]),
           ],
           [shroud(shroudState)],
+          amatLost ? [unit('amat', null, 0, { type: 'assistant', group: 'amat' })] : [],
         ),
         skill,
       },
@@ -114,13 +121,14 @@ describe('способность Анубиса (Взвешивание серд
     expect(anubis.skill.fighter).toBe('anubis');
     expect(anubis.skill.title).toBe('Взвешивание сердца');
     expect(anubis.skill.text).toContain('КОНЕЦ ХОДА');
+    expect(anubis.skill.text).toContain('не наносил урон');
     expect(anubis.heroes[0]).toMatchObject({ hp: 15, move: 2, attackRange: 2 });
     expect(anubis.assistants[0]).toMatchObject({ id: 'amat', hp: 8, move: 2, attackRange: 1 });
     // предмет — индикатор эффекта: в начале партии пелены нет, подписи и условие видит игрок в панели
     expect(anubis.items[0]).toMatchObject({ id: 'shroud', state: 'inactive', count: 1 });
     expect(anubis.items[0].states).toEqual({ active: 'цела', inactive: 'отсутствует' });
     expect(anubis.items[0].condition).toContain('Погребальная пелена');
-    expect(anubis.items[0].condition).toContain('пустыни');
+    expect(anubis.items[0].condition).toContain('Амат');
     expect(anubis.terrainAffinity).toEqual(['desert']);
   });
 
@@ -138,11 +146,21 @@ describe('способность Анубиса (Взвешивание серд
     expect(hpOf(state, '1', 'beta')).toBe(11);
   });
 
-  it('Анубис двигался — суда нет, ход закрывается', () => {
-    const state = endTurn(buildState({ moved: true }));
+  it('Анубис наносил урон в этом ходу — суда нет, ход закрывается', () => {
+    const state = endTurn(buildState({ dealtDamage: true }));
 
     expect(state.targeting ?? null).toBeNull();
     expect(hpOf(state, '1', 'beta')).toBe(13);
+  });
+
+  it('герой двигался, но не бил — суд работает: шаг условие больше не снимает', () => {
+    const state = buildState({ shroudState: 'inactive' });
+    const hero = player(state, '0').fighters.find(entry => entry.id === 'anubis');
+    hero.movedThisTurn = true;
+
+    const after = endTurn(state);
+
+    expect(hpOf(after, '1', 'beta')).toBe(12);
   });
 
   it('враг в другой области — судить некого', () => {
@@ -175,14 +193,18 @@ describe('способность Анубиса (Взвешивание серд
     expect(hpOf(after, '1', 'beta')).toBe(13);
   });
 
-  it('пелена цела и Анубис на пустыне — начало хода её сохраняет', () => {
+  it('Амат жива — начало хода пелену сохраняет', () => {
     const state = runSkillMoment(buildState({ shroudState: 'active', cell: 1 }), '0', 'turnStart');
 
     expect(itemState(state)).toBe('active');
   });
 
-  it('пелена цела, но Анубис вне пустыни — начало хода её рвёт', () => {
-    const state = runSkillMoment(buildState({ shroudState: 'active', cell: 3 }), '0', 'turnStart');
+  it('Амат мертва — начало хода пелену рвёт', () => {
+    const state = runSkillMoment(
+      buildState({ shroudState: 'active', cell: 1, amatLost: true }),
+      '0',
+      'turnStart',
+    );
 
     expect(itemState(state)).toBe('inactive');
   });

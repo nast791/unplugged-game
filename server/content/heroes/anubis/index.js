@@ -1,7 +1,7 @@
 export default {
   id: 'anubis',
   name: 'Анубис',
-  color: '#3B82F6',
+  color: '#EDC9AF',
   heroes: [
     {
       id: 'anubis',
@@ -31,12 +31,12 @@ export default {
       name: 'Пелена',
       type: 'item',
       count: 1,
-      color: '#E7E5E4',
+      color: '#D4B97A',
       state: 'inactive',
       states: { active: 'цела', inactive: 'отсутствует' },
       condition:
-        'Появляется картой «Погребальная пелена»; цела, пока Анубис начинает ход на клетке со стихией пустыни',
-      icon: 'arcticons:mistplay',
+        'Появляется картой «Погребальная пелена»; цела, пока Амат жива — в начале вашего хода пелена рвётся, если Амат мертва',
+      icon: 'bx:wind',
     },
   ],
   terrainAffinity: ['desert'],
@@ -45,20 +45,26 @@ export default {
     type: 'skill',
     fighter: 'anubis',
     title: 'Взвешивание сердца',
-    text: 'КОНЕЦ ХОДА: Если Анубис не двигался в этом ходу, выберите бойца противника в его области — он получает 1 урон (2, пока цела пелена). НАЧАЛО ХОДА: Если Анубис не стоит на клетке со стихией пустыни, пелена рвётся.',
+    text: 'КОНЕЦ ХОДА: Если Анубис не наносил урон в этом ходу, выберите бойца противника в его области — он получает 1 урон (2, пока цела пелена). НАЧАЛО ХОДА: Если Амат мертва, пелена рвётся.',
     rules: [
       {
+        // пелена держится, пока жив зверь: потеря Амат снимает и «поедание» карт, и усиленный суд
         moment: 'turnStart',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
-          { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], terrain: 'desert' }, max: 0 },
+          { fact: 'LOST', params: { group: 'amat', min: 1 } },
         ],
         then: [{ action: 'SET_ITEM', group: 'shroud', to: 'inactive' }],
       },
       {
         moment: 'turnEnd',
         when: [
-          { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
+          // условие — урон, а не шаг: суд молчит в тот ход, когда Анубис бил сам
+          {
+            fact: 'FIGHTERS',
+            params: { fighterIds: ['anubis'], dealtDamageThisTurn: true },
+            max: 0,
+          },
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           {
             fact: 'FIGHTERS',
@@ -90,7 +96,11 @@ export default {
       {
         moment: 'turnEnd',
         when: [
-          { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
+          {
+            fact: 'FIGHTERS',
+            params: { fighterIds: ['anubis'], dealtDamageThisTurn: true },
+            max: 0,
+          },
           { fact: 'ITEMS', params: { group: 'shroud', state: 'inactive' }, min: 1 },
           {
             fact: 'FIGHTERS',

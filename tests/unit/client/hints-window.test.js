@@ -8,6 +8,10 @@ import { computed, defineComponent, h } from 'vue';
  * нет текста, нет и компонента. Проверяется здесь, а не на экране партии: правило принадлежит самому окну,
  * и вызывающий экран не обязан его помнить.
  *
+ * Второе правило — **окно можно перетащить в любое место экрана, вплоть до шапки**: до захвата оно стоит
+ * в разметке, после — в координатах экрана, за край не уезжает, а место держится до конца партии
+ * (компонент живёт вместе с экраном, а не с очередной подсказкой).
+ *
  * `HintsWindow.vue` — SFC приложения: `computed` приходит автоимпортом Nuxt, в тесте кладём его
  * в `globalThis` до импорта компонента (так же, как `player-card.test.js`).
  */
@@ -85,5 +89,84 @@ describe('HintsWindow: пустой подсказки нет', () => {
         .find('[data-icon="lucide:circle-alert"]')
         .exists(),
     ).toBe(true);
+  });
+});
+
+describe('HintsWindow: окно можно перетащить', () => {
+  /** Кадр `requestAnimationFrame`: `useDraggable` пишет координаты именно в нём. */
+  const nextFrame = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
+
+  /** Событие указателя с координатами: готовому событию happy-dom `clientX` не присвоить. */
+  const pointerEvent = (type, { clientX = 0, clientY = 0, pointerId = 1, button = 0 } = {}) => {
+    const event = new Event(type, { bubbles: true });
+    Object.defineProperty(event, 'clientX', { value: clientX });
+    Object.defineProperty(event, 'clientY', { value: clientY });
+    Object.defineProperty(event, 'pointerId', { value: pointerId });
+    Object.defineProperty(event, 'button', { value: button });
+    return event;
+  };
+
+  const drag = async (element, from, to) => {
+    element.dispatchEvent(pointerEvent('pointerdown', from));
+    await nextTick();
+    document.dispatchEvent(pointerEvent('pointermove', to));
+    await nextFrame();
+    await nextTick();
+    document.dispatchEvent(pointerEvent('pointerup', to));
+    await nextTick();
+  };
+
+  const place = wrapper => {
+    const style = wrapper.find('section').attributes('style') ?? '';
+    const left = Number(/left:\s*(-?\d+(?:\.\d+)?)px/.exec(style)?.[1]);
+    const top = Number(/top:\s*(-?\d+(?:\.\d+)?)px/.exec(style)?.[1]);
+    return { left, top };
+  };
+
+  it('до перетаскивания окно стоит в разметке, без координат экрана', () => {
+    const wrapper = mountWindow({ text: 'Ваш ход' });
+    const section = wrapper.find('section');
+
+    expect(section.classes()).toContain('relative');
+    expect(section.classes()).not.toContain('fixed');
+    expect(section.attributes('style')).toBeUndefined();
+  });
+
+  it('захват и движение переносят окно в координаты экрана', async () => {
+    const wrapper = mountWindow({ text: 'Ваш ход' });
+    const section = wrapper.find('section');
+
+    await drag(section.element, { clientX: 100, clientY: 80 }, { clientX: 300, clientY: 200 });
+
+    expect(section.classes()).toContain('fixed');
+    expect(place(wrapper)).toEqual({ left: 200, top: 120 });
+  });
+
+  it('окно не уезжает за край экрана', async () => {
+    const wrapper = mountWindow({ text: 'Ваш ход' });
+    const section = wrapper.find('section');
+
+    await drag(section.element, { clientX: 0, clientY: 0 }, { clientX: 99999, clientY: 99999 });
+
+    const { left, top } = place(wrapper);
+    expect(left).toBeLessThanOrEqual(window.innerWidth);
+    expect(top).toBeLessThanOrEqual(window.innerHeight);
+    expect(left).toBeGreaterThanOrEqual(0);
+    expect(top).toBeGreaterThanOrEqual(0);
+  });
+
+  it('место остаётся за окном до конца партии: новая подсказка встаёт туда же', async () => {
+    const wrapper = mountWindow({ text: 'Ваш ход' });
+    const section = wrapper.find('section');
+
+    await drag(section.element, { clientX: 100, clientY: 80 }, { clientX: 300, clientY: 200 });
+    const moved = place(wrapper);
+    expect(moved).toEqual({ left: 200, top: 120 });
+
+    await wrapper.setProps({ text: '' });
+    expect(wrapper.find('section').exists()).toBe(false);
+
+    await wrapper.setProps({ text: 'Новая подсказка' });
+    expect(place(wrapper)).toEqual(moved);
   });
 });

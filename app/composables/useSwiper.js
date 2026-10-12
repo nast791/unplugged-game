@@ -61,7 +61,7 @@ export const useSwiper = (input = {}) => {
   const isAvailable = ref(true);
   const activeIndex = ref(0);
   const isFirstVisible = ref(true);
-  const isLastVisible = ref(false);
+  const isLastVisible = ref(true);
 
   const syncEdges = swiper => {
     if (!swiper) return;
@@ -76,7 +76,7 @@ export const useSwiper = (input = {}) => {
     instance.value = null;
     activeIndex.value = 0;
     isFirstVisible.value = true;
-    isLastVisible.value = false;
+    isLastVisible.value = true;
   };
 
   const init = async () => {
@@ -139,8 +139,7 @@ export const useSwiper = (input = {}) => {
           userOn.slideChange?.(swiper);
         },
         progress: (swiper, progress) => {
-          isFirstVisible.value = progress <= 0;
-          isLastVisible.value = progress >= 1;
+          syncEdges(swiper);
           userOn.progress?.(swiper, progress);
         },
         reachBeginning: swiper => {

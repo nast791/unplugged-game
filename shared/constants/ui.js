@@ -10,6 +10,7 @@ export const MENU_ITEMS = [
   { id: 'heroes', title: 'Герои' },
   { id: 'history', title: 'История' },
   { id: 'shop', title: 'Магазин' },
+  { id: 'settings', title: 'Настройки' },
   { id: 'exit', title: 'Выход' },
 ];
 

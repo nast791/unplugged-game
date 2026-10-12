@@ -173,11 +173,16 @@ export default defineNuxtConfig({
   icon: {
     /**
      * Иконки — SVG из локальных коллекций (`@iconify-json/lucide`, `@iconify-json/game-icons`,
-     * `@iconify-json/arcticons`): без сети и без растровых картинок (`docs/ui-plan.md` §2.6).
-     * `clientBundle.scan` берёт имена из шаблонов, а значки из контента (предметы, тип карты) приходят
-     * строками — их отдаёт серверная сборка коллекции.
+     * `@iconify-json/arcticons`, `@iconify-json/material-symbols`): без сети и без растровых картинок
+     * (`docs/ui-plan.md` §2.6). `clientBundle.scan` берёт имена из шаблонов, а значки из контента
+     * (предметы, тип карты) приходят строками — их отдаёт серверная сборка коллекции.
+     * Стрелки листалки руки — из `material-symbols` (решение владельца), поэтому коллекция стоит и в
+     * серверной сборке, и в клиентской: SVG рисует клиент.
      */
-    serverBundle: { collections: ['lucide', 'game-icons'] },
-    clientBundle: { scan: true, icons: ['arcticons:mistplay'] },
+    serverBundle: { collections: ['lucide', 'game-icons', 'material-symbols'] },
+    clientBundle: {
+      scan: true,
+      icons: ['arcticons:mistplay', 'material-symbols:arrow-left', 'material-symbols:arrow-right'],
+    },
   },
 });

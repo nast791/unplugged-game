@@ -14,6 +14,7 @@
 <script setup>
 import { AvatarFallback, AvatarImage, AvatarRoot } from 'reka-ui';
 import { useUI } from '~/composables/ui/useUI';
+import { cn } from '~/ui/cn.js';
 
 /**
  * Аватар: картинка с запасным вариантом — иконка-знак или инициалы из `alt`.

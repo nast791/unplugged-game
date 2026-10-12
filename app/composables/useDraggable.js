@@ -1,5 +1,5 @@
 import { onUnmounted, ref } from 'vue';
-import { resolveCallback, resolveValue } from '~/utils/reactive.js';
+import { resolveCallback, resolveValue } from '~/composables/useReactiveOptions.js';
 
 const isObjectPosition = value => value !== null && typeof value === 'object' && 'x' in value;
 
@@ -114,8 +114,7 @@ export const useDraggable = (position, options = {}) => {
     const element = event.currentTarget ?? null;
     try {
       element?.setPointerCapture?.(event.pointerId);
-    } catch {
-    }
+    } catch {}
 
     const start = readPosition();
     active = {

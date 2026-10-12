@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adaptPartyView } from '../../../app/utils/adaptPartyView.js';
+import { adaptPartyView } from '../../../app/composables/useGameView.js';
 import { createGame } from '../../../server/create.js';
 import { view } from '../../../server/party.js';
 

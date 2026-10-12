@@ -27,7 +27,20 @@
  * подошедший `<source>`, поэтому на большом экране победит `lg:src`, а не базовый `src`.
  */
 import { useUI } from '~/composables/ui/useUI';
-import { negateMinWidthMedia } from '~/utils/pictureMedia';
+import { cn } from '~/ui/cn.js';
+
+const negateMinWidthMedia = list => {
+  const parts = list
+    .filter(Boolean)
+    .map(media =>
+      media.replace(
+        /\(min-width:\s*([\d.]+)px\)/g,
+        (_, px) => `(max-width: ${Number(px) - 0.02}px)`,
+      ),
+    );
+
+  return parts.length ? parts.join(' and ') : undefined;
+};
 
 /**
  * Картинка проекта: `<picture>` с art-direction по брейкпоинтам и honest-прелоадом.

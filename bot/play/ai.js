@@ -2,6 +2,8 @@ import { runUi } from '#shared/publicApi.js';
 import { PROPOSER_POLICY, actionsFor, actorOf } from './decide.js';
 import { searchAction, searchBudget } from './search.js';
 
+export { pendingPlacementAi } from './decide.js';
+
 /**
  * Ход бота — точка входа и для прогонов, и для браузера (режим `vs_ai`).
  *

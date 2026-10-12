@@ -26,6 +26,7 @@
 <script setup>
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import { useUI } from '~/composables/ui/useUI';
+import { cn } from '~/ui/cn.js';
 
 /** Табы: `items` — `{ id, label, disabled? }`, содержимое — именованные слоты по `id`. */
 defineOptions({ inheritAttrs: false });

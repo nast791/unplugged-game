@@ -34,6 +34,7 @@ import {
   ScrollAreaViewport,
 } from 'reka-ui';
 import { useUI } from '~/composables/ui/useUI';
+import { cn } from '~/ui/cn.js';
 
 /**
  * Единственный скролл в проекте: применяем везде, в том числе внутри других атомов (модалка, селект,

@@ -602,6 +602,13 @@ const terrainList = node => {
   return list.filter(Boolean).map(String);
 };
 
+/**
+ * Одноцветная клетка. **Номерная клетка обязана быть одноцветной** (правило владельца): по её стихии
+ * считается вся область расстановки, и на стыке зон (двух- и трёхцветная клетка) место игрока тянуло бы
+ * за собой сразу две-три области — расстановка переставала бы быть «своей» зоной.
+ */
+export const isSingleTerrainCell = node => terrainList(node).length === 1;
+
 /** Клетки области: все клетки с общей стихией у указанной клетки. */
 export const areaCellIds = (map, cellId) => {
   const cells = map?.nodes ?? [];
@@ -668,6 +675,8 @@ const chooseStarts = (
 
     const ranked = cells
       .filter(cell => !used.has(cell.id))
+      // номерная клетка — только одноцветная: цветную на стыке зон на старт не берём
+      .filter(isSingleTerrainCell)
       .map(cell => ({ cell, score: scoreOf(cell) }))
       .sort((left, right) => right.score - left.score);
 
@@ -698,6 +707,7 @@ const chooseStarts = (
   // жёсткие проверки: старт у своей стороны, области попарно различны, стороны разведены
   for (let i = 0; i < starts.length; i += 1) {
     if (!onSide(starts[i], directions[i].side)) return null;
+    if (!isSingleTerrainCell(starts[i])) return null;
     for (let j = i + 1; j < starts.length; j += 1) {
       const left = terrainList(starts[i]);
       const right = terrainList(starts[j]);

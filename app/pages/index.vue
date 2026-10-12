@@ -44,12 +44,6 @@ import { exitGame } from '~/composables/ui/useExitScreen';
 import { openModal } from '~/composables/ui/useModal';
 import { clearToast, notify, useToast } from '~/composables/ui/useToast';
 
-/**
- * Лобби (`docs/ui-plan.md` §2). Композаблы импортированы явно — см. `AGENTS.md` §12.
- *
- * Страница держит только то, что принадлежит ей: загрузку, центральное меню и тост. Профиль, модалки и
- * экран выхода — общее состояние, его читают и пишут сами компоненты (`docs/ui-plan.md` §12).
- */
 useSeoTitle('Лобби');
 
 const { ready, content, boot } = useLobbyBoot();
@@ -57,13 +51,10 @@ const { toast } = useToast();
 
 onMounted(boot);
 
-/** Тост рисует страница: уходим — гасим сообщение, иначе оно встретило бы возвращение в лобби. */
 onBeforeUnmount(clearToast);
 
-/** Сезон — динамика, поэтому пропом; пока его не отдаёт контент, подпись стоит здесь. */
 const SEASON = 'Сезон 1 · Остановившаяся зима';
 
-/** Пункт меню = режим или раздел: экранов пока нет, поэтому честный тост вместо пустой ссылки. */
 const onSelect = item => {
   if (item.id === 'table') {
     openModal('table');

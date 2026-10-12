@@ -2,7 +2,14 @@ import { runAction } from '#shared/publicApi.js';
 import { cellDistances } from './actionFeatures.js';
 import { stillnessWeight } from './axes.js';
 import { unseenOf } from './counting.js';
-import { actorOf, actionsFor, nextRandom, pickWeighted, proposalPolicy } from './decide.js';
+import {
+  actorOf,
+  actionsFor,
+  nextRandom,
+  pickWeighted,
+  placementActorOf,
+  proposalPolicy,
+} from './decide.js';
 import { cardById } from './pool.js';
 import { resourceOf, resourceProgress, resourceReady } from './resources.js';
 import { defaultWeights, scoreOf, stillHero } from './value.js';
@@ -810,7 +817,13 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
   const started = Date.now();
   const deadline = budget.timeMs > 0 ? started + budget.timeMs : 0;
   const rootKey = String(viewerId);
-  const root = { playerId: rootKey, children: new Map(), visits: 0, value: 0 };
+  /**
+   * Корень — **тот, кто решает**: на расстановке варианты собраны для конкретного слота, а очередь
+   * (`actorOf`) в это время отдаёт первого неподтверждённого, то есть человека. Взяли бы его — ходили бы
+   * чужими бойцами и падали на «боец не ваш» (`placementActorOf`).
+   */
+  const rootActorId = String(placementActorOf(state) ?? viewerId);
+  const root = { playerId: rootActorId, children: new Map(), visits: 0, value: 0 };
   /**
    * **Пул миров** (§54): миры набираются один раз на решение и берутся по кругу. Нужен потому, что
    * разница между вариантами корня тонет в разнице миров: каждая итерация тянула **новый** мир, а
@@ -878,7 +891,8 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
 
     // спуск по дереву: за доигрывание расширяем ровно один узел, дальше — роллаут
     while (steps < budget.treeDepth) {
-      const actor = actorOf(current);
+      // на корне действующий — тот, чьё решение считаем; глубже ход переходит по очереди движка
+      const actor = node === root ? rootActorId : placementActorOf(current);
       if (actor == null) break;
 
       let options;

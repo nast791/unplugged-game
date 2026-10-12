@@ -1,8 +1,8 @@
 <template>
   <div class="flex items-center gap-6">
     <div class="flex items-center gap-6" v-for="item in items" :key="item.id">
-      <component :is="item.icon" class="size-16" aria-hidden="true" />
-      <span class="text-16">{{ item.stat }}</span>
+      <component :is="item.icon" class="size-15" aria-hidden="true" />
+      <span class="text-15">{{ item.stat }}</span>
     </div>
   </div>
 </template>

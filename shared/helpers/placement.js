@@ -1,4 +1,10 @@
-import { findOwnedFighter, findPlayer, playerHeroes, seatIndex } from '#shared/helpers/base.js';
+import {
+  findOwnedFighter,
+  findPlayer,
+  isAiPlayer,
+  playerHeroes,
+  seatIndex,
+} from '#shared/helpers/base.js';
 import { occupiedCellIds } from '#shared/helpers/turn.js';
 
 export const findNode = (partyState, cellId) => {
@@ -171,6 +177,22 @@ export const allPlayersPlacementReady = partyState =>
     }
     return player.placementReady === true && playerFightersPlaced(player);
   });
+
+/**
+ * Компьютер не ждёт нажатия «ОК»: как только все его бойцы стоят на клетках, расстановка слота
+ * подтверждена. Тогда плашка «Расстановка» уходит с его карточки сразу, а не когда подтвердится человек,
+ * и цикл ходов компьютера (`app/composables/useGameAi.js`) останавливается сам — расставлять ему больше
+ * нечего. Человек подтверждает расстановку кнопкой (исключение — герой без помощников: там подтверждает
+ * `confirmIfNothingToPlace`).
+ */
+export const confirmDoneAiPlacements = partyState => {
+  if (allPlayersPlacementReady(partyState)) return partyState;
+  for (const player of partyState.players ?? []) {
+    if (player.placementReady || !isAiPlayer(player)) continue;
+    if (playerFightersPlaced(player)) player.placementReady = true;
+  }
+  return partyState;
+};
 
 export const hasPickPreview = (partyState, playerId) => {
   const player = findPlayer(partyState, playerId);

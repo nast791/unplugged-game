@@ -4,6 +4,7 @@ import { findPlayer, playerHeroes, resolveOkBackControls } from '#shared/helpers
 import {
   allPlayersPlacementReady,
   clearHeroOnNumberedCell,
+  confirmDoneAiPlacements,
   hasHeroOnNumberedCell,
   isLockedHero,
   numberedCellId,
@@ -33,6 +34,13 @@ export default {
   name: 'place',
 
   hints: {
+    confirmFighters: {
+      active: (partyState, playerId) => {
+        const player = findPlayer(partyState, playerId);
+        return Boolean(player && !player.placementReady && playerFightersPlaced(player));
+      },
+      text: HINTS.place.confirmFighters,
+    },
     placeFighters: {
       active: (partyState, playerId) => {
         const player = findPlayer(partyState, playerId);
@@ -76,6 +84,13 @@ export default {
     if (updated) updated.numberedHeroCommitted = true;
     return confirmIfNothingToPlace(state, playerId);
   },
+
+  /**
+   * Подтверждение компьютера — не по кнопке, а по факту: как только его расстановка закончена, слот
+   * готов (см. `confirmDoneAiPlacements`). Тело фазы зовётся после каждого действия, поэтому плашка
+   * «Расстановка» уходит с карточки компьютера тем же шагом, каким он поставил последнего бойца.
+   */
+  body: partyState => confirmDoneAiPlacements(partyState),
 
   ui(partyState, playerId, clientContext = {}, phase) {
     const player = findPlayer(partyState, playerId);
@@ -154,4 +169,9 @@ export default {
  7. После нажатия «ОК» мы ждем расстановки всех игроков, если они еще не завершены, и выводим подсказку "Ожидание расстановки всех игроков". Переход в следующую фазу происходит только после того, как все игроки завершили расстановку.
  8. Позицию пишет общий кирпич SET_FIGHTER_CELL (start: true), а условия (свой боец, область
     расстановки, зафиксированный герой, занятая клетка) — placementRejection в helpers/placement.js.
+ 9. Подсказка различает «ещё расставляю» и «всё стоит, подтвердите»: пока бойцы стоят не все —
+    placeFighters, когда все встали, а «ОК» ещё не нажата, — confirmFighters.
+ 10. Слот компьютера подтверждается сам, как только расставил всех бойцов (body →
+    confirmDoneAiPlacements): его плашка «Расстановка» уходит сразу, не дожидаясь человека, и цикл
+    компьютера останавливается сам — решений ему движок больше не предлагает.
  */

@@ -33,6 +33,29 @@ describe('POST /api/game/create', () => {
     expect(v.ui?.phase).toBe('place');
   });
 
+  it('флаг готовности чужого слота виден, а его позиции — нет: карточка обновляется, доска молчит', () => {
+    createGame(
+      {
+        mapId: 'generated',
+        mode: 'vs_ai',
+        heroes: [
+          { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
+          { heroId: 'anubis', team: 'B', order: 2, control: 'ai' },
+        ],
+      },
+      { testId: 'ready_flag', testSeed: 5 },
+    );
+    const state = load('ready_flag');
+    const anubis = state.players.find(p => p.id === 'anubis');
+    anubis.fighters = anubis.fighters.map(f => ({ ...f, currentPosition: 5 }));
+    anubis.placementReady = true;
+
+    const v = view(state, 'medusa');
+    const shown = v.players.find(p => p.id === 'anubis');
+    expect(shown.placementReady).toBe(true);
+    expect(shown.fighters.every(f => f.currentPosition === null)).toBe(true);
+  });
+
   it('mode по умолчанию — vs_ai', () => {
     createGame(
       {

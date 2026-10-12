@@ -12,7 +12,7 @@ export default defineVitestConfig({
     alias: {
       '#shared': fileURLToPath(new URL('./shared', import.meta.url)),
       // Как в Nuxt: `~` — папка приложения. Нужно тестам, которые тянут композаблы (`useSortable`
-      // импортирует `~/utils/sortable.js`).
+      // импортирует `~/composables/useReactiveOptions.js`).
       '~': fileURLToPath(new URL('./app', import.meta.url)),
       '@': fileURLToPath(new URL('./app', import.meta.url)),
     },

@@ -10,6 +10,7 @@
 
 <script setup>
 import { useUI } from '~/composables/ui/useUI';
+import { cn } from '~/ui/cn.js';
 
 /**
  * Лоадер: кольцо и подпись с бегущими точками (анимация точек — `.loader-dot` в `app/assets/styles.css`).

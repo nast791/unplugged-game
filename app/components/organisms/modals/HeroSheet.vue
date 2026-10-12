@@ -1,10 +1,10 @@
 <template>
   <div
-    v-if="props.heroId"
+    v-if="heroId"
     ref="root"
     class="bg-app/85 backdrop-blur-8 fixed inset-0 z-40 flex items-center justify-center p-16"
     tabindex="-1"
-    @click="emit('close')"
+    @click="close"
     @keydown="onKeydown"
   >
     <section
@@ -15,9 +15,15 @@
       @click.stop
     >
       <header class="border-line flex items-center justify-between gap-16 border-b-2 px-24 py-12">
-        <span class="text-22 font-semibold">{{ heroName }}</span>
-        <AButton variant="ghost" icon aria-label="Закрыть карточку героя" @click="emit('close')">
-          <Icon name="lucide:x" class="size-22" aria-hidden="true" />
+        <span class="text-22 font-semibold tracking-[0.02em] uppercase">{{ heroName }}</span>
+        <AButton
+          variant="ghost"
+          icon
+          class="-mt-4"
+          aria-label="Закрыть карточку героя"
+          @click="close"
+        >
+          <Icon name="lucide:x" class="size-44" aria-hidden="true" />
         </AButton>
       </header>
 
@@ -39,33 +45,30 @@ import AButton from '~/components/atoms/AButton.vue';
 import ALoader from '~/components/atoms/ALoader.vue';
 import HeroDetails from '~/components/game/HeroDetails.vue';
 import { useHeroQuery } from '~/composables/api/heroes.js';
-import { addActiveModal, removeActiveModal } from '~/composables/ui/useModal.js';
+import { closeModal, useModalPayload } from '~/composables/ui/useModal.js';
 
-const props = defineProps({
-  heroId: { type: String, default: '' },
-});
-
-const emit = defineEmits(['close']);
+const heroId = useModalPayload('heroSheet');
 
 const root = ref(null);
-const { data: hero, isPending: pending, isError: error } = useHeroQuery(() => props.heroId);
+const {
+  data: hero,
+  isPending: pending,
+  isError: error,
+} = useHeroQuery(() => String(heroId.value ?? ''));
 
-const heroName = computed(() => hero.value?.name || String(props.heroId));
+const heroName = computed(() => hero.value?.name || String(heroId.value ?? ''));
 
-watch(
-  () => Boolean(props.heroId),
-  open => {
-    if (open) addActiveModal('heroSheet');
-    else removeActiveModal('heroSheet');
-    if (!open) return;
-    void nextTick(() => root.value?.focus?.());
-  },
-  { immediate: true },
-);
+const close = () => closeModal('heroSheet');
 
-onBeforeUnmount(() => removeActiveModal('heroSheet'));
+watch(heroId, async id => {
+  if (!id) return;
+  await nextTick();
+  root.value?.focus?.();
+});
+
+onBeforeUnmount(() => closeModal('heroSheet'));
 
 const onKeydown = event => {
-  if (event.key === 'Escape') emit('close');
+  if (event.key === 'Escape') close();
 };
 </script>

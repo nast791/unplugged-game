@@ -1,7 +1,25 @@
 import { ref } from 'vue';
-import { SORT_MODES, reorder } from '~/utils/sortable.js';
-import { resolveCallback, resolveValue } from '~/utils/reactive.js';
+import { resolveCallback, resolveValue } from '~/composables/useReactiveOptions.js';
 import { useDraggable } from './useDraggable.js';
+
+export const SORT_MODES = ['insert', 'swap'];
+
+export const reorder = (list, from, to, mode = 'insert') => {
+  const size = Array.isArray(list) ? list.length : 0;
+  const next = Array.isArray(list) ? [...list] : [];
+  if (from === to) return next;
+  if (!Number.isInteger(from) || !Number.isInteger(to)) return next;
+  if (from < 0 || to < 0 || from >= size || to >= size) return next;
+
+  if (mode === 'swap') {
+    [next[from], next[to]] = [next[to], next[from]];
+    return next;
+  }
+
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+};
 
 export const useSortable = (items, options = {}) => {
   const mode = SORT_MODES.includes(options.mode) ? options.mode : 'insert';

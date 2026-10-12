@@ -623,6 +623,10 @@ const resolveCombat = partyState => {
     SET_HEALTH(partyState, {
       fighterId: combat.targetFighterId,
       delta: -outcome.combatDamage,
+      // урон боя наносит атакующий, а не действующий игрок: по этому playerId `SET_HEALTH` помечает
+      // его бойца флагом «наносил урон в этом ходу» (`shared/helpers/damage.js`): удар в чужом ходу
+      // не должен записываться защитнику-герою (так срабатывает «Взвешивание сердца» Анубиса)
+      playerId: combat.attackerPlayerId,
     });
   }
 

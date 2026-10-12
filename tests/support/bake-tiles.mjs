@@ -9,8 +9,7 @@ import sharp from 'sharp';
  * собираются из свободных SVG-референсов в `.refs/patterns`. Плитка — квадрат со стороной `CELLS`,
  * доска кладёт её на клетку и обрезает сектором стихии.
  *
- * Лава — кинцуги: фон уводим в коричневый, жилы остаются золотыми. Прежние прозрачные трещины
- * по красной заливке остались запасным вариантом (`lava-cracks-gold.webp`).
+ * Лава — кинцуги: фон уводим в коричневый, жилы остаются золотыми.
  *
  * Формат — WebP: на фотографичной осыпи и акварельном песке он в разы легче PNG при том же виде,
  * прозрачность лавы он тоже держит. Сторона плитки 512 — вдвое больше, чем нужно клетке на экране
@@ -28,10 +27,8 @@ const CELLS = 512;
 // у каменной осыпи плитка меньше: исходник — «векторизованное» фото, и при 512 его щели между
 // камнями смазываются в серую массу
 const CELLS_STONES = 256;
-const LAVA_CRACKS = 'gold'; // 'gold' — золотые трещины (эталон), 'dark' — почти чёрные
 
 const SOURCES = {
-  cracks: '.refs/patterns/26933757_grunge_style_cracked_texture_2501 (1).svg',
   sand: '.refs/patterns/sand-texture.svg',
   stones: '.refs/patterns/mountain-texture.svg',
   water: '.refs/patterns/water-texture.svg',
@@ -43,37 +40,11 @@ const SOURCES = {
 // качество WebP: акварельному песку и мрамору воды хватает 80 (на клетке это 134 px из 512),
 // лаве и каменной осыпи — выше: у первой тонкие линии, у второй мелкая фактура
 const WEBP = { quality: 80, alphaQuality: 100, effort: 6 };
-// у лавы тонкие линии, у гор — фотографичная осыпь: им качество нужно выше, иначе клетка выглядит мягкой
-const WEBP_LINES = { quality: 88, alphaQuality: 100, effort: 6 };
 const WEBP_DETAIL = { quality: 88, alphaQuality: 100, effort: 6 };
 // мелкая фактура камней сжимается хуже, зато их плитка вчетверо легче — качество берём с запасом
 const WEBP_STONES = { quality: 92, alphaQuality: 100, effort: 6 };
 
 const clamp = value => Math.max(0, Math.min(255, Math.round(value)));
-
-/**
- * Прозрачная плитка трещин. Обычно в исходнике трещины тёмные на белом фоне, и альфу берём
- * из темноты — `(255 - яркость - cut) * boost`; `veins: true` — обратный случай (светлые жилы
- * на тёмном, как в кинцуги): `(яркость - cut) * boost`. `cut` отсекает фон, `boost` уплотняет линии.
- */
-const crackTile = async ({ file, cut, boost, color, veins = false }) => {
-  const { data, info } = await sharp(file, { density: 300 })
-    .resize(CELLS, CELLS, { fit: 'fill' })
-    .greyscale()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const rgba = Buffer.alloc(info.width * info.height * 4);
-  for (let index = 0; index < info.width * info.height; index += 1) {
-    const alpha = clamp(((veins ? data[index] : 255 - data[index]) - cut) * boost);
-    rgba[index * 4] = color[0];
-    rgba[index * 4 + 1] = color[1];
-    rgba[index * 4 + 2] = color[2];
-    rgba[index * 4 + 3] = alpha;
-  }
-  return sharp(rgba, { raw: { width: info.width, height: info.height, channels: 4 } })
-    .png()
-    .toBuffer();
-};
 
 /**
  * Дуотон: яркость исходника раскладываем между двумя цветами. Так у воды остаётся вся фактура
@@ -190,12 +161,6 @@ const veinTile = async ({ file, ground, vein, size = CELLS }) => {
 
 const main = async () => {
   mkdirSync(OUT, { recursive: true });
-
-  // лава: тёмные линии исходника → альфа, цвет трещин свой
-  const gold = await crackTile({ file: SOURCES.cracks, cut: 6, boost: 2.8, color: [245, 197, 78] });
-  const dark = await crackTile({ file: SOURCES.cracks, cut: 10, boost: 2.4, color: [17, 24, 39] });
-  await sharp(gold).webp(WEBP_LINES).toFile(`${OUT}/lava-cracks-gold.webp`);
-  await sharp(dark).webp(WEBP_LINES).toFile(`${OUT}/lava-cracks.webp`);
 
   // пустыня: кроп акварельного исходника сверху — нижняя светлая размывка в клетку не попадает
   await sharp(SOURCES.sand)

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   MARKER,
@@ -29,10 +30,9 @@ import {
   sectorDividers,
   sectorWedges,
   startMarkers,
-  terrainTexture,
   tileClipFunc,
   trimSegment,
-} from '../../../app/utils/boardGeometry.js';
+} from '../../../app/composables/useBoardGeometry.js';
 import {
   TERRAIN,
   TERRAIN_IDS,
@@ -117,9 +117,9 @@ describe('геометрия доски: клетка под точкой экр
   const radius = 40;
 
   it('точка в кружке даёт его id, и сдвиг сцены учитывается', () => {
-    expect(cellAtPoint(nodes, radius, { x: 0, y: 0, scaleX: 1, scaleY: 1 }, { x: 110, y: 95 })).toBe(
-      '1',
-    );
+    expect(
+      cellAtPoint(nodes, radius, { x: 0, y: 0, scaleX: 1, scaleY: 1 }, { x: 110, y: 95 }),
+    ).toBe('1');
     // сцена сдвинута на (50, 20): та же точка экрана — уже другая клетка мира
     expect(cellAtPoint(nodes, radius, { x: 50, y: 20 }, { x: 150, y: 120 })).toBe('1');
     expect(cellAtPoint(nodes, radius, { x: 50, y: 20 }, { x: 110, y: 95 })).toBeNull();
@@ -440,44 +440,22 @@ describe('геометрия доски: подписи и номер героя
     expect(fieldBounds(null, 50)).toEqual({ minX: 0, minY: 0, maxX: 400, maxY: 300 });
   });
 
-  it('текстуры стихий запечены из референсов и доходят до края клетки', () => {
-    const radius = 50;
-    const signatures = new Set();
+  it('у каждой стихии своя растровая плитка, и файл её лежит в public', () => {
+    expect(Object.keys(PATTERN_TILES).sort()).toEqual([...TERRAIN_IDS].sort());
 
+    const sources = new Set();
     for (const terrain of TERRAIN_IDS) {
-      const texture = terrainTexture(terrain, radius);
-      expect(texture, terrain).not.toBeNull();
       const tile = PATTERN_TILES[terrain];
-      // у стихии-плитки доска рисует картинку; векторные слои у неё доской не используются
-      // (у льда они пока лежат запасным вариантом), поэтому проверяем только то, что есть
-      if (!tile) expect(texture.layers.length, terrain).toBeGreaterThanOrEqual(1);
-      if (!texture.layers.length) continue;
-
-      // элементы выходят за кружок и обрезаются им: текстура заливает клетку целиком, без отступов
-      expect(texture.extent.x, `${terrain}: слева/справа`).toBeGreaterThanOrEqual(0.95);
-      expect(texture.extent.y, `${terrain}: сверху/снизу`).toBeGreaterThanOrEqual(0.95);
-
-      for (const layer of texture.layers) {
-        expect(layer.data.startsWith('M '), terrain).toBe(true);
-        expect(layer.listening).toBe(false);
-        expect(layer.opacity, terrain).toBeGreaterThan(0);
-        expect(layer.opacity, terrain).toBeLessThanOrEqual(1);
-        // цвет задаёт доска: у заливки — fill, у штриха — stroke, но не оба сразу
-        if (layer.fill) expect(layer.stroke).toBeUndefined();
-        else expect(layer.strokeWidth).toBeGreaterThanOrEqual(0);
-        // запечённые слои масштабирует узел: толщина штриха остаётся пиксельной на любом радиусе
-        if (layer.scaleX) expect(layer.scaleY).toBe(layer.scaleX);
-      }
-
-      signatures.add(texture.layers.map(layer => layer.data).join('|'));
+      expect(tile.src.startsWith('/patterns/'), terrain).toBe(true);
+      expect(existsSync(`public${tile.src}`), `${terrain}: ${tile.src}`).toBe(true);
+      sources.add(tile.src);
     }
 
-    // текстуры всех стихий разные: общих «запасных» узоров нет
-    expect(signatures.size).toBe(
-      TERRAIN_IDS.filter(id => !PATTERN_TILES[id] || id === 'ice').length,
-    );
-    expect(terrainTexture('forest', 0)).toBeNull();
-    expect(() => terrainTexture('нет-такой', radius)).toThrow(/Неизвестная стихия/);
+    // общих «запасных» плиток нет: стихии не путаются друг с другом
+    expect(sources.size).toBe(TERRAIN_IDS.length);
+    // без радиуса клетки текстуру считать не на чем
+    expect(cellPatterns(['ice'], 0)).toEqual([]);
+    expect(cellPatterns(['ice'], 50)).toHaveLength(1);
   });
 
   it('плитки стихий не растягиваются: на клетке любого размера они уменьшаются', () => {
@@ -573,20 +551,14 @@ describe('геометрия доски: подписи и номер героя
 
       expect(patterns.length, `клетка ${node.id}`).toBe(terrains.length);
       for (const pattern of patterns) {
-        if (PATTERN_TILES[pattern.terrain]) continue;
-        expect(pattern.layers.length, `клетка ${node.id}`).toBeGreaterThanOrEqual(1);
-        for (const layer of pattern.layers) expect(layer.data.startsWith('M ')).toBe(true);
+        expect(PATTERN_TILES[pattern.terrain], `клетка ${node.id}`).toBeTruthy();
         expect(typeof pattern.clipFunc).toBe('function');
         // обрезка вызывается холстом и рисует дугу по радиусу клетки
         expect(() => pattern.clipFunc(ctx)).not.toThrow();
       }
       if (terrains.length > 1) {
-        // у цветной клетки сектора разные: текстуры не накладываются друг на друга.
-        // что рисуется — векторные слои, а у стихии-плитки её картинка (её подставляет доска)
-        const signatures = patterns.map(
-          pattern =>
-            PATTERN_TILES[pattern.terrain]?.src ?? pattern.layers.map(l => l.data).join('|'),
-        );
+        // у цветной клетки сектора разные: текстуры не накладываются друг на друга
+        const signatures = patterns.map(pattern => PATTERN_TILES[pattern.terrain].src);
         expect(new Set(signatures).size).toBe(terrains.length);
       }
     }

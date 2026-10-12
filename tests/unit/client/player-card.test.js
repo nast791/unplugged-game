@@ -51,6 +51,8 @@ vi.mock('~/composables/useGameSession.js', async () => {
 });
 
 const { session } = await import('~/composables/useGameSession.js');
+const { closeAllModals, getModalPayload, isModalOpen } =
+  await import('~/composables/ui/useModal.js');
 
 /** Ход в сессии: `current` — чей ход, `left`/`actionsTotal`/`bonus` — счётчик действий движка. */
 const setSession = ({
@@ -66,7 +68,10 @@ const setSession = ({
   session.turn.value = { actionsTotal, bonus: { actions: bonus } };
 };
 
-beforeEach(() => setSession());
+beforeEach(() => {
+  setSession();
+  closeAllModals();
+});
 
 /**
  * Значок предмета карточка берёт глобальным компонентом `Icon` (`@nuxt/icon`): без Nuxt-инстанса он
@@ -297,6 +302,39 @@ describe('PlayerCard: действия и фазы', () => {
     done.placementReady = true;
     expect(mountCard(done, { catalog }).text()).not.toContain('Расстановка');
   });
+
+  /**
+   * Чужую расстановку проекция не отдаёт (`currentPosition: null` у соперника), поэтому по позиции нельзя
+   * утверждать, что боец не выставлен: у подтвердившегося слота карточка обязана молчать про «не на поле»,
+   * иначе уже расставившийся компьютер выглядит как «ещё не поставил».
+   */
+  it('у чужого подтвердившегося слота в подсказке нет «не на поле», хотя позиции скрыты', () => {
+    setSession({ placement: true });
+    const rival = player({
+      id: 'anubis',
+      name: 'Компьютер',
+      control: 'ai',
+      placementReady: true,
+      fighters: [hero({ id: 'anubis', name: 'Анубис', currentPosition: null })],
+    });
+    const wrapper = mountCard(rival, { catalog });
+
+    const avatar = wrapper.find('.size-74');
+    expect(avatar.exists()).toBe(true);
+    expect(avatar.attributes('title') ?? '').not.toContain('не на поле');
+    expect(wrapper.text()).not.toContain('Расстановка');
+  });
+
+  it('свой не выставленный боец по-прежнему помечен «не на поле»', () => {
+    setSession({ placement: true });
+    const mine = player({
+      placementReady: false,
+      fighters: [hero({ currentPosition: null }), harpy(1)],
+    });
+    const wrapper = mountCard(mine, { catalog });
+
+    expect(wrapper.find('.size-74').attributes('title')).toContain('не на поле');
+  });
 });
 
 describe('PlayerCard: предметы', () => {
@@ -345,7 +383,7 @@ describe('PlayerCard: помощники', () => {
     expect(order[order.length - 1]).toContain('Первая');
     expect(wrapper.text()).toContain('Первая');
     // клик по аватару не открывает карточку героя
-    expect(wrapper.emitted('open-hero')).toBeUndefined();
+    expect(isModalOpen('heroSheet')).toBe(false);
   });
 
   it('обводка копии — по остатку здоровья, убитая копия серая и кликабельна', async () => {
@@ -368,7 +406,7 @@ describe('PlayerCard: помощники', () => {
 
     // убитая копия остаётся кликабельной: клик выбирает её, а не открывает героя
     await faces(wrapper)[2].trigger('click');
-    expect(wrapper.emitted('open-hero')).toBeUndefined();
+    expect(isModalOpen('heroSheet')).toBe(false);
   });
 
   it('место без помощников и предметов не рисует ни панель, ни кружков', () => {
@@ -382,11 +420,12 @@ describe('PlayerCard: помощники', () => {
 });
 
 describe('PlayerCard: клик по карточке', () => {
-  it('открывает карточку героя', async () => {
+  it('открывает шторку героя через реестр модалок', async () => {
     const wrapper = mountCard(player(), { catalog });
     await wrapper.trigger('click');
 
-    expect(wrapper.emitted('open-hero')).toEqual([['medusa']]);
+    expect(isModalOpen('heroSheet')).toBe(true);
+    expect(getModalPayload('heroSheet')).toBe('medusa');
   });
 });
 
@@ -417,12 +456,22 @@ describe('PlayerCard: расстановка', () => {
     expect(rings[1]).not.toContain('border-line');
   });
 
-  it('герой без клетки теряет цвет героя: плотное серое кольцо и обесцвеченный портрет', () => {
+  it('голубое кольцо ждущего — только у полки расстановки, не у карточки', () => {
+    setSession({ placement: true });
+    const squad = player();
+    squad.fighters = [unplaced(hero()), unplaced(harpy(1))];
+    const wrapper = mountCard(squad, { catalog });
+
+    expect(faces(wrapper)[0].classes().join(' ')).not.toContain('border-info');
+    expect(faces(wrapper)[0].classes().join(' ')).toContain('size-46');
+  });
+
+  it('герой без клетки теряет цвет героя: серое кольцо и обесцвеченный портрет', () => {
     setSession({ placement: true });
     const waiting = player({ fighters: [unplaced(hero()), harpy(1)] });
     const wrapper = mountCard(waiting, { catalog });
 
-    const avatar = wrapper.find('.size-80');
+    const avatar = wrapper.find('.size-74');
     expect(avatar.classes().join(' ')).toContain('border-line');
     expect(avatar.classes().join(' ')).not.toContain('opacity-50');
     expect(wrapper.find('.border-\\[var\\(--hero-color\\)\\]').exists()).toBe(false);

@@ -195,7 +195,8 @@ describe('scenario: сдача партии (RESIGN)', () => {
   });
 
   /**
-   * Так работает лимит времени на расстановку (`app/utils/timeLoss.js` + `resignByTimeout`): при двух
+   * Так работает лимит времени на расстановку (`timeoutLosers` в `app/composables/useGameSession.js` +
+   * `resignByTimeout`): при двух
    * местах сдача того, кто не успел, завершает партию победой второго — и расстановка при этом
    * не ждёт сдавшегося (у него нет бойцов, поэтому `allPlayersPlacementReady` его пропускает).
    */

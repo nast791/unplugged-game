@@ -4,7 +4,7 @@
     class="group relative flex size-152 shrink-0 items-center justify-center rounded-full border-2 text-center transition-[transform,background-color,border-color,box-shadow] duration-200"
     :class="
       active
-        ? 'border-accent bg-accent text-primary hover:bg-accent-hover shadow-[0_0_40px_0_var(--color-accent)] hover:scale-105 active:scale-95'
+        ? 'border-accent bg-accent hover:bg-accent-hover text-app shadow-[0_0_40px_0_var(--color-accent)] hover:scale-105 active:scale-95'
         : 'border-line bg-surface-2 text-ink'
     "
     :disabled="busy || !active"
@@ -30,7 +30,7 @@
       aria-hidden="true"
     />
 
-    <span class="text-18 relative z-10 leading-none font-extrabold uppercase">{{ label }}</span>
+    <span class="text-18 relative z-10 leading-none font-black uppercase">{{ label }}</span>
   </button>
 </template>
 

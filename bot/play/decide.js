@@ -1,4 +1,5 @@
 import { runAction, runUi } from '#shared/publicApi.js';
+import { playerFightersPlaced } from '#shared/helpers/placement.js';
 import {
   windowComplete as targetingComplete,
   windowPicked as targetingPicked,
@@ -52,7 +53,14 @@ export const pickWeighted = (rng, options) => {
   return pool[pool.length - 1].action;
 };
 
-/** Кто сейчас действует: пауза эффекта → окно цели → перемещение → защита → бой → активный игрок. */
+/**
+ * Кто сейчас действует: пауза эффекта → окно цели → перемещение → защита → бой → активный игрок.
+ *
+ * **Отдельный случай — расстановка.** Она идёт **одновременно** у всех сторон, поэтому очередью её не
+ * описать: `actorOf` отдаёт первого неподтверждённого (в `vs_ai` это человек), а компьютер в это же
+ * время доставляет своих — за кого играть, решает `placementActorOf`. Если бы поиск брал актёром
+ * `actorOf`, он ходил бы чужими картами и падал на «боец не ваш».
+ */
 export const actorOf = state => {
   if (state.hook === 'gameStart') {
     const waiting = (state.players ?? []).find(player => player.placementReady !== true);
@@ -65,6 +73,20 @@ export const actorOf = state => {
   if (state.combat) return state.combat.attackerPlayerId;
   return state.turn?.playerId ?? null;
 };
+
+/**
+ * Не доставил ли кто-то из **компьютеров** своих бойцов. Нужно там, где решение принимается вне очереди:
+ * на расстановке слот играет сам, не дожидаясь чужого «ОК» (`app/composables/useGameAi.js`),
+ * и поиск внутри такого решения обязан знать, что двигается именно этот слот.
+ */
+export const pendingPlacementAi = state =>
+  (state?.players ?? [])
+    .filter(player => String(player.control) === 'ai' && !playerFightersPlaced(player))
+    .map(player => String(player.id))[0] ?? null;
+
+/** Кто расставляет прямо сейчас: компьютер вне очереди, иначе — обычный действующий. */
+export const placementActorOf = state =>
+  state?.hook === 'gameStart' ? (pendingPlacementAi(state) ?? actorOf(state)) : actorOf(state);
 
 const fightersOf = (state, playerId) =>
   (state.players ?? []).find(player => String(player.id) === String(playerId))?.fighters ?? [];

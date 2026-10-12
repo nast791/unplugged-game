@@ -1,4 +1,3 @@
-/** Пресет кнопки: слоты `button*`. Вариант подставляется как `button_<variant>`. */
 export default {
   button:
     'inline-flex items-center justify-center gap-8 rounded-4 border-2 border-transparent px-20 py-10 text-18 font-medium transition-colors select-none disabled:cursor-not-allowed disabled:opacity-40',

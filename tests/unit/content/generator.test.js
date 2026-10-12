@@ -527,4 +527,33 @@ describe('генератор: партия на сгенерированном �
 
     expect(JSON.stringify(first.map.nodes)).toBe(JSON.stringify(second.map.nodes));
   });
+
+  /**
+   * Правило владельца: номерная клетка **только одноцветная**. По её стихии считается область
+   * расстановки, поэтому цветная клетка на стыке зон дала бы игроку сразу две-три области.
+   * Проверяем широко — на всех числах игроков и десятках сидов, а не на одном поле.
+   */
+  it('номерные клетки всегда одноцветные', () => {
+    const coloured = [];
+    let numbered = 0;
+
+    for (const playerCount of [2, 3, 4]) {
+      for (let seed = 1; seed <= 40; seed += 1) {
+        const map = generateMap({ players: playerCount, seed, id: 'generated' });
+        for (const node of map.nodes ?? []) {
+          if (node.heroStart !== true) continue;
+          numbered += 1;
+          const terrains = Array.isArray(node.terrain) ? node.terrain : [node.terrain];
+          if (terrains.filter(Boolean).length !== 1) {
+            coloured.push(
+              `${playerCount}p seed ${seed}: клетка ${node.id} — ${JSON.stringify(node.terrain)}`,
+            );
+          }
+        }
+      }
+    }
+
+    expect(numbered).toBeGreaterThan(0);
+    expect(coloured).toEqual([]);
+  });
 });

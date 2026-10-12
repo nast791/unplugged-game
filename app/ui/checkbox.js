@@ -1,4 +1,3 @@
-/** Пресет чекбокса: одно булево значение. */
 export default {
   checkbox_item:
     'flex cursor-pointer items-center gap-10 text-16 text-ink select-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40',

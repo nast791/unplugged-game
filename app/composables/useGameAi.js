@@ -1,4 +1,75 @@
-import { AI_PAUSE_MS, AI_TIME_MS, runAiCycle } from '~/utils/aiPlayer.js';
+import { computed, nextTick, ref, watch } from 'vue';
+import { useGameView } from '~/composables/useGameView.js';
+
+export const AI_TIME_MS = 400;
+export const AI_PAUSE_MS = 300;
+export const AI_MAX_STEPS = 200;
+
+let botPromise = null;
+
+export const loadBot = () => {
+  botPromise ??= import('../../bot/play/ai.js');
+  return botPromise;
+};
+
+export const nextAiMove = async (state, { timeMs = AI_TIME_MS, overrides } = {}) => {
+  const { aiStep } = await loadBot();
+  return aiStep(state, { timeMs, overrides });
+};
+
+/** Ход конкретного слота: им расставляет компьютер, когда очередь на расстановке ещё за человеком. */
+export const nextMoveFor = async (state, playerId, { timeMs = AI_TIME_MS, overrides } = {}) => {
+  const { think } = await loadBot();
+  return { playerId: String(playerId), ...think(state, playerId, { timeMs, overrides }) };
+};
+
+/** Компьютер, которому ещё есть кого ставить (решает движок: у слота остались бойцы без клетки). */
+export const pendingAiPlacer = async state => {
+  const { pendingPlacementAi } = await loadBot();
+  return pendingPlacementAi(state);
+};
+
+/**
+ * Цикл ходов компьютера. **Сначала расстановка:** она у сторон одновременная, поэтому слот берётся
+ * напрямую (`pendingAiPlacer`), а не через очередь (`aiStep`): очередь на расстановке отдаёт первого
+ * неподтверждённого — человека, и компьютер ждал бы его «ОК» (это и была висящая плашка «Расстановка»).
+ * Как только своих расставили все слоты компьютера, цикл идёт обычным путём и сам останавливается,
+ * когда решения за человеком.
+ */
+export const runAiCycle = async (state, apply, options = {}) => {
+  const {
+    timeMs = AI_TIME_MS,
+    pauseMs = AI_PAUSE_MS,
+    overrides,
+    onMove = null,
+    onStall = null,
+    maxSteps = AI_MAX_STEPS,
+  } = options;
+  let current = state;
+
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (current == null) return null;
+
+    const placer = await pendingAiPlacer(current);
+    const move =
+      placer == null
+        ? await nextAiMove(current, { timeMs, overrides })
+        : await nextMoveFor(current, placer, { timeMs, overrides });
+
+    if (move == null) return current;
+    if (move.action == null) {
+      if (placer != null) return current;
+      if (onStall) onStall(move);
+      return current;
+    }
+
+    if (onMove) onMove(move);
+    current = await apply(move);
+    if (pauseMs > 0) await new Promise(resolve => setTimeout(resolve, pauseMs));
+  }
+
+  return current;
+};
 
 export const useGameAi = () => {
   const { hostState, view, sendAction } = useGameView();

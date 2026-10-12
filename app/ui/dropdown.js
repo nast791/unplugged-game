@@ -1,4 +1,3 @@
-/** Пресет дропдауна: меню профиля и любые контекстные меню, содержимое — в общем скролле. */
 export default {
   dropdown_root: 'relative',
   dropdown_content:

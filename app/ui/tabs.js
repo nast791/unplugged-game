@@ -1,4 +1,3 @@
-/** Пресет табов: список кнопок, содержимое — именованные слоты по `id` вкладки. */
 export default {
   tabs_root: 'flex min-h-0 flex-col gap-12',
   tabs_list: 'flex flex-wrap gap-4 rounded-4 border-2 border-line bg-surface/60 p-4',

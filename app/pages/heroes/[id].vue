@@ -19,14 +19,6 @@
 </template>
 
 <script setup>
-/**
- * Страница героя `/heroes/{id}` — то же содержимое, что модалка настройки партии показывает аватаркой:
- * числа бойцов, умение, предметы и тексты карт. Данные отдаёт `/api/content/heroes/{id}`
- * (`server/builders.js: buildHeroSummary`), поэтому новый герой появляется здесь сам, без правок клиента.
- *
- * В партии содержимое открывается **оверлеем** (`HeroSheet`), чтобы не уходить с доски (`docs/ui-plan.md`
- * §5.1); сам текст — общий (`molecules/HeroDetails.vue`), а из лобби ведёт обычная ссылка.
- */
 import ALoader from '~/components/atoms/ALoader.vue';
 import HeroDetails from '~/components/game/HeroDetails.vue';
 import { useHeroQuery } from '~/composables/api/heroes.js';

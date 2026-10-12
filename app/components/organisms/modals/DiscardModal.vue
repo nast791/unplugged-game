@@ -27,7 +27,7 @@
 import AModal from '~/components/atoms/AModal.vue';
 import Card from '~/components/molecules/game/Card.vue';
 import { useGameSession } from '~/composables/useGameSession.js';
-import { CARD_TYPE_ORDER, cardType } from '~/utils/game/cardTypes.js';
+import { CARD_TYPE_ORDER, cardType } from '~/composables/useGameHelpers.js';
 
 const { myDiscard } = useGameSession();
 

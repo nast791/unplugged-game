@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   computed,
   defineComponent,
@@ -16,6 +16,9 @@ import {
  * Клики по доске вешает сцена: `v-stage` появляется только после `stageReady = true`, поэтому
  * проверяем не разметку, а то, что слушатель вообще повис на сцене и что клик доходит до движка.
  *
+ * Доска читает состояние партии композаблом сама (как панели героев), поэтому сессию подменяем:
+ * карту, бойцов и подсветки тест кладёт в её ref-ы, а проп у доски остался один — `interactive`.
+ *
  * Board.vue — SFC приложения: `ref`, `computed`, `watch` приходят из автоимпортов Nuxt. В тесте без
  * Nuxt-окружения те же имена кладём в `globalThis` до динамического импорта компонента.
  */
@@ -25,7 +28,22 @@ globalThis.watch = watch;
 globalThis.onMounted = onMounted;
 globalThis.onBeforeUnmount = onBeforeUnmount;
 
-const { default: Board } = await import('../../../app/components/game/Board.vue');
+vi.mock('~/composables/useGameSession.js', async () => {
+  const { ref } = await import('vue');
+  const session = {
+    view: ref({ map: null }),
+    players: ref([]),
+    selectedFighterId: ref(null),
+    highlightedCellIds: ref([]),
+    highlightedFighterIds: ref([]),
+    framedFighterIds: ref([]),
+    placementCells: ref([]),
+  };
+  return { useGameSession: () => session, session };
+});
+
+const { session } = await import('~/composables/useGameSession.js');
+const { default: Board } = await import('../../../app/components/organisms/game/Board.vue');
 
 /** Пропускает слот дальше: в тесте ClientOnly и слои конвы ничего не рисуют, но и не мешают. */
 const passthrough = name =>
@@ -104,9 +122,18 @@ const players = [
   },
 ];
 
-const mountBoard = async (props = {}) => {
+/** Ставит доске состояние партии и монтирует её: проп у доски остался один — `interactive`. */
+const mountBoard = async ({ interactive = true, ...state } = {}) => {
+  session.view.value = { map: state.map ?? map };
+  session.players.value = state.players ?? players;
+  session.selectedFighterId.value = state.selectedFighterId ?? null;
+  session.highlightedCellIds.value = state.highlightedCellIds ?? [];
+  session.highlightedFighterIds.value = state.highlightedFighterIds ?? [];
+  session.framedFighterIds.value = state.framedFighterIds ?? [];
+  session.placementCells.value = state.placementCells ?? [];
+
   const wrapper = mount(Board, {
-    props: { map, players, ...props },
+    props: { interactive },
     global: {
       components: {
         'ClientOnly': passthrough('ClientOnly'),
@@ -116,7 +143,6 @@ const mountBoard = async (props = {}) => {
         'v-circle': passthrough('VCircle'),
         'v-wedge': passthrough('VWedge'),
         'v-rect': passthrough('VRect'),
-        'v-path': passthrough('VPath'),
         'v-line': passthrough('VLine'),
         'v-text': passthrough('VText'),
       },
@@ -174,8 +200,8 @@ describe('доска: клики доходят до движка', () => {
  * преобразования (сдвига и зума), поэтому точка экрана равна точке поля.
  */
 describe('доска: перетаскивание бойца на клетку', () => {
-  const dropOn = async (clientX, clientY, props = {}) => {
-    const wrapper = await mountBoard({ highlightedCellIds: [1], ...props });
+  const dropOn = async (clientX, clientY, state = {}) => {
+    const wrapper = await mountBoard({ highlightedCellIds: [1], ...state });
     wrapper.element.dispatchEvent(dragEvent('dragover', clientX, clientY));
     await nextTick();
     wrapper.element.dispatchEvent(dragEvent('drop', clientX, clientY));
@@ -211,22 +237,27 @@ describe('доска: перетаскивание бойца на клетку'
     });
     const rings = () =>
       wrapper.findAllComponents({ name: 'VCircle' }).map(node => node.props('config'));
-    // голубое свечение идёт по клеткам карты: первое — активного бойца, второе — всей области
-    const glowing = () => rings().filter(config => config?.shadowColor === '#22d3ee');
+    // свечение наружу рисует свой кружок (он шире клетки), а кольцо-обводка у всех уровней одинаковое
+    const glowing = () => rings().filter(config => config?.shadowForStrokeEnabled === true);
+    const outlines = () => rings().filter(config => config?.shadowBlur === 0 && config?.stroke);
 
     const legal = glowing()[0];
     const area = glowing()[1];
-    expect(legal?.shadowBlur).toBe(28);
-    expect(area?.shadowBlur).toBe(14);
-    // ярче — свечением, а не толщиной: граница у обеих одна, и она родная, а не голубая
-    expect(legal?.strokeWidth).toBe(area?.strokeWidth);
-    expect(legal?.stroke).toBe(area?.stroke);
+    expect(legal?.shadowBlur).toBeGreaterThan(area?.shadowBlur);
+    expect(area?.shadowBlur).toBeGreaterThan(0);
+    expect(legal?.radius).toBe(area?.radius);
+
+    const legalRing = outlines()[0];
+    const areaRing = outlines()[1];
+    expect(legalRing?.strokeWidth).toBe(areaRing?.strokeWidth);
+    expect(legalRing?.stroke).toBe(areaRing?.stroke);
+    expect(legalRing?.shadowOpacity).toBe(0);
 
     wrapper.element.dispatchEvent(dragEvent('dragover', 100, 100));
     await nextTick();
 
-    const hovered = rings().find(config => config?.shadowBlur === 42);
-    expect(hovered?.strokeWidth).toBe(area?.strokeWidth);
+    const hovered = glowing().find(config => config?.shadowBlur > legal.shadowBlur);
+    expect(hovered).toBeTruthy();
   });
 
   it('в расстановке обводку клетки свечение не перекрашивает', async () => {

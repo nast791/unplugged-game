@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cn } from '../../../app/utils/cn.js';
+import { cn } from '../../../app/ui/cn.js';
 
 /**
  * Инвариант пары preset/ui: правка `ui` домешивается через `cn(пресет, правка)` и обязана **перекрывать**

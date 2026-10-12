@@ -1,17 +1,5 @@
 import { computed, reactive, ref, toValue, watch } from 'vue';
 
-/**
- * Модалки по имени (`docs/ui-plan.md` §9.4): `openModal('table', payload)` открывает любую модалку,
- * которая зарегистрирована с этим `name`, `closeAllModals()` закрывает все сразу, а пейлоад модалка
- * читает через `useModalPayload('table')` (или `getModalPayload` вне setup).
- *
- * Состояние реестра — **обычное модульное reactive**, а не `useState`: модалки открывает клиент
- * (клик, ответ), в SSR-рендере реестр всегда пуст, а `useState` вдобавок клал бы одно состояние на все
- * запросы сразу. Первая версия вызывала `useState` через `runWithContext`, и в Nuxt 4 он вернул промис —
- * модалка падала с `Cannot read properties of undefined (reading 'includes')`; от обёртки отказались.
- *
- * Состояние живёт до перезагрузки страницы: переживать её модалке незачем.
- */
 const activeModals = ref([]);
 const modalPayloads = ref({});
 
@@ -65,9 +53,6 @@ export const useIsModalOpen = name =>
 export const useModalPayload = name =>
   computed(() => (name ? modalPayloads.value[toValue(name)] : undefined));
 
-/**
- * Состояние одной модалки. С именем — читает и пишет общий реестр; без имени — локальное `open`.
- */
 export const useModal = (nameOrInitial = false, initial = false) => {
   const isNamed = typeof nameOrInitial === 'string';
   const name = isNamed ? nameOrInitial : null;

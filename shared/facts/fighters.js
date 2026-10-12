@@ -29,7 +29,7 @@ const sideMatches = (state, side, ownerId, player) => {
 /**
  * Бойцы на поле по фильтру.
  * params: { side, of, type, group, fighterIds, alive, placed, areaOf, terrain, reachableTo, adjacentTo,
- *           movedThisTurn, frozen }
+ *           movedThisTurn, dealtDamageThisTurn, frozen }
  * side: 'any' — все, 'self' — свои, 'opponent' — бойцы ВСЕХ врагов (в команде — всех чужих команд),
  * 'teammate' — союзники без себя;
  * of — бойцы одного игрока (id), например противника в этой битве: `COMBAT { player: 'opponent' }` → `of: '$enemy'`;
@@ -39,7 +39,8 @@ const sideMatches = (state, side, ownerId, player) => {
  * terrain — бойцы, стоящие на клетке с этой стихией (двухцветная клетка считается в обеих);
  * reachableTo — кто дотягивается до него своей attackRange;
  * adjacentTo — кто стоит ровно на соседней с ним клетке (своя клетка не считается);
- * movedThisTurn — двигался ли боец в этом ходу; frozen — стоит ли на нём статус «заморожен».
+ * movedThisTurn — двигался ли боец в этом ходу; dealtDamageThisTurn — наносил ли он урон в этом ходу;
+ * frozen — стоит ли на нём статус «заморожен».
  */
 export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
   const ownerId = ownerPlayerId == null ? null : String(ownerPlayerId);
@@ -89,6 +90,14 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
       }
       // «двигался в этом ходу» — флаг бойца (ставит SET_FIGHTER_CELL, снимает начало хода)
       if (params.movedThisTurn != null && Boolean(fighter.movedThisTurn) !== params.movedThisTurn) {
+        continue;
+      }
+      // «наносил урон в этом ходу» — второй флаг бойца (ставит SET_HEALTH, снимает начало хода):
+      // по нему читается условие «герой не наносил урон» (умение Анубиса)
+      if (
+        params.dealtDamageThisTurn != null &&
+        Boolean(fighter.dealtDamageThisTurn) !== params.dealtDamageThisTurn
+      ) {
         continue;
       }
       // «заморожен» — статус бойца (ставит SET_STATUS, снимает конец хода)

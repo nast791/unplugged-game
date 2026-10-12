@@ -46,6 +46,7 @@
     "@iconify-json/arcticons": "^1.2.58",
     "@iconify-json/game-icons": "^1.2.4",
     "@iconify-json/lucide": "^1.2.140",
+    "@iconify-json/material-symbols": "^1.2.95",
     "@nuxt/test-utils": "4.0.3",
     "@vue/test-utils": "2.4.11",
     "fast-glob": "3.3.3",

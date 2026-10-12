@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
-import { PATTERN_TILES, cellPatterns, nodeRadius } from '../../app/utils/boardGeometry.js';
+import { PATTERN_TILES, cellPatterns, nodeRadius } from '../../app/composables/useBoardGeometry.js';
 import { TERRAIN_IDS, terrainColor, terrainName } from '#shared/constants/terrain.js';
 
 /**
@@ -75,15 +75,9 @@ const cellSvg = (terrains, cx, cy) => {
       : `M ${-RADIUS} 0 A ${RADIUS} ${RADIUS} 0 1 1 ${RADIUS} 0 A ${RADIUS} ${RADIUS} 0 1 1 ${-RADIUS} 0 Z`;
     const tile = TILE_DATA[pattern.terrain];
     const side = RADIUS * 2 * (PATTERN_TILES[pattern.terrain]?.diameter ?? 1);
-    // как на доске: если у стихии есть растровая плитка, векторные слои под ней не рисуются
     const inside = tile
       ? `<image xlink:href="${tile}" x="${cx - side / 2}" y="${cy - side / 2}" width="${side}" height="${side}" preserveAspectRatio="xMidYMid slice"/>`
-      : pattern.layers
-          .map(
-            layer =>
-              `<path d="${layer.data}" fill="${layer.fill ?? 'none'}" stroke="${layer.stroke ?? 'none'}" stroke-width="${layer.strokeWidth ?? 0}" fill-opacity="${layer.fill ? layer.opacity : 0}" stroke-opacity="${layer.stroke ? layer.opacity : 0}" stroke-linejoin="round" stroke-linecap="round" transform="translate(${cx} ${cy}) scale(${layer.scaleX ?? 1})"/>`,
-          )
-          .join('');
+      : '';
     parts.push(
       `<clipPath id="${clipId}"><path d="${clip}" transform="translate(${cx} ${cy})"/></clipPath>`,
       `<g clip-path="url(#${clipId})">${inside}</g>`,

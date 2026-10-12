@@ -1,6 +1,6 @@
 <template>
   <TooltipProvider :delay-duration="props.delayDuration">
-    <TooltipRoot>
+    <TooltipRoot :disabled="props.disabled">
       <TooltipTrigger as-child>
         <slot />
       </TooltipTrigger>
@@ -38,6 +38,7 @@ const props = defineProps({
   delayDuration: { type: Number, default: 200 },
   arrowSize: { type: Number, default: 10 },
   preset: { type: String, default: 'tooltip' },
+  disabled: { type: Boolean, default: false },
   ui: { type: Object, default: () => ({}) },
 });
 

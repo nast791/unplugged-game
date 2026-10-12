@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { timeoutLosers } from '../../../app/utils/timeLoss.js';
+import { timeoutLosers } from '../../../app/composables/useGameSession.js';
 
 /**
  * Лимит времени — правило партии: кто не успел, тот выбывает. Кто именно — решает эта чистая функция,

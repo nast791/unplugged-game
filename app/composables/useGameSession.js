@@ -2,7 +2,21 @@ import { runUi } from '#shared/core.js';
 import { cardKey } from '#shared/helpers/cards.js';
 import { fighterClickIntent, fighterPickExpected } from '#shared/helpers/ui.js';
 import { useGameView } from '~/composables/useGameView.js';
-import { itemStateLabel } from '~/utils/gameLabels.js';
+
+export const timeoutLosers = ({ placement = false, players = [], actorId = null } = {}) => {
+  const humans = (players ?? []).filter(
+    player => String(player?.control ?? 'human') === 'human' && player?.resigned !== true,
+  );
+
+  if (placement) {
+    return humans.filter(player => player.placementReady !== true).map(player => String(player.id));
+  }
+
+  if (actorId == null) return [];
+  return humans
+    .filter(player => String(player.id) === String(actorId))
+    .map(player => String(player.id));
+};
 
 export const useGameSession = () => {
   const { view, hostState, gameId, playerId, sendAction, refresh, steps, selectedFighterId } =
@@ -72,7 +86,6 @@ export const useGameSession = () => {
   const results = computed(() => ui.value?.results ?? null);
   const showPickNumHero = computed(() => Boolean(ui.value?.modals?.pickNumHero));
 
-  /** Клетки области расстановки: светятся всю расстановку, `occupied` — на ней уже стоит свой боец. */
   const placementCells = computed(() =>
     (ui.value?.placementCells ?? []).map(cell => ({
       id: String(cell.id),
@@ -80,7 +93,6 @@ export const useGameSession = () => {
     })),
   );
 
-  /** Кого ещё надо поставить на поле: полка аватарок над кнопкой завершения. */
   const placementFighters = computed(() =>
     isPlacement.value ? myFighters.value.filter(fighter => fighter.currentPosition == null) : [],
   );
@@ -220,7 +232,6 @@ export const useGameSession = () => {
       selectedFighterId.value = null;
       return;
     }
-    // в расстановке бойца выбирает игрок (полка аватарок), автовыбор вернул бы снятую активность
     if (isPlacement.value) return;
     if (list.some(fighter => String(fighter.id) === String(selectedFighterId.value))) {
       return;
@@ -263,9 +274,14 @@ export const useGameSession = () => {
     return String(player?.control ?? 'human') === 'human';
   };
 
-  const resignByTimeout = ids =>
+  const resignByTimeout = (placement = false) =>
     run(async () => {
-      for (const id of ids) {
+      const losers = timeoutLosers({
+        placement,
+        players: players.value,
+        actorId: actingPlayerId.value,
+      });
+      for (const id of losers) {
         if (isGameOver.value) break;
         await sendAction({ type: 'RESIGN', playerId: String(id) });
       }
@@ -330,9 +346,6 @@ export const useGameSession = () => {
 
   const onResign = () =>
     run(async () => {
-      const confirmed =
-        typeof window === 'undefined' || window.confirm('Сдаться? Партия для вас завершится.');
-      if (!confirmed) return;
       await sendAction({ type: 'RESIGN' });
       await syncHotseat();
     });
@@ -380,7 +393,6 @@ export const useGameSession = () => {
   };
 
   const onCellClick = cellId => {
-    // клик мимо клетки (пустое место доски) — в расстановке это снятие активности
     if (cellId == null) {
       if (isPlacement.value) clearFighterSelection();
       return undefined;
@@ -394,12 +406,10 @@ export const useGameSession = () => {
     if (highlightedCellIds.value.includes(String(cellId))) {
       const fighterId = selectedFighterId.value;
       const picked = pick({ kind: 'cell', id: cellId, fighterId });
-      // поставили бойца — активность снимается: следующего игрок берёт с полки сам
       if (isPlacement.value) clearFighterSelection();
       return picked;
     }
 
-    // в расстановке подсвечены только допустимые клетки: клик мимо снимает активность, а не ругается
     if (isPlacement.value) {
       clearFighterSelection();
       return undefined;
@@ -453,7 +463,6 @@ export const useGameSession = () => {
     choices,
     targetingChoices,
     myItems,
-    itemStateLabel,
     pickCandidates,
     combatInfo,
     revealedCards,

@@ -1,17 +1,17 @@
 <template>
-  <div
+  <section
     ref="wrapRef"
     data-board
     class="border-primary/15 relative h-full min-h-96 w-full overflow-hidden border bg-[#eef1f4]"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
+    @wheel.prevent="onWheel"
   >
     <ClientOnly>
       <v-stage v-if="stageReady" ref="stageRef" :config="stageConfig">
         <v-layer>
-          <!-- соединители идут под кружками: сквозь заливку их не видно -->
-          <v-line v-for="(line, idx) in edgeLines" :key="`e-${idx}`" :config="line" />
+          <v-line v-for="(line, index) in edgeLines" :key="`e-${index}`" :config="line" />
 
           <v-group
             v-for="node in nodes"
@@ -24,29 +24,21 @@
               cellId: node.id,
             }"
           >
-            <!-- база даёт заливку и тень; сектора цветной клетки рисуются поверх -->
             <v-circle :config="nodeCircleConfig(node)" />
-            <!-- текстуры стихий: у цветной клетки своя текстура в каждом секторе, обрезанная по нему -->
-            <template v-if="sectorsOf(node).length">
-              <v-wedge
-                v-for="(sector, index) in sectorsOf(node)"
-                :key="`w-${index}`"
-                :config="sectorConfig(sector)"
-              />
-            </template>
+
+            <v-wedge
+              v-for="(sector, index) in sectorsOf(node)"
+              :key="`w-${index}`"
+              :config="sectorConfig(sector)"
+            />
+
             <template v-for="(pattern, index) in patternsOf(node)" :key="`p-${index}`">
               <v-group :config="{ clipFunc: pattern.clipFunc, listening: false }">
-                <!-- лава, пустыня, горы: растровая плитка в секторе стихии -->
                 <v-rect v-if="pattern.tile" :config="pattern.tile" />
-                <v-path
-                  v-for="(layer, layerIndex) in pattern.layers"
-                  :key="`l-${layerIndex}`"
-                  :config="layer"
-                />
               </v-group>
             </template>
+
             <template v-if="sectorsOf(node).length">
-              <!-- тонкие чёрные полоски между секторами: светлые заливки иначе сливаются -->
               <v-line
                 v-for="(divider, index) in dividersOf(node)"
                 :key="`d-${index}`"
@@ -54,13 +46,17 @@
               />
               <v-circle :config="nodeOutlineConfig(node)" />
             </template>
-            <!-- кольцо расстановки: голубое свечение или серая занятая клетка, кладётся поверх границы -->
+
+            <v-circle v-if="isPlacementCell(node)" :config="placementGlowConfig(node)" />
+            <v-circle
+              v-if="isPlacementCell(node) && isDropCell(node)"
+              :config="placementPulseConfig(node)"
+            />
             <v-circle v-if="isPlacementCell(node)" :config="placementRingConfig(node)" />
-            <!-- id клетки: по умолчанию скрыт, включается SHOW_CELL_IDS для отладки -->
-            <v-text v-if="SHOW_CELL_IDS" :config="cellLabelConfig(node)" />
+
+            <v-text v-if="showCellIds" :config="cellLabelConfig(node)" />
           </v-group>
 
-          <!-- маркеры стартовых клеток: маленькие кружки с номерами, только на расстановке -->
           <v-group :config="{ listening: false }">
             <template v-for="marker in startMarkersOf" :key="`m-${marker.id}`">
               <v-circle :config="marker.disc" />
@@ -86,344 +82,113 @@
           </v-group>
         </v-layer>
       </v-stage>
+
       <template #fallback>
         <p class="text-16 p-4 opacity-60">Загрузка доски…</p>
       </template>
     </ClientOnly>
-  </div>
+  </section>
 </template>
 
 <script setup>
-import { terrainColor } from '#shared/constants/terrain.js';
-import {
-  PLACEMENT,
-  SHADOW,
-  SHOW_CELL_IDS,
-  STROKE,
-  PATTERN_TILES,
-  bendFor,
-  cellAtPoint,
-  cellPatterns,
-  patternTileConfig,
-  tileClipFunc,
-  clickTarget,
-  curvePoints,
-  fieldBounds,
-  nodeLabelConfig,
-  nodeRadius,
-  placementMarkers,
-  placementOngoing,
-  sectorDividers,
-  sectorWedges,
-} from '../../utils/boardGeometry.js';
+import { useBoardMap } from '~/composables/useBoardMap.js';
+import { useBoardView } from '~/composables/useBoardView.js';
+import { useGameSession } from '~/composables/useGameSession.js';
 
 const props = defineProps({
-  map: { type: Object, default: null },
-  players: { type: Array, default: () => [] },
-  selectedFighterId: { type: [String, Number], default: null },
-  highlightedCellIds: { type: Array, default: () => [] },
-  /** Клетки области расстановки: `[{ id, occupied }]` — светятся всю расстановку. */
-  placementCells: { type: Array, default: () => [] },
-  highlightedFighterIds: { type: Array, default: () => [] },
-  framedFighterIds: { type: Array, default: () => [] },
   interactive: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['select-node', 'select-fighter']);
 
+const {
+  view,
+  you,
+  phase,
+  players,
+  selectedFighterId,
+  highlightedCellIds,
+  highlightedFighterIds,
+  framedFighterIds,
+  placementCells,
+} = useGameSession();
+
+const map = computed(() => view.value?.map ?? null);
+
 const wrapRef = ref(null);
+const stageRef = ref(null);
 const stageReady = ref(false);
 const size = ref({ width: 720, height: 480 });
-const dropCellId = ref(null);
 
-const nodes = computed(() => (Array.isArray(props.map?.nodes) ? props.map.nodes : []));
-const nodeSize = computed(() => Number(props.map?.settings?.nodeSize) || 72);
-const radius = computed(() => nodeRadius(nodeSize.value));
-
-const highlightedSet = computed(
-  () => new Set((props.highlightedCellIds || []).map(id => String(id))),
-);
-
-const isHighlighted = node => highlightedSet.value.has(String(node.id));
-
-/** Область расстановки: id клетки → занята ли она своим бойцом. */
-const placementMap = computed(() => {
-  const map = new Map();
-  for (const cell of props.placementCells || []) {
-    if (cell?.id != null) map.set(String(cell.id), cell.occupied === true);
-  }
-  return map;
+const {
+  nodes,
+  bounds,
+  showCellIds,
+  sectorsOf,
+  sectorConfig,
+  dividersOf,
+  patternsOf,
+  nodeCircleConfig,
+  nodeOutlineConfig,
+  isPlacementCell,
+  isDropCell,
+  placementGlowConfig,
+  placementPulseConfig,
+  placementPulse,
+  placementRingConfig,
+  cellLabelConfig,
+  edgeLines,
+  startMarkersOf,
+  placedFighters,
+  fighterHaloConfig,
+  fighterBodyConfig,
+  fighterLabelConfig,
+  clickTargetOf,
+  cellAt,
+  dropCellId,
+  setDropCell,
+} = useBoardMap({
+  map,
+  players,
+  viewerId: you,
+  phase,
+  selectedFighterId,
+  highlightedCellIds,
+  highlightedFighterIds,
+  framedFighterIds,
+  placementCells,
 });
 
-const isPlacementCell = node => placementMap.value.has(String(node.id));
-const isPlacementBusy = node => placementMap.value.get(String(node.id)) === true;
-const isDropCell = node => dropCellId.value != null && String(dropCellId.value) === String(node.id);
+const { stageConfig, zoomIn, zoomOut, onDragMove } = useBoardView({ size, bounds });
 
-/** Идёт расстановка: движок прислал клетки области. */
-const inPlacement = computed(() => placementMap.value.size > 0);
+const containerPoint = event => {
+  const rect = wrapRef.value?.getBoundingClientRect?.();
+  if (!rect) return null;
+  return { x: Number(event?.clientX) - rect.left, y: Number(event?.clientY) - rect.top };
+};
 
-/**
- * Кольцо расстановки идёт поверх границы клетки. **Обводку клетки оно не перекрашивает**: граница у всех
- * одна, а состояние ведёт **мягкое свечение наружу** (`shadowBlur`), как гало у кнопки завершения — только
- * не мигающее: у всей области слабое, у клеток активного бойца ярче, под курсором при перетаскивании ярче
- * всего. Занятая своим бойцом клетка не светится вовсе.
- */
-const placementRingConfig = node => {
-  const busy = isPlacementBusy(node);
-  const level = busy ? 0 : isDropCell(node) ? 3 : isHighlighted(node) ? 2 : 1;
+const stageTransform = () => {
+  const stage = stageRef.value?.getNode?.() ?? null;
   return {
-    radius: radius.value + PLACEMENT.stroke,
-    fill: undefined,
-    opacity: busy ? 0.5 : 1,
-    stroke: busy ? PLACEMENT.busy : STROKE.edgeColor,
-    strokeWidth: PLACEMENT.stroke,
-    shadowColor: PLACEMENT.free,
-    shadowBlur: PLACEMENT.glow * level,
-    shadowOpacity: level ? 0.3 + 0.15 * level : 0,
-    listening: false,
+    x: Number(stage?.x?.() ?? 0) || 0,
+    y: Number(stage?.y?.() ?? 0) || 0,
+    scaleX: Number(stage?.scaleX?.() ?? 1) || 1,
+    scaleY: Number(stage?.scaleY?.() ?? 1) || 1,
   };
 };
 
-/**
- * Стихии клетки: основная задаёт заливку, у двух- и трёхцветных клеток их несколько —
- * такая клетка принадлежит сразу всем своим областям (docs/terrain.md).
- */
-const nodeTerrains = node => {
-  const raw = node?.terrain;
-  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-  return list.filter(Boolean).map(String);
+const cellAtEvent = event => cellAt(containerPoint(event), stageTransform());
+
+const onWheel = event => {
+  const point = containerPoint(event);
+  if (!point) return;
+  if (Number(event.deltaY) < 0) zoomIn(point);
+  else zoomOut(point);
 };
 
-const sectorsOf = node => sectorWedges(nodeTerrains(node));
-const dividersOf = node => sectorDividers(nodeTerrains(node), radius.value);
-
-/**
- * Растровые плитки стихий (лава, пустыня, горы): картинки грузим сами, чтобы видеть, загрузились ли
- * они. До загрузки клетка остаётся обычной заливкой, без дыр.
- */
-const tileImages = ref({});
-
-onMounted(() => {
-  for (const [terrain, tile] of Object.entries(PATTERN_TILES)) {
-    const image = new Image();
-    image.onload = () => {
-      tileImages.value = { ...tileImages.value, [terrain]: image };
-    };
-    image.src = tile.src;
-  }
-});
-
-/**
- * Текстуры клетки: у лавы, пустыни и гор — растровая плитка в секторе стихии (под непрозрачной
- * картинкой вектор не нужен), у остальных — векторные слои.
- */
-const patternsOf = node =>
-  cellPatterns(nodeTerrains(node), radius.value).map(pattern => {
-    const spec = PATTERN_TILES[pattern.terrain];
-    const image = spec ? tileImages.value[pattern.terrain] : null;
-    if (!spec || !image) return { ...pattern, tile: null };
-    return {
-      ...pattern,
-      tile: patternTileConfig(radius.value, image, spec),
-      layers: [],
-      clipFunc: tileClipFunc(pattern.start, pattern.end, radius.value),
-    };
-  });
-
-const nodeById = computed(() => {
-  const map = new Map();
-  for (const n of nodes.value) map.set(String(n.id), n);
-  return map;
-});
-
-/**
- * Соединители: почти никогда не прямые, толстые, идут под кружками и упираются в их границы.
- * Одна пара клеток — одна линия, поэтому пары собираем через ключ.
- */
-const edgeLines = computed(() => {
-  const seen = new Set();
-  const lines = [];
-  for (const node of nodes.value) {
-    for (const raw of node.neighbors || []) {
-      const a = String(node.id);
-      const b = String(raw);
-      const key = a < b ? `${a}-${b}` : `${b}-${a}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const other = nodeById.value.get(b);
-      if (!other) continue;
-      lines.push({
-        points: curvePoints(node, other, radius.value, bendFor(node, other)),
-        bezier: true,
-        stroke: STROKE.edgeColor,
-        strokeWidth: STROKE.edge,
-        lineCap: 'round',
-        ...SHADOW.edge,
-        listening: false,
-      });
-    }
-  }
-  return lines;
-});
-
-const placedFighters = computed(() => {
-  const list = [];
-  for (const player of props.players || []) {
-    for (const fighter of player.fighters || []) {
-      if (fighter.currentPosition == null) continue;
-      const node = nodeById.value.get(String(fighter.currentPosition));
-      if (!node) continue;
-      list.push({
-        playerId: String(player.id),
-        color: player.color || '#141414',
-        fighter,
-        x: node.x,
-        y: node.y,
-      });
-    }
-  }
-  const groups = new Map();
-  for (const token of list) {
-    const key = String(token.fighter.currentPosition);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(token);
-  }
-  const placed = [];
-  for (const group of groups.values()) {
-    group.forEach((token, i) => {
-      const offset = group.length > 1 ? (i - (group.length - 1) / 2) * 16 : 0;
-      placed.push({ ...token, x: token.x + offset, y: token.y - offset });
-    });
-  }
-  return placed;
-});
-
-/** Маркеры стартовых клеток: пока расстановка не подтверждена всеми, потом исчезают навсегда. */
-const startMarkersOf = computed(() => placementMarkers(nodes.value, radius.value, props.players));
-
-const bounds = computed(() =>
-  fieldBounds(nodes.value, radius.value, { showMarkers: placementOngoing(props.players) }),
-);
-
-/** Поле занимает почти всю область: масштаб подгоняем по контейнеру, а не по «капитанскому» пределу. */
-const stageConfig = computed(() => {
-  const { minX, minY, maxX, maxY } = bounds.value;
-  const contentW = Math.max(maxX - minX, 1);
-  const contentH = Math.max(maxY - minY, 1);
-  const scale = Math.min(size.value.width / contentW, size.value.height / contentH, 4);
-  return {
-    width: size.value.width,
-    height: size.value.height,
-    scaleX: scale,
-    scaleY: scale,
-    x: (size.value.width - contentW * scale) / 2 - minX * scale,
-    y: (size.value.height - contentH * scale) / 2 - minY * scale,
-    draggable: true,
-    dragDistance: 6,
-  };
-});
-
-/**
- * Границы клеток одинаковые: номерную клетку видно по ромбику героя, а не по толщине. В расстановке
- * обводка тоже остаётся родной — допустимые клетки показывает **свечение** кольца расстановки, а не
- * синяя рамка поверх голубого гало (`placementRingConfig`).
- */
-const nodeStroke = node => {
-  if (!inPlacement.value && isHighlighted(node))
-    return { color: '#0284c7', width: STROKE.highlight };
-  return { color: STROKE.edgeColor, width: STROKE.cell };
-};
-
-/** Заливка клетки = её стихия; клетка непрозрачная, с тенью, чтобы соединители не просвечивали. */
-const nodeCircleConfig = node => {
-  const stroke = nodeStroke(node);
-  return {
-    radius: radius.value,
-    fill: terrainColor(nodeTerrains(node)[0]),
-    opacity: 1,
-    stroke: stroke.color,
-    strokeWidth: stroke.width,
-    ...SHADOW.cell,
-  };
-};
-
-/** Цветная клетка: сектора «пирогом» и толстая граница поверх них. */
-const nodeOutlineConfig = node => {
-  const stroke = nodeStroke(node);
-  return {
-    radius: radius.value,
-    fill: undefined,
-    opacity: 1,
-    stroke: stroke.color,
-    strokeWidth: stroke.width,
-    listening: false,
-  };
-};
-
-const sectorConfig = sector => ({
-  radius: radius.value,
-  angle: sector.angle,
-  rotation: sector.rotation,
-  fill: sector.color,
-  listening: false,
-});
-
-/** Подпись внутри клетки — id клетки; номер героя на расстановке рисуется кружком на границе. */
-const cellLabelConfig = node => nodeLabelConfig(node, radius.value);
-
-const highlightedFighterSet = computed(
-  () => new Set((props.highlightedFighterIds || []).map(id => String(id))),
-);
-
-const framedFighterSet = computed(
-  () => new Set((props.framedFighterIds || []).map(id => String(id))),
-);
-
-/** Рамка выбранного бойца — красная, подсветка кандидата — синяя, заметная (толще и ярче). */
-const fighterHaloConfig = token => {
-  const id = String(token.fighter.id);
-  const framed = framedFighterSet.value.has(id);
-  const highlighted = highlightedFighterSet.value.has(id);
-  const selected = String(props.selectedFighterId) === id;
-
-  return {
-    radius: radius.value * (framed || highlighted ? 0.92 : 0.82),
-    fill: selected && !framed && !highlighted ? token.color : 'transparent',
-    opacity: framed || highlighted ? 1 : 0.35,
-    stroke: framed ? '#dc2626' : highlighted ? '#0ea5e9' : 'transparent',
-    strokeWidth: framed ? 5 : highlighted ? 5 : 0,
-    listening: false,
-  };
-};
-
-const fighterBodyConfig = token => ({
-  radius: radius.value * 0.62,
-  fill: token.color,
-  stroke: '#fff',
-  strokeWidth: 3,
-});
-
-const fighterLabelConfig = token => ({
-  text: String(token.fighter.name || token.fighter.id).slice(0, 1),
-  fontSize: Math.round(radius.value * 0.62),
-  fontStyle: 'bold',
-  fill: '#fff',
-  width: radius.value * 1.24,
-  align: 'center',
-  x: -radius.value * 0.62,
-  y: -radius.value * 0.32,
-  listening: false,
-});
-
-/**
- * Клики обрабатывает сама сцена, а не слушатели на конва-компонентах: у них корень фрагментный,
- * и Vue ругался «extraneous non-emits event listeners». Цель клика разбирает `clickTarget` —
- * поднимается от фигуры к её клетке или фишке по атрибутам группы. Клик мимо уходит `select-node: null`:
- * так экран узнаёт «кликнули в пустоту» (в расстановке это снятие активности бойца).
- */
 const onStageClick = event => {
   if (!props.interactive) return;
-  const pick = clickTarget(event?.target);
+  const pick = clickTargetOf(event?.target);
   if (!pick) {
     emit('select-node', null);
     return;
@@ -435,45 +200,11 @@ const onStageClick = event => {
   emit('select-node', pick.cellId);
 };
 
-/** Точка курсора в координатах контейнера доски: `clientX/Y` минус её положение на экране. */
-const containerPoint = event => {
-  const rect = wrapRef.value?.getBoundingClientRect?.();
-  if (!rect) return null;
-  return { x: Number(event?.clientX) - rect.left, y: Number(event?.clientY) - rect.top };
-};
-
-/** Живое преобразование сцены: сдвиг и зум пользователь меняет сам, из props их не видно. */
-const stageTransform = () => {
-  const stage = stageRef.value?.getNode?.() ?? null;
-  return {
-    x: Number(stage?.x?.() ?? 0) || 0,
-    y: Number(stage?.y?.() ?? 0) || 0,
-    scaleX: Number(stage?.scaleX?.() ?? 1) || 1,
-    scaleY: Number(stage?.scaleY?.() ?? 1) || 1,
-  };
-};
-
-const cellAtEvent = event => {
-  const point = containerPoint(event);
-  if (!point) return null;
-  return cellAtPoint(nodes.value, radius.value, stageTransform(), point);
-};
-
-/**
- * Аватарку тащат с полки расстановки: клетку под курсором считает доска, ставит бойца экран.
- *
- * Умолчание браузера отменяем **всегда**, даже когда доска сейчас не слушает клики: иначе курсор
- * превращается в «запрещено» (так браузер показывает, что бросок не принимают) и перетаскивание
- * читается как поломка, хотя доска просто ждёт — например, пока считает компьютер.
- *
- * Подсветка броска и сам бросок — только на клетку, которую движок разрешил сейчас
- * (`highlightedCellIds`), то есть на ту же, куда прошёл бы клик: промах по чужой клетке не сбрасывает
- * выбранного бойца, а просто ничего не делает.
- */
 const dropTargetOf = event => {
   const id = cellAtEvent(event);
   if (id == null) return null;
-  return highlightedSet.value.has(String(id)) ? id : null;
+  const allowed = (highlightedCellIds.value || []).map(String);
+  return allowed.includes(String(id)) ? id : null;
 };
 
 const onDragOver = event => {
@@ -481,40 +212,69 @@ const onDragOver = event => {
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
   if (!props.interactive) return;
   const next = dropTargetOf(event);
-  if (String(dropCellId.value ?? '') !== String(next ?? '')) dropCellId.value = next;
+  if (String(dropCellId.value ?? '') !== String(next ?? '')) setDropCell(next);
 };
 
 const onDragLeave = () => {
-  dropCellId.value = null;
+  setDropCell(null);
 };
 
 const clearDropCell = () => {
-  dropCellId.value = null;
+  setDropCell(null);
+};
+
+/**
+ * Пульс клетки под курсором — **тонкое кольцо, которое только расходится**: рождается у границы клетки,
+ * уходит наружу и гаснет, а новое начинается снова.
+ *
+ * Почему не синус: он гонял радиус туда-обратно, и это читалось как одна широкая рамка, которая то
+ * надувается, то сдувается. Здесь волна идёт пилой (`(time % period) / period`), поэтому движение
+ * одностороннее — **от клетки наружу**.
+ *
+ * Почему затухание по корню: с линейным (`1 - wave`) кольцо почти всё время стоит бледным у края и
+ * светлеет только у самой клетки — глаз читает это как «пульс идёт от края к середине». Корень держит
+ * кольцо ярким в начале волны, у клетки, и плавно гасит к концу, когда оно уже далеко.
+ *
+ * `Konva.Tween` не годится: в бандле нет `Konva.Easings`, конструктор падает молча. Кадры идут от
+ * `placementPulse`, радиус и прозрачность ставим прямо в атрибуты узла.
+ */
+const PULSE = { near: 8, far: 24, width: 10, peak: 0.3, periodMs: 1500 };
+
+const hoveredPulseNode = () => {
+  const stage = stageRef.value?.getNode?.();
+  const id = dropCellId.value;
+  if (typeof stage?.findOne !== 'function' || id == null) return null;
+  const group = stage.findOne(node => String(node.getAttr?.('cellId')) === String(id));
+  return group?.findOne?.(entry => entry.getAttr?.('pulseRing') === true) ?? null;
+};
+
+const applyGlowPulse = () => {
+  const node = hoveredPulseNode();
+  if (!node) return;
+  const base = Number(node.getAttr('baseRadius')) || 0;
+  const wave = (Date.now() % PULSE.periodMs) / PULSE.periodMs;
+  node.radius(base + PULSE.near + (PULSE.far - PULSE.near) * wave);
+  node.strokeWidth(PULSE.width);
+  node.opacity(PULSE.peak * (1 - wave) ** 1.4);
+  node.getLayer()?.batchDraw();
 };
 
 const onDrop = event => {
   event.preventDefault();
   const id = dropCellId.value ?? (props.interactive ? dropTargetOf(event) : null);
-  dropCellId.value = null;
+  setDropCell(null);
   if (id == null) return;
-  // id клетки отдаём таким, каким он лежит на карте: клик по доске отдаёт то же значение
-  const node = nodeById.value.get(String(id));
+  const node = nodes.value.find(entry => String(entry.id) === String(id));
   emit('select-node', node ? node.id : id);
 };
 
-/** Сцена konva: на неё вешаем один обработчик клика/тапа вместо слушателей на каждой клетке. */
-const stageRef = ref(null);
-
-/**
- * Подписываемся на саму ссылку, а не на `onMounted`: сцена появляется только после `stageReady = true`,
- * то есть следующим рендером, и в `onMounted` ссылка ещё пуста — слушатель тогда не повисает вовсе,
- * и доска молча перестаёт кликаться (ни расстановки, ни шага).
- */
 watch(
   stageRef,
   (stage, previous) => {
     previous?.getNode?.()?.off('click tap', onStageClick);
+    previous?.getNode?.()?.off('dragmove', onDragMove);
     stage?.getNode?.()?.on('click tap', onStageClick);
+    stage?.getNode?.()?.on('dragmove', onDragMove);
   },
   { flush: 'post' },
 );
@@ -529,10 +289,12 @@ const updateSize = () => {
 };
 
 let resizeObserver;
+
+watch([dropCellId, placementPulse], () => applyGlowPulse(), { flush: 'post' });
+
 onMounted(() => {
   stageReady.value = true;
   updateSize();
-  // перетаскивание аватарки кончается и отменой (Esc): яркое кольцо под курсором надо снять в любом случае
   document.addEventListener('dragend', clearDropCell);
   const el = wrapRef.value;
   if (!el || typeof ResizeObserver === 'undefined') return;
@@ -542,6 +304,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stageRef.value?.getNode?.()?.off('click tap', onStageClick);
+  stageRef.value?.getNode?.()?.off('dragmove', onDragMove);
   document.removeEventListener('dragend', clearDropCell);
   resizeObserver?.disconnect();
 });

@@ -1,7 +1,32 @@
 import { useState } from 'nuxt/app';
 import { runAction, runLifecycle } from '#shared/publicApi.js';
 import { clearClock, markClock } from '~/composables/useClock.js';
-import { adaptPartyView } from '~/utils/adaptPartyView.js';
+
+const zoneCards = zone => (Array.isArray(zone?.cards) ? zone.cards.map(card => ({ ...card })) : []);
+
+const zoneCount = zone => zone?.count ?? (Array.isArray(zone?.cards) ? zone.cards.length : 0);
+
+export const adaptPartyView = raw => {
+  if (!raw) return null;
+
+  const turnObj = raw.turn && typeof raw.turn === 'object' ? raw.turn : null;
+
+  return {
+    ...raw,
+    phase: raw.hook ?? raw.phase ?? null,
+    currentPlayer: turnObj?.playerId ?? raw.currentPlayer ?? null,
+    turn: turnObj?.index ?? (typeof raw.turn === 'number' ? raw.turn : 0),
+    actionsLeft: turnObj?.actionsLeft ?? raw.actionsLeft ?? 0,
+    winner: raw.winner ?? null,
+    players: (raw.players ?? []).map(({ deck, discard, hand, ...p }) => ({
+      ...p,
+      hand: zoneCards(hand),
+      discard: zoneCards(discard),
+      deckCount: zoneCount(deck),
+      discardCount: zoneCount(discard),
+    })),
+  };
+};
 
 const actionErrorMessage = err => {
   const data = err && typeof err === 'object' ? err.data : null;
@@ -50,8 +75,6 @@ export const useGameView = () => {
   const gameId = useState('party:gameId', () => null);
   const playerId = useState('party:playerId', () => null);
   const steps = useState('party:steps', () => 0);
-  // выбранный боец — клиентское состояние экрана, но живёт в общем `useState`: `useGameSession()` не
-  // синглтон, и полка расстановки (свой экземпляр) иначе не увидела бы выбор доски
   const selectedFighterId = useState('party:selectedFighter', () => null);
 
   const seed = (state, asPlayerId) => {

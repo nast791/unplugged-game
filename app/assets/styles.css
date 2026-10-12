@@ -55,16 +55,11 @@
   --breakpoint-lg: 1920px;
   --color-primary: #141414;
   --color-white: #ffffff;
-  /**
-   * Тёмная тема (docs/ui-plan.md §9.2): серый, голубой, морковный, плюс цвета знака игры с фавиконки —
-   * cyan `#22D3EE` вместо голубого, фиолетовый `#8B5CF6` и розовый `#D946EF` из того же градиента.
-   * Доска и `<Body>` по умолчанию ещё живут на `--color-primary` (светлая рамка поля) — их переводим
-   * на эти токены вместе с переделкой стола; экран партии уже тёмный (`app/pages/game.vue`).
-   */
   --color-app: #12161b;
   --color-surface: #1a2027;
   --color-surface-2: #232b34;
   --color-line: #2f3843;
+  --color-gray: #4f5e6f;
   --color-ink: #e6eaf0;
   --color-dim: #98a2ae;
   --color-accent: #ff7f50;
@@ -253,6 +248,19 @@
   .player-card-hp-hit {
     animation: player-card-hp-hit 0.45s ease-out;
   }
+
+  /**
+   * Боец, который **ждёт расстановки** (решение владельца): голубое кольцо `border-info` плюс мигающая
+   * подсветка. Пульс живёт внутри кружка (`overflow-hidden` у аватара), поэтому это не «кольцо наружу»,
+   * а вспышка голубого по портрету; у героя к тому же дышит размер — его видно без наведения.
+   */
+  .placement-glow {
+    animation: placement-glow 1.3s ease-in-out infinite;
+  }
+
+  .placement-blink {
+    animation: placement-blink 1.3s ease-in-out infinite;
+  }
 }
 
 @keyframes player-card-hp-hit {
@@ -270,6 +278,34 @@
   100% {
     filter: none;
     transform: none;
+  }
+}
+
+@keyframes placement-glow {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 rgb(34 211 238 / 35%);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 14px 4px rgb(34 211 238 / 95%),
+      0 0 16px 2px rgb(34 211 238 / 70%);
+  }
+}
+
+/**
+ * Мигание ждущего бойца — **без `transform`**: масштаб двигал аватарку под курсором, и по ней нельзя
+ * было попасть (браузер считает такой элемент «нестабильным»). Дышат свечение и яркость.
+ */
+@keyframes placement-blink {
+  0%,
+  100% {
+    box-shadow: 0 0 10px 0 rgb(34 211 238 / 45%);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 22px 5px rgb(34 211 238 / 90%);
+    filter: brightness(1.12);
   }
 }
 
@@ -295,7 +331,9 @@
 @media (prefers-reduced-motion: reduce) {
   .lobby-backdrop,
   .loader-dot,
-  .player-card-hp-hit {
+  .player-card-hp-hit,
+  .placement-glow,
+  .placement-blink {
     animation: none;
   }
 }

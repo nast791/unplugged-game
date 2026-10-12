@@ -1,15 +1,7 @@
 import { useAppConfig } from '#app';
 import { computed, toValue } from 'vue';
-import { cn } from '~/utils/cn.js';
+import { cn } from '~/ui/cn.js';
 
-/**
- * Концепция preset/ui (`docs/ui-plan.md` §9.4).
- *
- * Компоненты-атомы **безстилевые**: классов в разметке нет, только слоты из пресета —
- * `cn(styles.button, styles.button_primary)`. Пресет приходит из `app/ui/base.js` через `app.config.js`,
- * а точечные правки на месте — через проп `ui` (он домешивается к пресету и проходит через `cn`, поэтому
- * конфликтующие классы заменяются, а не дублируются).
- */
 const isPlainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export const deepMergeUi = (base, patch) => {
@@ -22,7 +14,6 @@ export const deepMergeUi = (base, patch) => {
   return out;
 };
 
-/** Слоты пресета, склеенные с локальными правками: `cn(пресет, правка)`. */
 export const resolveUiStyles = (defaults = {}, localUi = {}) => {
   const merged = deepMergeUi(defaults, localUi);
   const result = {};

@@ -144,6 +144,9 @@ export const resolveOkBackControls = (phase, partyState, playerId) => ({
   },
 });
 
+/** Слот под управлением компьютера (`control: 'ai'`, режим `vs_ai`). */
+export const isAiPlayer = player => String(player?.control ?? 'human') === 'ai';
+
 /**
  * Враг ли игрок владельцу — та же роль, что у факта `FIGHTERS { side: 'opponent' }` и у боя
  * (`shared/helpers/combat.js`). Союзник — тот, у кого та же команда; там, где команд нет,

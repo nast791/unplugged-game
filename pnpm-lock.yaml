@@ -66,6 +66,9 @@ importers:
       '@iconify-json/lucide':
         specifier: ^1.2.140
         version: 1.2.140
+      '@iconify-json/material-symbols':
+        specifier: ^1.2.95
+        version: 1.2.95
       '@nuxt/test-utils':
         specifier: 4.0.3
         version: 4.0.3(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.39)(@vue/server-renderer@3.5.39(vue@3.5.39))(vue@3.5.39))(crossws@0.4.9(srvx@0.11.21))(esbuild@0.28.1)(happy-dom@20.10.6)(magicast@0.5.3)(playwright-core@1.64.0)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0))(vitest@4.1.10(@types/node@26.1.1)(happy-dom@20.10.6)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0)))(webpack@5.108.4(esbuild@0.28.1)(lightningcss@1.32.0)(postcss@8.5.16))
@@ -475,6 +478,9 @@ packages:
 
   '@iconify-json/lucide@1.2.140':
     resolution: {integrity: sha512-/br6j8K8IFcZscs7gJ20PWaaonQeA4jcGK0Bdt+4EDra2Zbtpb36RGaGOJr5opz6zJtXaZdMCYCXa0dN/y4c0g==}
+
+  '@iconify-json/material-symbols@1.2.95':
+    resolution: {integrity: sha512-n34GNbwe8We3LPXK2N8JuQewEQkITJiRsmX/0UYJsOyKzviVl22mNfLUiGGtXLKDPqxZa17q1Hg57zdA3BYa0w==}
 
   '@iconify-json/ri@1.2.10':
     resolution: {integrity: sha512-WWMhoncVVM+Xmu9T5fgu2lhYRrKTEWhKk3Com0KiM111EeEsRLiASjpsFKnC/SrB6covhUp95r2mH8tGxhgd5Q==}
@@ -5170,6 +5176,10 @@ snapshots:
       '@iconify/types': 2.0.0
 
   '@iconify-json/lucide@1.2.140':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify-json/material-symbols@1.2.95':
     dependencies:
       '@iconify/types': 2.0.0
 

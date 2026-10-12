@@ -1,4 +1,3 @@
-/** Пресет переключателя: одно булево значение, подпись — проп `label` или слот. */
 export default {
   switch_wrapper: 'inline-flex cursor-pointer items-center gap-10',
   switch_root:

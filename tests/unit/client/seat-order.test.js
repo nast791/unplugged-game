@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { panelOrder } from '../../../app/utils/seatOrder.js';
+import { panelOrder } from '../../../app/composables/useGameHelpers.js';
 
 /** Четыре места: id совпадает с порядком хода — так же, как в партии (`order` = место). */
 const players = [1, 2, 3, 4].map(order => ({ id: String(order), order }));

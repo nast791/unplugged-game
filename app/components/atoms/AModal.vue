@@ -21,7 +21,7 @@
 
           <DialogClose v-if="props.closeBtn" :class="styles.modal_close" aria-label="Закрыть">
             <slot name="close">
-              <Icon name="lucide:x" class="size-20" aria-hidden="true" />
+              <Icon name="lucide:x" class="size-32!" aria-hidden="true" />
             </slot>
           </DialogClose>
         </header>

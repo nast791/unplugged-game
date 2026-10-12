@@ -190,28 +190,32 @@ describe('обещание карты: условия её же правил', (
     expect(cardPromise(spell, state, '0').worth).toBe(0);
   });
 
-  it('Анубис: «Песчаная буря» бьёт на 4, если цель стоит на песке', () => {
+  it('Анубис: «Песчаная буря» бьёт на 7, если цель стоит на песке', () => {
     const state = stateOf();
     state.map.nodes.find(node => node.id === 10).terrain = 'desert';
     const storm = cardById('anubis_02');
+    expect(storm.value).toBe(5);
 
-    expect(cardPromise(storm, state, '0', { target }).strength).toBe(4); // 3 + 1 урон
+    // 5 картой + 2 урона свойством: цель считается задетой, поэтому число карты растёт на урон
+    expect(cardPromise(storm, state, '0', { target }).strength).toBe(7);
     state.map.nodes.find(node => node.id === 10).terrain = 'forest';
-    expect(cardPromise(storm, state, '0', { target }).strength).toBe(3);
+    expect(cardPromise(storm, state, '0', { target }).strength).toBe(5);
   });
 
-  it('Анубис: «Песчаный саван» — 4, когда **мой** боец на песке, а не чужой', () => {
+  it('Анубис: «Тайна бальзамирования» обещает возврат карты эффекта из сброса', () => {
     const state = stateOf();
     const card = cardById('anubis_07'); // карта без привязки: играется и за Анубиса, и за Амат
-    expect(cardPromise(card, state, '0').strength).toBe(3);
-
-    // чужая клетка (beta) на песке: «свой в этой битве» — не он, обещания нет
-    state.map.nodes.find(node => node.id === 10).terrain = 'desert';
-    expect(cardPromise(card, state, '0', { target }).strength).toBe(3);
-
-    // мой боец на песке — цель боя ещё не выбрана, но обещание возможно любым своим бойцом
-    state.map.nodes.find(node => node.id === 8).terrain = 'desert';
+    expect(card.title).toBe('Тайна бальзамирования');
+    expect(card.value).toBe(4);
+    // возврат карты из сброса числа боя не меняет: обещание равно напечатанному значению
     expect(cardPromise(card, state, '0').strength).toBe(4);
+
+    // карта эффекта в сбросе — свойство срабатывает: это и есть «не впустую» (`effectWorth.fires`)
+    const dry = effectWorth(card, state, '0', { target });
+    player(state, '0').discard.cards = [fixtureCard({ id: 'anubis_09', type: 'effect' })];
+    const ready = effectWorth(card, state, '0', { target });
+
+    expect(ready.fires).toBeGreaterThan(dry.fires);
   });
 
   it('чужую карту боя обещание не подглядывает: «Саван» без вскрытия не считается', () => {

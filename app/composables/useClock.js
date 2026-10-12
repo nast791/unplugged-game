@@ -1,5 +1,5 @@
 import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue';
-import { resolveCallback, resolveValue } from '~/utils/reactive.js';
+import { resolveCallback, resolveValue } from '~/composables/useReactiveOptions.js';
 
 const TICK_MS = 250;
 const STORAGE_PREFIX = 'unplugged:clock:';
@@ -47,8 +47,7 @@ const persistAt = (key, value) => {
   try {
     if (value) storage()?.setItem(storageKey(key), String(value));
     else storage()?.removeItem(storageKey(key));
-  } catch {
-  }
+  } catch {}
 };
 
 const registry = new Map();

@@ -12,6 +12,7 @@
 
 <script setup>
 import { useUI } from '~/composables/ui/useUI';
+import { cn } from '~/ui/cn.js';
 
 /** Кнопка-стрелка: сторона в `direction` (`prev` — влево, `next` — вправо). */
 defineOptions({ inheritAttrs: false });
@@ -31,7 +32,7 @@ const { styles } = useUI(
 );
 
 const icon = computed(() =>
-  props.direction === 'prev' ? 'lucide:chevron-left' : 'lucide:chevron-right',
+  props.direction === 'prev' ? 'material-symbols:arrow-left' : 'material-symbols:arrow-right',
 );
 
 const buttonClass = computed(() => cn(styles.value.arrow_button, attrs.class));

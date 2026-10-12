@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/publicApi.js';
+import { runAction, runLifecycle, runUi } from '#shared/publicApi.js';
 import anubisCards from '../../../server/content/heroes/anubis/cards.js';
 import { createState, discard, fighter, hand, PHASES, player } from '../../fixtures/state.js';
 
@@ -50,9 +50,10 @@ const slot = (id, name, order, fighters, hand = [], extra = {}) => ({
   placementReady: true,
   deck: zone(extra.deck ?? []),
   hand: zone(hand),
-  discard: zone([]),
+  discard: zone(extra.discard ?? []),
   fighters,
   ...(extra.items ? { items: extra.items } : {}),
+  ...(extra.skill ? { skill: extra.skill } : {}),
 });
 
 const shroud = state => ({
@@ -98,6 +99,8 @@ const buildState = ({
   shroudState = 'inactive',
   withAmat = true,
   amatCell = 2,
+  discardCards = [],
+  skill = null,
 } = {}) => {
   const anubisFighters = [unit('anubis', anubisCell, 15, { attackRange: 2, movedThisTurn: moved })];
   if (withAmat) {
@@ -114,7 +117,7 @@ const buildState = ({
         1,
         anubisFighters,
         [{ ...card(cardInHand), instanceId: `${cardInHand}_1` }, ...anubisHandExtra],
-        { items: [shroud(shroudState)] },
+        { items: [shroud(shroudState)], discard: discardCards, skill },
       ),
       slot('1', 'Бета', 2, [unit('beta', foeCell, foeHp)], foeHand),
     ],
@@ -175,17 +178,17 @@ describe('карты Анубиса: атаки', () => {
     expect(hpOf(moved, '1', 'beta')).toBe(9);
   });
 
-  it('«Песчаная буря»: враг на песке получает 1 урон до чисел боя', () => {
-    // Бета стоит на 3 (лёд) — свойства нет
+  it('«Песчаная буря»: враг на песке получает 2 урона до чисел боя', () => {
+    // Бета стоит на 3 (лёд) — свойства нет: 5 картой
     const dry = passDefense(attackWith(buildState({ cardInHand: 'anubis_02' }), 'anubis_02_1'));
-    expect(dry.lastCombat.combatDamage).toBe(3 - 0);
-    expect(hpOf(dry, '1', 'beta')).toBe(10);
+    expect(dry.lastCombat.combatDamage).toBe(5);
+    expect(hpOf(dry, '1', 'beta')).toBe(8);
 
-    // Бета на 1 (пустыня) — 1 урон свойством и 3 боем
+    // Бета на 1 (пустыня) — 2 урона свойством и 5 боем
     const sandy = passDefense(
       attackWith(buildState({ cardInHand: 'anubis_02', foeCell: 1 }), 'anubis_02_1'),
     );
-    expect(hpOf(sandy, '1', 'beta')).toBe(9);
+    expect(hpOf(sandy, '1', 'beta')).toBe(6);
   });
 
   it('«Печать Маат»: полная рука врага стоит ему случайной карты', () => {
@@ -254,8 +257,8 @@ describe('карты Анубиса: Амат', () => {
 
     expect(defended.combat ?? null).toBeNull();
     expect(defended.lastCombat.defenseValue).toBe(0);
-    expect(defended.lastCombat.combatDamage).toBe(3);
-    expect(hpOf(defended, '1', 'beta')).toBe(10);
+    expect(defended.lastCombat.combatDamage).toBe(5);
+    expect(hpOf(defended, '1', 'beta')).toBe(8);
     expect(ids(discard(player(defended, '1')))).toEqual(['bdef']);
   });
 
@@ -320,53 +323,97 @@ describe('карты Анубиса: Саван', () => {
 });
 
 describe('карты Анубиса: позиция и контроль', () => {
-  it('«Врата»: после победы можно сдвинуть врага на 1 клетку', () => {
+  it('«Врата»: победа переносит врага на свободный песок без прохода', () => {
     const after = passDefense(attackWith(buildState({ cardInHand: 'anubis_05' }), 'anubis_05_1'));
 
     expect(after.lastCombat.winner).toBe('attacker');
-    expect(after.movement).toMatchObject({ playerId: '0', budget: 1, fighters: ['beta'] });
-
-    const moved = runAction(after, {
-      type: 'PICK',
-      kind: 'cell',
-      id: '4',
-      fighterId: 'beta',
-      playerId: '0',
-    });
-    expect(String(fighterOf(moved, '1', 'beta').currentPosition)).toBe('4');
-
-    const closed = finishMove(moved);
-    expect(closed.combat ?? null).toBeNull();
-    expect(ids(discard(player(closed, '0')))).toEqual(['anubis_05']);
+    // свободный песок на линии один (клетка 1), поэтому движок отмечает его сам
+    expect(after.targeting ?? null).toBeNull();
+    expect(String(fighterOf(after, '1', 'beta').currentPosition)).toBe('1');
+    // постановка, а не шаг: движения «в этом ходу» у чужого бойца не появляется
+    expect(fighterOf(after, '1', 'beta').movedThisTurn ?? false).toBe(false);
+    expect(ids(discard(player(after, '0')))).toEqual(['anubis_05']);
   });
 
-  it('«Немой приговор»: пустая рука врага возвращает карту', () => {
-    const state = buildState({ cardInHand: 'anubis_06' });
-    player(state, '0').deck = zone([{ id: 'deck_low', title: 'Low', bonus: 1 }]);
-    const before = hand(player(state, '0')).length;
-
-    const after = passDefense(attackWith(state, 'anubis_06_1'));
-
-    // сыгранная карта ушла в бой, за пустую руку врага взяли одну
-    expect(hand(player(after, '0'))).toHaveLength(before);
-  });
-
-  it('«Песчаный саван»: на песке карта 4, вне песка — 3', () => {
-    const sandy = passDefense(
-      attackWith(buildState({ cardInHand: 'anubis_07', withAmat: false }), 'anubis_07_1'),
-    );
-    expect(sandy.lastCombat.attackValue).toBe(4);
-
-    const dry = passDefense(
+  it('«Врата»: песка на карте нет — свойства нет', () => {
+    const after = passDefense(
       attackWith(
-        buildState({ cardInHand: 'anubis_07', map: iceMap, foeCell: 3, withAmat: false }),
-        'anubis_07_1',
+        buildState({ cardInHand: 'anubis_05', map: iceMap, foeCell: 3, withAmat: false }),
+        'anubis_05_1',
       ),
     );
-    expect(dry.lastCombat.attackValue).toBe(3);
+
+    expect(after.targeting ?? null).toBeNull();
+    expect(String(fighterOf(after, '1', 'beta').currentPosition)).toBe('3');
   });
 
-  it('«Канопа»: победа вскрывает колоду, Амат идёт на усиление, карта — под низ', () => {
+  it('«Немой приговор»: пустая рука врага бьёт его героя на 4', () => {
+    const after = passDefense(attackWith(buildState({ cardInHand: 'anubis_06' }), 'anubis_06_1'));
+
+    // 2 картой + 4 приговором
+    expect(hpOf(after, '1', 'beta')).toBe(7);
+  });
+
+  it('«Немой приговор»: в руке врага есть карта — удара нет', () => {
+    const after = passDefense(
+      attackWith(
+        buildState({ cardInHand: 'anubis_06', foeHand: [betaDefense('bd1', 2)] }),
+        'anubis_06_1',
+      ),
+    );
+
+    expect(hpOf(after, '1', 'beta')).toBe(11);
+  });
+
+  it('«Тайна бальзамирования»: карта эффекта из сброса возвращается в руку', () => {
+    const state = buildState({
+      cardInHand: 'anubis_07',
+      withAmat: false,
+      discardCards: [
+        {
+          id: 'anubis_09',
+          instanceId: 'anubis_09_1',
+          title: 'Суд молчит',
+          type: 'effect',
+          bonus: 2,
+        },
+        betaDefense('bd1', 2),
+      ],
+    });
+
+    const opened = passDefense(attackWith(state, 'anubis_07_1'));
+
+    // в сбросе только карта эффекта — кандидат один, но выбор настоящий: окно ждёт подтверждения
+    expect(opened.targeting).toMatchObject({ kind: 'options', required: false });
+    expect(opened.targeting.candidates.map(entry => entry.optionId)).toEqual(['anubis_09_1']);
+
+    const picked = runAction(opened, {
+      type: 'PICK',
+      kind: 'option',
+      id: 'anubis_09_1',
+      playerId: '0',
+    });
+    const after = runAction(picked, { type: 'UI_OK', playerId: '0' });
+
+    // вернулась та же копия: `id` карты и ключ копии (`instanceId`) — разные вещи
+    expect(ids(hand(player(after, '0')), 'instanceId')).toEqual(['anubis_09_1']);
+    expect(ids(discard(player(after, '0')), 'instanceId').sort()).toEqual(['anubis_07_1', 'bd1_1']);
+  });
+
+  it('«Тайна бальзамирования»: карт эффекта в сбросе нет — свойства нет', () => {
+    const state = buildState({
+      cardInHand: 'anubis_07',
+      withAmat: false,
+      discardCards: [betaDefense('bd1', 2)],
+    });
+
+    const after = passDefense(attackWith(state, 'anubis_07_1'));
+
+    expect(after.targeting ?? null).toBeNull();
+    expect(ids(hand(player(after, '0')))).toEqual([]);
+  });
+
+  it('«Канопа»: раскрытая колода двигает Анубиса и уходит под низ', () => {
     const state = buildState({
       cardInHand: 'anubis_08',
       anubisCell: 2,
@@ -381,9 +428,9 @@ describe('карты Анубиса: позиция и контроль', () => 
 
     const after = passDefense(attackWith(state, 'anubis_08_1'));
 
-    // раскрытие ещё открыто: под низ карта уходит после движения Амат
+    // раскрытие ещё открыто: под низ карта уходит после движения
     expect(after.reveal?.[0]?.cards).toHaveLength(1);
-    expect(after.movement).toMatchObject({ playerId: '0', budget: 2, fighters: ['amat'] });
+    expect(after.movement).toMatchObject({ playerId: '0', budget: 2, fighters: ['anubis'] });
     expect(ids(player(after, '0').deck.cards)).toEqual(['deck_low', 'deck_top']);
 
     // движение «Канопы» заканчивается: «затем положите раскрытую карту под низ» — один раз,
@@ -401,7 +448,7 @@ describe('карты Анубиса: эффекты', () => {
   const playEffect = (state, cardId, playerId = '0') =>
     runAction(state, { type: 'PICK', kind: 'card', id: `${cardId}_1`, playerId });
 
-  it('«Суд молчит»: тихий ход даёт карту и здоровье', () => {
+  it('«Суд молчит»: тихий ход даёт карту и 2 здоровья', () => {
     const state = buildState({ cardInHand: 'anubis_09' });
     player(state, '0').deck = zone([{ id: 'deck_low', title: 'Low', bonus: 1 }]);
     const hero = fighterOf(state, '0', 'anubis');
@@ -409,7 +456,7 @@ describe('карты Анубиса: эффекты', () => {
 
     const after = playEffect(state, 'anubis_09');
 
-    expect(hpOf(after, '0', 'anubis')).toBe(13);
+    expect(hpOf(after, '0', 'anubis')).toBe(14);
     expect(ids(hand(player(after, '0')))).toEqual(['deck_low']);
   });
 
@@ -462,5 +509,21 @@ describe('карты Анубиса: эффекты', () => {
       playerId: '0',
     });
     expect(String(fighterOf(moved, '0', 'anubis').currentPosition)).toBe('2');
+  });
+});
+
+describe('карты Анубиса: удар в ходу снимает суд', () => {
+  it('удар картой ставит бойцу «наносил урон в этом ходу»', () => {
+    const after = passDefense(attackWith(buildState(), 'anubis_01_1'));
+
+    expect(fighterOf(after, '0', 'anubis').dealtDamageThisTurn).toBe(true);
+  });
+
+  it('начало следующего хода флаг снимает: в новом ходу суд снова работает', () => {
+    const struck = passDefense(attackWith(buildState({ foeHp: 21 }), 'anubis_01_1'));
+    // ход Анубиса передан дальше и вернулся к нему: флаг живёт ровно один ход
+    const next = runLifecycle({ ...struck, hook: PHASES.turnStart });
+
+    expect(fighterOf(next, '0', 'anubis').dealtDamageThisTurn).toBe(false);
   });
 });

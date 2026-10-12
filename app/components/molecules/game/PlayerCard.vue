@@ -6,33 +6,34 @@
     role="button"
     tabindex="0"
     :aria-label="`Карточка героя: ${playerName}`"
-    @click="emit('open-hero', props.player.id)"
-    @keydown.enter.prevent="emit('open-hero', props.player.id)"
-    @keydown.space.prevent="emit('open-hero', props.player.id)"
+    @click="openHero"
+    @keydown.enter.prevent="openHero"
+    @keydown.space.prevent="openHero"
   >
     <div class="flex items-start gap-8">
       <AAvatar
         :alt="heroName"
+        :title="hero ? faceTitle(hero) : ''"
         :ui="{
           avatar_root: heroRingClass,
-          avatar_image: portraitClass(hero),
-          avatar_fallback: portraitClass(hero),
+          avatar_image: portraitClass(hero, props.player),
+          avatar_fallback: portraitClass(hero, props.player),
         }"
       />
 
-      <div class="flex h-80 min-w-0 flex-1 flex-col">
+      <div class="flex h-74 min-w-0 flex-1 flex-col">
         <div class="flex shrink-0 items-start justify-between gap-6">
           <div class="flex min-w-0 flex-col">
             <span
               v-if="heroName"
-              class="text-18 min-w-0 shrink-0 truncate font-semibold uppercase"
+              class="text-16 min-w-0 shrink-0 truncate font-semibold uppercase"
               :title="`Герой: ${heroName}`"
             >
               {{ heroName }}
             </span>
             <span
               v-if="!isAi && playerName"
-              class="text-16 text-dim min-w-0 truncate font-medium"
+              class="text-15 text-dim min-w-0 truncate font-medium"
               :title="`Игрок: ${playerName}`"
             >
               {{ playerName }}
@@ -41,7 +42,7 @@
 
           <span
             v-if="showPlacement"
-            class="text-14 rounded-3 bg-violet shrink-0 px-6 py-4 font-semibold -tracking-[0.04em] uppercase"
+            class="text-13 rounded-3 bg-violet shrink-0 px-6 py-4 font-semibold -tracking-[0.04em] uppercase"
           >
             Расстановка
           </span>
@@ -54,7 +55,7 @@
               class="bg-accent before:bg-accent relative size-8 shrink-0 rounded-full before:absolute before:inset-0 before:animate-ping before:rounded-full before:content-['']"
               aria-hidden="true"
             />
-            <span class="text-16 font-semibold">{{ actionLabel }}</span>
+            <span class="text-15 font-semibold">{{ actionLabel }}</span>
           </div>
         </div>
 
@@ -68,7 +69,7 @@
 
             <span
               v-if="hero"
-              class="text-16 shrink-0 self-end leading-18 font-semibold lining-nums"
+              class="text-15 shrink-0 self-end leading-18 font-semibold lining-nums"
               :title="`Здоровье героя: ${hpLabel(hero)}`"
             >
               {{ hpLabel(hero) }}
@@ -105,23 +106,24 @@
           :key="item.id"
           data-item
           :class="[
-            'flex size-32 shrink-0 items-center justify-center transition-colors',
-            isItemOn(item) ? 'text-info' : 'text-white',
+            'flex size-30 shrink-0 items-center justify-center transition-colors',
+            isItemOn(item) ? 'text-[var(--item-color)]' : 'text-gray',
           ]"
+          :style="{ '--item-color': item.color }"
           :title="itemTitle(item)"
         >
           <component
             :is="ICON"
             v-if="itemIcon(item)"
             :name="itemIcon(item)"
-            class="size-32"
+            class="size-30!"
             aria-hidden="true"
           />
         </div>
 
         <span
           v-if="hiddenItems"
-          class="text-16 shrink-0 font-semibold lining-nums"
+          class="text-15 shrink-0 font-semibold lining-nums"
           :title="hiddenItemsTitle"
           @click.stop
         >
@@ -131,9 +133,9 @@
 
       <div v-if="sidekicks.length" class="ml-auto flex items-end gap-8">
         <div class="flex min-w-0 flex-col items-end gap-4">
-          <span class="text-18 min-w-0 truncate text-right font-medium">{{ selected?.name }}</span>
+          <span class="text-17 min-w-0 truncate text-right font-medium">{{ selected?.name }}</span>
           <div v-if="selected" class="flex shrink-0 items-center gap-6">
-            <span class="text-18 font-medium lining-nums" :title="squadTitle(selected)">
+            <span class="text-15 font-medium lining-nums" :title="squadTitle(selected)">
               HP {{ hpLabel(selected) }}
             </span>
             <PlayerCardRange
@@ -153,12 +155,12 @@
               :alt="sidekick.name || heroName"
               :ui="{
                 avatar_root: cn(
-                  'size-50 border-3 -mr-20 transition-[filter,box-shadow]',
-                  ringClass(sidekick),
+                  'size-46 border-3 -mr-20 transition-[filter,box-shadow]',
+                  ringClass(sidekick, props.player),
                   index === orderedSidekicks.length - 1 && 'mr-0',
                 ),
-                avatar_image: portraitClass(sidekick),
-                avatar_fallback: portraitClass(sidekick),
+                avatar_image: portraitClass(sidekick, props.player),
+                avatar_fallback: portraitClass(sidekick, props.player),
               }"
               :title="faceTitle(sidekick)"
               @click.stop="select(sidekick.id)"
@@ -175,19 +177,20 @@ import { onBeforeUnmount, watch } from 'vue';
 import AAvatar from '~/components/atoms/AAvatar.vue';
 import PlayerCardRange from '~/components/molecules/game/PlayerCardRange.vue';
 import { useGameSession } from '~/composables/useGameSession.js';
+import { healthTone, hpLabel, hpPercent, itemStateLabel } from '~/composables/useGameHelpers.js';
 import { useProfile } from '~/composables/useProfile';
-import { healthTone } from '~/utils/game/healthTone.js';
-import { hpLabel, hpPercent, itemStateLabel } from '~/utils/gameLabels.js';
+import { openModal } from '~/composables/ui/useModal.js';
+import { cn } from '~/ui/cn.js';
 
 const props = defineProps({
   player: { type: Object, required: true },
   catalog: { type: Object, default: () => ({}) },
 });
 
-const emit = defineEmits(['open-hero']);
-
 const { nick } = useProfile();
 const { you, currentPlayerId, isPlacement, actionsLeft, turn } = useGameSession();
+
+const openHero = () => openModal('heroSheet', String(props.player.id));
 
 const RING = {
   hero: 'border-[var(--hero-color)]',
@@ -271,14 +274,25 @@ const select = id => {
 
 const isDead = fighter => Number(fighter?.currentHp ?? 0) <= 0;
 
-const awaitsPlacement = fighter => isPlacement.value && fighter?.currentPosition == null;
-const outOfPlay = fighter => isDead(fighter) || awaitsPlacement(fighter);
+/**
+ * «Боец ещё не на поле». Пока **этот** игрок не подтвердил расстановку, его бойцы выбывшими не считаются:
+ * у соперника позиции на это время прячет проекция (`party.js`), и по `currentPosition` карточка не может
+ * отличить «ещё не поставил» от «поставил, но нам не показывают». Плашка и вид аватарок при этом
+ * обновляются в динамике — по флагу `placementReady`, который открыт всем.
+ */
+const awaitsPlacement = (fighter, owner) => {
+  if (!isPlacement.value || owner?.placementReady === true) return false;
+  if (owner && String(owner.id) !== String(you.value)) return false;
+  return fighter?.currentPosition == null;
+};
+const outOfPlay = (fighter, owner) => isDead(fighter) || awaitsPlacement(fighter, owner);
 
-const portraitClass = fighter => cn(PORTRAIT, outOfPlay(fighter) && PORTRAIT_OUT);
+const portraitClass = (fighter, owner) => cn(PORTRAIT, outOfPlay(fighter, owner) && PORTRAIT_OUT);
 const heroRingClass = computed(() =>
-  cn('size-80 border-3', awaitsPlacement(hero.value) ? RING.down : RING.hero),
+  cn('size-74 border-3', awaitsPlacement(hero.value, props.player) ? RING.down : RING.hero),
 );
-const ringClass = fighter => (outOfPlay(fighter) ? RING.down : RING[healthTone(fighter).key]);
+const ringClass = (fighter, owner) =>
+  outOfPlay(fighter, owner) ? RING.down : RING[healthTone(fighter).key];
 
 const items = computed(() => props.player?.items ?? []);
 const visibleItems = computed(() => items.value.slice(0, MAX_ITEMS));
@@ -333,7 +347,9 @@ const faceTitle = fighter => {
     move && `шаг ${move}`,
     attackRange && `удар ${attackRange}`,
     isDead(fighter) && 'убит',
-    !isDead(fighter) && fighter?.currentPosition == null && 'не на поле',
+    // «не на поле» пишем только там, где это действительно наша расстановка: у соперника позиции
+    // на расстановке скрыты проекцией, и по ним нельзя утверждать, что боец не выставлен
+    !isDead(fighter) && awaitsPlacement(fighter, props.player) && 'не на поле',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -342,7 +358,7 @@ const squadTitle = fighter => `Помощник ${fighter.name}: ${hpLabel(fight
 
 const rootClass = computed(() =>
   cn(
-    'relative flex w-400 shrink-0 cursor-pointer flex-col gap-2 rounded-8 border-2 border-line bg-surface bg-[linear-gradient(180deg,rgb(255_255_255/4%),transparent_55%),radial-gradient(rgb(255_255_255/7%)_1px,transparent_1px)] bg-[size:auto,10px_10px] p-8 text-ink',
+    'relative flex w-380 shrink-0 cursor-pointer flex-col gap-2 rounded-8 border-2 border-line bg-surface bg-[linear-gradient(180deg,rgb(255_255_255/4%),transparent_55%),radial-gradient(rgb(255_255_255/7%)_1px,transparent_1px)] bg-[size:auto,10px_10px] p-8 text-ink',
     isCurrent.value &&
       'border-2 border-accent shadow-[0_0_16px_0_color-mix(in_srgb,var(--color-accent)_45%,transparent)]',
     hero.value && isDead(hero.value) && 'opacity-60',

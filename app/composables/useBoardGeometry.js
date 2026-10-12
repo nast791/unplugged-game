@@ -1,43 +1,23 @@
 import { seatSide } from '#shared/constants/seats.js';
-import {
-  isTerrainId,
-  terrainColor,
-  terrainLabelColor,
-  terrainPattern,
-  terrainPatternColor,
-} from '#shared/constants/terrain.js';
-import {
-  PATTERN_BAKE_RADIUS,
-  PATTERN_TEXTURE_EXTENT,
-  PATTERN_TEXTURES,
-} from './patternTextures.js';
-
-/**
- * Геометрия доски: размер кружка, обрезка и изгиб соединителей, сектора цветных клеток,
- * ромбик с номером героя и подписи. Всё чистыми функциями, чтобы это можно было проверить тестами.
- */
+import { isTerrainId, terrainColor, terrainLabelColor } from '#shared/constants/terrain.js';
 
 export const MIN_RADIUS = 24;
 export const MAX_RADIUS = 64;
 
-/** Радиус кружка по размеру клетки из настроек карты. */
 export const nodeRadius = nodeSize => {
   const size = Number(nodeSize) || 72;
   return Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, size / 2));
 };
 
-/** Узор линий и границ: границы у всех клеток одинаковые, номерную клетку отмечает ромбик героя. */
 export const STROKE = {
   edge: 5,
   edgeColor: '#1E293B',
   cell: 3,
   start: 3,
   highlight: 7,
-  /** Тонкая чёрная полоска между секторами цветной клетки: светлые заливки иначе сливаются. */
   divider: 2,
 };
 
-/** Тени: как в оригинале — лёгкая тень и под кружками, и под линиями, от этого доска «стоит». */
 export const SHADOW = {
   cell: {
     shadowColor: 'rgba(15, 23, 42, 0.45)',
@@ -55,13 +35,6 @@ export const SHADOW = {
   },
 };
 
-/**
- * Подсветка расстановки: клетку области можно занять — **мягкое свечение наружу** цвета `free`
- * (`shadowBlur`), на ней уже стоит свой боец — серая обводка без свечения. Обводку самой клетки кольцо
- * не трогает: `free` — цвет свечения, а не второй рамки поверх родной границы.
- * Состояние читается силой свечения: `glow` — у всей области, вдвое — у клетки активного бойца,
- * втрое — под курсором при перетаскивании.
- */
 export const PLACEMENT = {
   free: '#22d3ee',
   busy: '#94a3b8',
@@ -69,7 +42,6 @@ export const PLACEMENT = {
   glow: 14,
 };
 
-/** Отрезок, обрезанный по кружкам: линия упирается в границы, а не в центры. */
 export const trimSegment = (from, to, radius) => {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -91,14 +63,8 @@ const stableHash = (leftId, rightId) => {
   return hash;
 };
 
-/** Знак изгиба по паре клеток: одинаковый между вызовами, разный у разных пар. */
 export const bendOf = (leftId, rightId) => (stableHash(leftId, rightId) % 2 === 0 ? 1 : -1);
 
-/**
- * Изгиб соединителя. Между ближайшими клетками (линия почти по горизонтали или вертикали)
- * линия прямая — так явно лучше. У диагоналей изгиб плавный и небольшой, и каждая третья
- * диагональ тоже прямая: доска не выглядит ни решёткой, ни щупальцами.
- */
 export const bendFor = (from, to) => {
   const dx = Math.abs(to.x - from.x);
   const dy = Math.abs(to.y - from.y);
@@ -108,10 +74,6 @@ export const bendFor = (from, to) => {
   return bendOf(from.id ?? from.x, to.id ?? to.x) * 0.5;
 };
 
-/**
- * Точки кривой между двумя кружками. Формат — кубическая кривая для konva `Line` с `bezier: true`;
- * при нулевом изгибе получается ровная линия. Изгиб пологий (не больше 12 px), как на референсах.
- */
 export const curvePoints = (from, to, radius, bend = 0) => {
   const { start, end, length, normal } = trimSegment(from, to, radius);
   const amount = bend * Math.min(12, (length || 1) * 0.05);
@@ -126,11 +88,6 @@ export const curvePoints = (from, to, radius, bend = 0) => {
   return [start.x, start.y, control1.x, control1.y, control2.x, control2.y, end.x, end.y];
 };
 
-/**
- * Сектора цветной клетки. Два цвета делятся **по вертикали** — левая и правая половины;
- * три цвета — равные сектора «пирогом» (как в оригинале). Углы в градусах: konva `Wedge`
- * рисует от `rotation` на `angle`, отсчёт начинается сверху и идёт по часовой стрелке.
- */
 export const sectorWedges = terrains => {
   const list = Array.isArray(terrains) ? terrains.filter(Boolean) : [];
   if (list.length < 2) return [];
@@ -143,11 +100,6 @@ export const sectorWedges = terrains => {
   }));
 };
 
-/**
- * Сектора клетки для узора: у одноцветной узор лежит на всём кружке, у цветной — своя текстура
- * в каждом секторе, обрезанная по его границам (иначе узор одной стихии заезжал бы в чужой цвет).
- * Углы — те же, что у `sectorWedges`: радианы в системе canvas, где 0 — «вправо», отсчёт по часовой.
- */
 export const patternSectors = (terrains, radius) => {
   const list = (Array.isArray(terrains) ? terrains : []).filter(Boolean);
   if (!list.length) return [];
@@ -161,7 +113,6 @@ export const patternSectors = (terrains, radius) => {
   }));
 };
 
-/** Обрезка узора по сектору: холст рисует «кусок пирога» — дуга плюс два радиуса к центру. */
 export const sectorClipFunc =
   ({ start, end, radius }) =>
   ctx => {
@@ -171,42 +122,18 @@ export const sectorClipFunc =
     ctx.closePath();
   };
 
-/**
- * Обрезка растровой плитки: на полштриха меньше радиуса клетки, иначе плитка съедает внутреннюю
- * половину обводки и граница клетки с плиткой выглядит тоньше, чем у остальных.
- */
 export const tileClipFunc = (start, end, radius) =>
   sectorClipFunc({ start, end, radius: radius - STROKE.cell / 2 });
 
-/**
- * Лава: плитка кинцуги (`lava-veins`) — коричнево-красный фон с золотыми жилами; прежний вариант —
- * прозрачные гранж-трещины по яркой заливке (`lava-cracks`). Переключается одной строкой,
- * обе плитки пересобираются `tests/support/bake-tiles.mjs`.
- */
-const LAVA_TILE = 'kintsugi';
-
-/**
- * Растровые плитки стихий: владелец выбрал их такими — векторные версии вышли беднее.
- * Плитка кладётся на клетку целиком, без смещения, и обрезается сектором стихии.
- *
- * Формат — WebP, сторона 512 (у каменной осыпи 256: при 512 её мелкая фактура смазывается).
- * Клетка на экране занимает 88–161 px (радиус до 64 при diameter 1.05), то есть плитка почти
- * всегда уменьшается и остаётся резкой. `pixels` — сторона картинки, по ней считается масштаб узора.
- */
 export const PATTERN_TILES = {
   ice: { src: '/patterns/ice-snowflakes.webp', diameter: 1.05, pixels: 512 },
-  lava: {
-    src: LAVA_TILE === 'kintsugi' ? '/patterns/lava-veins.webp' : '/patterns/lava-cracks-gold.webp',
-    diameter: 1.05,
-    pixels: 512,
-  },
+  lava: { src: '/patterns/lava-veins.webp', diameter: 1.05, pixels: 512 },
   forest: { src: '/patterns/forest-canopy.webp', diameter: 1.05, pixels: 512 },
   desert: { src: '/patterns/desert-sand.webp', diameter: 1.05, pixels: 512 },
   mountains: { src: '/patterns/mountain-stones.webp', diameter: 1.05, pixels: 256 },
   water: { src: '/patterns/water-marble.webp', diameter: 1.05, pixels: 512 },
 };
 
-/** Прямоугольник с плиткой для клетки: без смещения, привязан к её центру. */
 export const patternTileConfig = (radius, image, tile) => {
   const side = radius * 2;
   const scale = (side * tile.diameter) / tile.pixels;
@@ -223,67 +150,17 @@ export const patternTileConfig = (radius, image, tile) => {
   };
 };
 
-/**
- * Текстура стихии для доски: слои запечённой геометрии (сейчас это лёд).
- * Запечённые пути записаны в единицах `PATTERN_BAKE_RADIUS`, поэтому узел на доске сам масштабирует
- * их (scaleX/scaleY), а толщина штриха делится на этот масштаб — на экране она остаётся пиксельной.
- * `null`, если у стихии текстуры нет.
- */
-export const terrainTexture = (terrain, radius) => {
-  if (!(radius > 0)) return null;
-  const pattern = terrainPattern(terrain);
-  const baked = PATTERN_TEXTURES[pattern] ?? [];
-  const color = terrainPatternColor(terrain);
-  const scale = radius / PATTERN_BAKE_RADIUS;
-
-  const layers = [
-    ...baked.map(layer => ({
-      data: layer.d,
-      fill: layer.mode === 'fill' ? color : undefined,
-      stroke: layer.mode === 'stroke' ? color : undefined,
-      strokeWidth: layer.mode === 'stroke' ? (layer.width ?? 3) / scale : 0,
-      opacity: layer.opacity,
-      scaleX: scale,
-      scaleY: scale,
-      lineJoin: 'round',
-      lineCap: 'round',
-      listening: false,
-    })),
-  ];
-
-  return {
-    color,
-    extent: PATTERN_TEXTURE_EXTENT[terrainPattern(terrain)] ?? { x: 1, y: 1 },
-    layers,
-  };
-};
-
-/**
- * Текстуры клетки для отрисовки: по одной на сектор, каждая со своей обрезкой. У одноцветной клетки
- * сектор один — весь кружок, поэтому на доске узел всегда один и тот же: группа с `clipFunc`
- * и по пути на каждый слой текстуры. У стихии-плитки слоёв нет — доска подставит её картинку.
- */
 export const cellPatterns = (terrains, radius) => {
+  if (!(radius > 0)) return [];
   const list = (Array.isArray(terrains) ? terrains : []).filter(Boolean).map(String);
-  return patternSectors(list, radius)
-    .map(sector => {
-      const texture = terrainTexture(sector.terrain, radius);
-      if (!texture) return null;
-      return {
-        terrain: sector.terrain,
-        start: sector.start,
-        end: sector.end,
-        layers: texture.layers,
-        clipFunc: sectorClipFunc({ ...sector, radius }),
-      };
-    })
-    .filter(Boolean);
+  return patternSectors(list, radius).map(sector => ({
+    terrain: sector.terrain,
+    start: sector.start,
+    end: sector.end,
+    clipFunc: sectorClipFunc({ ...sector, radius }),
+  }));
 };
 
-/**
- * Разделители между секторами цветной клетки: тонкая чёрная полоска от центра к краю
- * по каждой границе сектора. Без неё светлые заливки сливаются друг с другом.
- */
 export const sectorDividers = (terrains, radius) => {
   const sectors = sectorWedges(terrains);
   if (sectors.length < 2) return [];
@@ -298,13 +175,8 @@ export const sectorDividers = (terrains, radius) => {
   });
 };
 
-/**
- * Показывать id клеток на доске. Сейчас выключено: на поле важнее стихия, текстура и номер героя,
- * а цифры шумят. Для отладки (сверять клетки с данными карты) поставь true — подписи вернутся.
- */
 export const SHOW_CELL_IDS = false;
 
-/** Подпись внутри клетки — её id, мелко и тихо: на доске важнее стихия и номер героя. */
 export const nodeLabel = node => ({
   text: String(node?.id ?? ''),
   heroStart: node?.heroStart === true,
@@ -312,14 +184,12 @@ export const nodeLabel = node => ({
   bold: false,
 });
 
-/** Цвет подписи: у цветной клетки считаем по основной стихии, у обычной — по её стихии. */
 export const nodeLabelColor = node => {
   const raw = node?.terrain;
   const primary = Array.isArray(raw) ? raw[0] : raw;
   return terrainLabelColor(primary);
 };
 
-/** Параметры подписи для konva: центрируем по ширине кружка. */
 export const nodeLabelConfig = (node, radius) => {
   const label = nodeLabel(node);
   const raw = node?.terrain;
@@ -329,7 +199,6 @@ export const nodeLabelConfig = (node, radius) => {
     fontSize: label.fontSize,
     fontStyle: label.bold ? 'bold' : 'normal',
     fill: nodeLabelColor(node),
-    // номер клетки читается и поверх узора: тонкий ободок цветом заливки отделяет цифру от фигур
     stroke: primary ? terrainColor(primary) : undefined,
     strokeWidth: primary ? 3 : 0,
     fillAfterStrokeEnabled: true,
@@ -341,18 +210,9 @@ export const nodeLabelConfig = (node, radius) => {
   };
 };
 
-/**
- * Куда смотрит маркер стартовой клетки. У номерной клетки сторона задана местом игрока (1 — слева,
- * 2 — справа, 3 — сверху, 4 — снизу), поэтому номер всегда стоит с той стороны, где игрок сидит;
- * для клетки без места остаётся запасное правило — наружу от центра поля.
- */
 export const markerSide = (node, centre) =>
   seatSide(node?.position) ?? markerPlacement(node, centre);
 
-/**
- * Куда смотрит маркер, если место неизвестно: наружу от центра поля. У стартовой клетки слева маркер
- * уходит влево, сверху — вверх, и так далее, поэтому он не наезжает на id клетки и не теряется.
- */
 export const markerPlacement = (node, centre) => {
   if (!node || !centre) return 'right';
   const dx = node.x - centre.x;
@@ -361,16 +221,9 @@ export const markerPlacement = (node, centre) => {
   return dy >= 0 ? 'bottom' : 'top';
 };
 
-/**
- * Маркер стартовой клетки — **маленький чёрный кружок с номером героя на обводке клетки**.
- * Он нужен только на расстановке: игрок видит, какая клетка чья; в остальное время номер героя
- * на доске не нужен, и маркеры не рисуются вовсе (`startMarkers` с `show: false`).
- */
 export const MARKER = {
-  /** размер кружка от радиуса клетки: маркер компактный, клетку он не закрывает */
   sizeFactor: 0.19,
   minSize: 8,
-  /** шрифт цифры от радиуса маркера */
   textFactor: 0.92,
   fill: '#000000',
   text: '#FFFFFF',
@@ -378,7 +231,6 @@ export const MARKER = {
   outlineWidth: 1.5,
 };
 
-/** Маркер в координатах поля (не клетки): кружок и цифра. `null`, если клетка не номерная. */
 export const heroMarker = (node, radius, placement = 'right') => {
   const order = Number(node?.position);
   if (node?.heroStart !== true || !Number.isFinite(order) || order <= 0) return null;
@@ -419,7 +271,6 @@ export const heroMarker = (node, radius, placement = 'right') => {
   };
 };
 
-/** Габариты маркера в координатах поля: кружок вместе с обводкой. */
 export const markerBox = (node, radius, placement = 'right') => {
   const marker = heroMarker(node, radius, placement);
   if (!marker) return null;
@@ -432,11 +283,6 @@ export const markerBox = (node, radius, placement = 'right') => {
   };
 };
 
-/**
- * Маркеры стартовых клеток для доски: нужны только на расстановке, поэтому `show: false`
- * (все остальные фазы игры) даёт пустой список — на доске не остаётся ни треугольников, ни кружков.
- * По умолчанию маркеров нет: их надо попросить явно, иначе забытый вызов оставит номера навсегда.
- */
 export const startMarkers = (nodes, radius, { show = false } = {}) => {
   if (!show) return [];
   const list = (Array.isArray(nodes) ? nodes : []).filter(
@@ -458,24 +304,12 @@ export const startMarkers = (nodes, radius, { show = false } = {}) => {
     .filter(Boolean);
 };
 
-/**
- * Идёт ли ещё расстановка: пока хоть кто-то её не подтвердил. У героя без помощников подтверждение
- * автоматическое, поэтому после расстановки человека флаг встаёт и у него — и номера стартовых клеток
- * становятся не нужны. Считаем по флагам игроков, а не по хуку: так кружки исчезают ровно в момент
- * подтверждения, не дожидаясь, пока вью обновит фазу.
- */
 export const placementOngoing = players =>
   (Array.isArray(players) ? players : []).some(player => player?.placementReady !== true);
 
-/** Маркеры стартовых клеток на доске: есть, только пока расстановка не закончена у всех. */
 export const placementMarkers = (nodes, radius, players) =>
   startMarkers(nodes, radius, { show: placementOngoing(players) });
 
-/**
- * Что выбрал клик по доске: поднимаемся от фигуры к её группе и читаем атрибуты клетки или фишки.
- * Клики вешает сцена, а не каждая клетка (у конва-компонентов корень фрагментный, и Vue ругается
- * на слушателей), поэтому разбор цели живёт здесь — отдельно от компонента и под тестом.
- */
 export const clickTarget = node => {
   let current = node;
   while (current && typeof current.getAttr === 'function') {
@@ -493,11 +327,6 @@ export const clickTarget = node => {
   return null;
 };
 
-/**
- * Клетка под точкой экрана: обратное преобразование сцены (сдвиг и масштаб зума) плюс ближайший кружок в
- * радиусе. Нужна перетаскиванию аватарки: браузер отдаёт только координаты курсора, а доска живёт в
- * координатах поля. Клик по доске в эту же клетку приводит `clickTarget` — попадания совпадают.
- */
 export const cellAtPoint = (nodes, radius, transform, point) => {
   const scaleX = Number(transform?.scaleX ?? transform?.scale) || 1;
   const scaleY = Number(transform?.scaleY ?? transform?.scale) || 1;
@@ -516,11 +345,6 @@ export const cellAtPoint = (nodes, radius, transform, point) => {
   return found;
 };
 
-/**
- * Границы поля: край поля с каждой стороны — **самая крайняя клетка** вместе с её обводкой,
- * никакого лишнего запаса. Единственное, что может выйти за этот край, — маркер стартовой клетки
- * у края: он стоит на обводке и смотрит наружу, иначе цифру бы срезало.
- */
 export const fieldBounds = (nodes, radius, { showMarkers = true } = {}) => {
   const list = (Array.isArray(nodes) ? nodes : []).filter(
     node => node && Number.isFinite(node.x) && Number.isFinite(node.y),

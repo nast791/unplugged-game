@@ -105,7 +105,23 @@
 
 <script setup>
 import { terrainName } from '#shared/constants/terrain.js';
-import { fighterFace } from '~/utils/game/fighterFaces.js';
+
+const FACES = {
+  'anubis': 'lucide:scale',
+  'amat': 'lucide:paw-print',
+  'dorothy': 'lucide:footprints',
+  'toto': 'lucide:dog',
+  'ifrit': 'lucide:flame',
+  'ash': 'lucide:cloud',
+  'medusa': 'lucide:eye',
+  'harpies': 'lucide:feather',
+  'tesla': 'lucide:zap',
+  'snow-queen': 'lucide:snowflake',
+  'crow': 'lucide:bird',
+};
+
+const fighterFace = fighter =>
+  FACES[String(fighter?.group ?? fighter?.id ?? '')] ?? 'lucide:shield';
 
 /**
  * Содержимое карточки героя: герой лицом (большой арт, имя, бойцы, предметы) и подробности справа —
@@ -128,7 +144,7 @@ const healthLine = computed(() => {
 });
 
 /**
- * Значок бойца — показ (портретов пока нет): словарь моков в `app/utils/game/fighterFaces.js`.
+ * Значок бойца — показ (портретов пока нет): словарь моков — `FACES` здесь же.
  * Значок предмета — **контент**: он объявлен в паке героя (`item.icon`) и берётся прямо из данных.
  */
 const heroFace = computed(() => fighterFace({ id: props.hero.id }));

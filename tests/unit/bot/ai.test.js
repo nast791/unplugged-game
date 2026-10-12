@@ -81,7 +81,13 @@ describe('компьютерный игрок', () => {
 
     const move = aiStep(state, { timeMs: 0, overrides: FAST });
     expect(move?.playerId).toBe('tesla');
-    expect(move.iterations).toBeGreaterThan(0);
+    expect(move.action).not.toBeNull();
+    /**
+     * Доигрываний может быть **ноль**: у Теслы один герой без помощников, и первым его решением на
+     * расстановке остаётся безальтернативное «подтвердить» (поиск не тратит бюджет на выбор из одного
+     * варианта). Поэтому проверяем не число доигрываний, а то, что ход есть и движок его принимает.
+     */
+    expect(move.iterations).toBeGreaterThanOrEqual(0);
     expect(() => runAction(state, { ...move.action, playerId: move.playerId })).not.toThrow();
   });
 

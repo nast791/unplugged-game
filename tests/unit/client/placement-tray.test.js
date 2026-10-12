@@ -5,8 +5,9 @@ import { computed, ref } from 'vue';
 
 /**
  * Полка расстановки: над кнопкой «Завершить» стоят аватарки тех, кого **мне** ещё надо поставить.
- * Кольцо по умолчанию белое, у выбранной аватарки — коралловое (акцент); клик выбирает бойца,
- * захват мышью — выбирает и тащит его на клетку (клетку под курсором считает доска).
+ * Ждущий боец — голубое кольцо (`border-info`) и мигающая подсветка (`placement-blink`), у выбранной
+ * аватарки — коралловое (акцент); клик выбирает бойца, захват мышью — выбирает и тащит его на клетку
+ * (клетку под курсором считает доска).
  *
  * `PlacementTray.vue` — SFC приложения: `computed`/`cn` приходят автоимпортами Nuxt, в тесте кладём
  * `computed` в `globalThis` до импорта компонента (так же, как `player-card.test.js`).
@@ -70,16 +71,23 @@ describe('PlacementTray: кого ещё ставить', () => {
     expect(mountTray().findAll('[draggable="true"]')).toHaveLength(0);
   });
 
-  it('рисует аватарку на каждого бойца столбиком, с тёмной обводкой', () => {
+  it('рисует аватарку на каждого бойца столбиком, с голубой мигающей обводкой', () => {
     const wrapper = mountTray();
 
     expect(avatars(wrapper)).toHaveLength(2);
     expect(wrapper.element.className).toContain('flex-col');
-    // тёмное кольцо видно и на светлом поле, но оно тише коралловой активности
-    expect(avatars(wrapper)[0].classes().join(' ')).toContain('border-primary');
-    expect(avatars(wrapper)[0].classes().join(' ')).not.toContain('border-white');
+    // ждущий расстановки — голубое кольцо и мигающая подсветка (решение владельца)
+    expect(avatars(wrapper)[0].classes().join(' ')).toContain('border-info');
+    expect(avatars(wrapper)[0].classes().join(' ')).toContain('placement-blink');
+    expect(avatars(wrapper)[0].classes().join(' ')).not.toContain('border-primary');
     expect(avatars(wrapper)[0].classes().join(' ')).not.toContain('border-accent');
     expect(avatars(wrapper)[0].attributes('title')).toContain('Амат');
+  });
+
+  it('аватарки полки крупные — их видно без наведения', () => {
+    const wrapper = mountTray();
+
+    expect(avatars(wrapper)[0].classes().join(' ')).toContain('size-68');
   });
 
   it('клик по аватарке делает её активной: кольцо становится коралловым', async () => {
@@ -89,10 +97,10 @@ describe('PlacementTray: кого ещё ставить', () => {
 
     expect(session.selectedFighterId.value).toBe('harpies_1');
     expect(avatars(wrapper)[1].classes().join(' ')).toContain('border-accent');
-    expect(avatars(wrapper)[0].classes().join(' ')).toContain('border-primary');
+    expect(avatars(wrapper)[0].classes().join(' ')).toContain('border-info');
   });
 
-  it('снятая активность возвращает тёмное кольцо', async () => {
+  it('снятая активность возвращает голубое кольцо', async () => {
     const wrapper = mountTray();
     await avatars(wrapper)[0].trigger('click');
     expect(avatars(wrapper)[0].classes().join(' ')).toContain('border-accent');
@@ -100,7 +108,7 @@ describe('PlacementTray: кого ещё ставить', () => {
     session.selectedFighterId.value = null;
     await wrapper.vm.$nextTick();
 
-    expect(avatars(wrapper)[0].classes().join(' ')).toContain('border-primary');
+    expect(avatars(wrapper)[0].classes().join(' ')).toContain('border-info');
   });
 });
 

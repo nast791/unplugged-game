@@ -1,4 +1,5 @@
 import { findFighter } from '#shared/helpers/base.js';
+import { noteDamageDealt } from '#shared/helpers/damage.js';
 import { runDeathMoment } from '#shared/helpers/death.js';
 
 /**
@@ -30,6 +31,10 @@ const targetIds = action => {
  * Боец с 0 HP убирается с поля и попадает в `player.lost` — оттуда его возвращает эффект воскрешения
  * (REVIVE_FIGHTER). Ушедшего с поля бойца пропускаем без ошибки: к моменту расчёта эффекта или сдачи
  * игрока его может уже не быть. Проверка победы — отдельно (fact ALIVE_SIDES).
+ *
+ * Урон вдобавок помечает **наносящего** флагом «наносил урон в этом ходу»
+ * (`shared/helpers/damage.js`): условие «если герой не наносил урон» (умение Анубиса) читает его,
+ * а не `movedThisTurn`. Лечение флаг не ставит.
  */
 export const SET_HEALTH = (partyState, action = {}) => {
   const ids = targetIds(action);
@@ -41,6 +46,8 @@ export const SET_HEALTH = (partyState, action = {}) => {
   if (!Number.isFinite(delta) || delta === 0) {
     throw new Error('SET_HEALTH: нужен ненулевой delta');
   }
+
+  if (delta < 0) noteDamageDealt(partyState, { ...action, fighterIds: ids });
 
   for (const fighterId of ids) {
     const { player, fighter, index } = findFighter(partyState, fighterId);

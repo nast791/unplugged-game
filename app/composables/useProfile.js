@@ -16,8 +16,7 @@ export const useProfile = () => {
     if (typeof localStorage === 'undefined' || !profile.value) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(profile.value));
-    } catch {
-    }
+    } catch {}
   };
 
   const load = () => {

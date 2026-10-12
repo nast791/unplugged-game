@@ -1,7 +1,7 @@
 <template>
   <section class="relative flex min-w-0 flex-1 items-end gap-8 p-12">
     <div class="relative min-w-0 flex-1">
-      <div ref="containerRef" class="swiper w-full pt-24 pr-120">
+      <div ref="containerRef" class="swiper w-full px-16 pt-24">
         <div class="swiper-wrapper">
           <div
             v-for="(card, index) in orderedHand"
@@ -12,6 +12,7 @@
           >
             <ATooltip text="ЛКМ — выдвинуть карту и разыграть, ПКМ — увеличить">
               <Card
+                data-hand-card
                 :card="card"
                 :disabled="isDisabled(card)"
                 @click="handClick(card)"
@@ -23,19 +24,19 @@
       </div>
 
       <AArrowButton
-        v-if="!isFirstVisible"
         direction="prev"
         label="Сдвинуть карты влево"
-        class="absolute top-0 left-0 z-20"
+        class="absolute top-1/2 -left-20 z-20 -translate-y-1/2"
         @click="slidePrev"
+        v-if="!isFirstVisible"
       />
 
       <AArrowButton
-        v-if="!isLastVisible"
         direction="next"
         label="Сдвинуть карты вправо"
-        class="absolute top-0 right-0 z-20"
+        class="absolute top-1/2 -right-20 z-20 -translate-y-1/2"
         @click="slideNext"
+        v-if="!isLastVisible"
       />
     </div>
 
@@ -43,13 +44,14 @@
       <div
         v-if="zoomed"
         ref="zoomRoot"
+        data-esc-layer
         class="bg-app/85 backdrop-blur-8 fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center p-24"
         tabindex="-1"
-        @click="zoomed = null"
-        @contextmenu.prevent="zoomed = null"
-        @keydown.escape="zoomed = null"
+        @click="closeZoom"
+        @contextmenu.prevent="closeZoom"
+        @keydown.escape="closeZoom"
       >
-        <Card :card="zoomed" class="origin-center scale-150" />
+        <Card :card="zoomed" class="origin-center scale-220" />
       </div>
     </Teleport>
   </section>
@@ -60,8 +62,8 @@ import AArrowButton from '~/components/atoms/AArrowButton.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
 import Card from '~/components/molecules/game/Card.vue';
 import { useGameSession } from '~/composables/useGameSession.js';
+import { CARD_TYPE_ORDER } from '~/composables/useGameHelpers.js';
 import { useSwiper } from '~/composables/useSwiper.js';
-import { CARD_TYPE_ORDER } from '~/utils/game/cardTypes.js';
 
 const { myHand: hand, isCardPlayable, onCardClick: playCard } = useGameSession();
 
@@ -121,6 +123,19 @@ const handClick = card => {
 const zoom = card => {
   zoomed.value = card;
 };
+
+const closeZoom = () => {
+  zoomed.value = null;
+  frontKey.value = '';
+};
+
+const onScreenClick = event => {
+  if (event?.target?.closest?.('[data-hand-card]')) return;
+  frontKey.value = '';
+};
+
+onMounted(() => document.addEventListener('click', onScreenClick, true));
+onBeforeUnmount(() => document.removeEventListener('click', onScreenClick, true));
 
 watch(zoomed, async card => {
   if (!card) return;

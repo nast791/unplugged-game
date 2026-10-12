@@ -1,4 +1,5 @@
 import { rules } from '#shared/constants/rules.js';
+import { clearDamageDealt } from '#shared/helpers/damage.js';
 import { finishedSides, nextAlivePlayerId, queryPlayers } from '#shared/facts/players.js';
 
 export default {
@@ -19,13 +20,16 @@ export default {
     const playerId = String(nextPlayerId);
     state.turn = { ...state.turn, playerId };
 
-    // «двигался в этом ходу» — флаг живёт ровно один ход: в начале хода он снят у всех бойцов
+    // «двигался в этом ходу» — флаг живёт ровно один ход: в начале хода он снят у всех бойцов.
+    // Вместе с ним снимается «наносил урон в этом ходу» (`shared/helpers/damage.js`): у умения
+    // Анубиса «Взвешивание сердца» условие про урон, а не про шаг.
     state.players = (state.players ?? []).map(player => ({
       ...player,
       fighters: (player.fighters ?? []).map(fighter =>
         fighter.movedThisTurn ? { ...fighter, movedThisTurn: false } : fighter,
       ),
     }));
+    clearDamageDealt(state);
 
     const alivePlayers = queryPlayers(state, { alive: true }, {});
     const { finished, winner } = finishedSides(state);

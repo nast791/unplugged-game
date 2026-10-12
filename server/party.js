@@ -179,6 +179,12 @@ const projectPlayer = (player, state, you) => {
     if (!canSee(visibility, rel)) continue;
 
     if (key === 'fighters') {
+      /**
+       * Позиции на расстановке чужим не отдаём: стороны расставляются одновременно, и подсмотреть чужую
+       * расстановку нельзя. **Флаг готовности при этом открыт** (`placementReady`), поэтому карточка
+       * соперника на экране обновляется в динамике, а лишнее прячет доска (`useBoardMap`: бойцов тех,
+       * кто ещё расставляется, на поле не рисуем) — проекция остаётся честной, вид — по правилу.
+       */
       out.fighters = (player.fighters ?? []).map(fighter => {
         if (hidePos) {
           return { ...fighter, currentPosition: null, startPosition: null };
