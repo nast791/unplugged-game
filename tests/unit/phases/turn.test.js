@@ -81,6 +81,7 @@ describe('phase choose', () => {
       optional: false,
       throughEnemies: false,
       damageOnPass: null,
+      healOnPass: null,
       damagedFighterIds: [],
       moves: [],
       source: null,

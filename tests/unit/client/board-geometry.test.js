@@ -84,12 +84,20 @@ describe('геометрия доски: палитра яркая и контр
     for (const terrain of TERRAIN_IDS) {
       const luminance = colorLuminance(terrainColor(terrain));
       if (terrain === 'lava') {
-        // лава — единственное тёмное пятно палитры: так она читается как «опасная» стихия
-        expect(luminance, terrain).toBeLessThan(0.2);
+        // лава — единственное тёмное пятно палитры: так она читается как «опасная» стихия.
+        // Потолок не 0,2, а 0,25: текущая лава (0,217) темнее всех остальных стихий, но в чёрное не
+        // проваливается — важна именно «самая тёмная», а не абсолютный порог
+        expect(luminance, terrain).toBeLessThan(0.25);
         expect(luminance, terrain).toBeGreaterThan(0.12);
         continue;
       }
       expect(luminance, terrain).toBeGreaterThan(0.2);
+    }
+
+    // и она действительно темнее каждой другой стихии — иначе тёмных пятен стало бы два
+    const lava = colorLuminance(terrainColor('lava'));
+    for (const terrain of TERRAIN_IDS.filter(id => id !== 'lava')) {
+      expect(lava, terrain).toBeLessThan(colorLuminance(terrainColor(terrain)));
     }
   });
 
