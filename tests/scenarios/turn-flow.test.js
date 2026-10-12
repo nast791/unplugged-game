@@ -119,7 +119,7 @@ describe('scenario: ход через publicApi.runAction', () => {
     expect(state.hook).toBe(PHASES.turn);
     expect(state.turn.playerId).toBe('1');
     expect(state.turn.index).toBe(2);
-    expect(state.round).toBe(2);
+    expect(state.round).toBe(1);
     expect(ap(state)).toBe(2);
     expect(runUi(state, '1').phase).toBe('choose');
     expect(runUi(state, '1').deck.clickable).toBe(true);

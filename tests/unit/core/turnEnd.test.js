@@ -42,7 +42,7 @@ describe('lifecycle turnEnd', () => {
     expect(exited.players[0]._activePhase).toBeNull();
   });
 
-  it('передача хода: turn → turnEnd → turnStart даёт следующего игрока и round++', () => {
+  it('передача хода: turn → turnEnd → turnStart даёт следующего игрока без нового круга', () => {
     const state = createState({ phase: PHASES.turn, actionsLeft: 0 });
     state.turn = { ...state.turn, index: 1, playerId: '0', actedRound: ['0'] };
 
@@ -52,8 +52,8 @@ describe('lifecycle turnEnd', () => {
 
     expect(next.turn.playerId).toBe('1');
     expect(next.turn.index).toBe(2);
-    expect(next.round).toBe(2);
-    expect(next.turn.actedRound).toEqual(['1']);
+    expect(next.round).toBe(1);
+    expect(next.turn.actedRound).toEqual(['0', '1']);
     expect(ap(next)).toBe(rules.actionsPerTurn);
     expect(next.turn.bonus).toEqual({
       movement: 0,

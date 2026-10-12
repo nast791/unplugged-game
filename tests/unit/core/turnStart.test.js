@@ -31,7 +31,7 @@ describe('core: turnStart', () => {
     expect(next.round).toBe(1);
   });
 
-  it('второй turnStart: следующий игрок, round++ после полного круга', () => {
+  it('второй turnStart: следующий игрок, круг ещё не закрыт (round тот же)', () => {
     const state = createState({
       phase: PHASES.turnStart,
       turn: {
@@ -45,8 +45,23 @@ describe('core: turnStart', () => {
     expect(next.hook).toBe(PHASES.turn);
     expect(next.turn.playerId).toBe('1');
     expect(next.turn.index).toBe(2);
-    expect(next.round).toBe(2);
-    expect(next.turn.actedRound).toEqual(['1']);
+    expect(next.round).toBe(1);
+    expect(next.turn.actedRound).toEqual(['0', '1']);
+  });
+
+  it('на двоих round растёт раз в круг, а не каждый ход', () => {
+    let state = createState({
+      phase: PHASES.turnStart,
+      turn: { index: 0, playerId: null, actionsLeft: 0, actedRound: [] },
+    });
+
+    const rounds = [];
+    for (let step = 0; step < 5; step += 1) {
+      state = enterTurnStart(state);
+      rounds.push(state.round);
+    }
+
+    expect(rounds).toEqual([1, 1, 2, 2, 3]);
   });
 
   it('turnEnd → turnStart (core) → turn', () => {
@@ -61,7 +76,7 @@ describe('core: turnStart', () => {
     expect(next.turn.index).toBe(2);
   });
 
-  it('actedRound: мёртвый id и повтор не ускоряют round++', () => {
+  it('actedRound: мёртвый id выпадает, круг закрывается возвратом к ходившему', () => {
     const players = [
       {
         ...player(createState(), '0'),
@@ -91,11 +106,12 @@ describe('core: turnStart', () => {
     ];
     const state = createState({
       phase: PHASES.turnStart,
-      turn: { index: 3, playerId: '2', actedRound: ['0', '1'], actionsLeft: 0 },
+      turn: { index: 3, playerId: '2', actedRound: ['0', '2', '1'], actionsLeft: 0 },
       players,
     });
     const next = runLifecycle(state);
-    expect(next.round).toBe(1);
+    // '1' мёртв и выпал из списка, '0' и '2' уже ходили, ход вернулся к '0' — это новый круг
+    expect(next.round).toBe(2);
     expect(next.turn.playerId).toBe('0');
     expect(next.turn.actedRound).toEqual(['0']);
   });

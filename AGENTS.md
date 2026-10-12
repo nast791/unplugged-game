@@ -46,6 +46,11 @@
 - **Хуки → фазы → действия.** `state.hook`: `gameStart`(1) → `turnStart`(2) → `turn`(3) → `turnEnd`(4) →
   `gameEnd`(5). Фазы хука `turn`: `handLimit` → `choose` → `movement` → `attack` → `defense` → `waiting`.
   Активна ровно одна фаза на игрока; она разрешает свои клики и объявляет `controls`.
+- **`turn.index` и `round` — разные счётчики** (`shared/lifecycle/turnStart.js`): `turn.index` растёт
+  каждый ход, а `round` — раз в круг, когда ход возвращается к тому, кто в этом круге уже ходил
+  (`turn.actedRound`, мёртвые из списка выпадают). Проверять «все живые уже ходили» нельзя: после сброса
+  списка условие срабатывает на каждом следующем ходу, и на двоих `round` рос каждый ход — регрессия
+  закрыта тестом `tests/unit/core/turnStart.test.js` («на двоих round растёт раз в круг»).
 - **Моменты** (`constants/moments.js`): `gameStart`(0), `turnStart`(1), `effect`(2), `picked`(3),
   `immediately`(4), `duringCombat`(5), `afterCombat`(6), `turnEnd`(7). Неизвестный — ошибка движка.
 - **DSL:** `rules: [{ moment, when: [факты], any: [[факты]], then: [{ action, … }] }]` у карт и способностей.

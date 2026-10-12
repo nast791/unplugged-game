@@ -34,12 +34,11 @@ export default {
     }
 
     const aliveIds = new Set(alivePlayers.map(entry => String(entry.playerId)));
-    const actedRound = [
-      ...new Set([
-        ...(state.turn?.actedRound ?? []).filter(id => aliveIds.has(String(id))),
-        playerId,
-      ]),
-    ];
+    // Круг закрыт, когда ход возвращается к тому, кто в этом круге уже ходил: тогда round += 1,
+    // а список ходивших начинается заново. Проверять «все живые уже ходили» нельзя: после сброса
+    // списка условие выполнялось бы на каждом следующем ходу, и на двоих round рос каждый ход.
+    const actedBefore = (state.turn?.actedRound ?? []).filter(id => aliveIds.has(String(id)));
+    const startsNewRound = actedBefore.some(id => String(id) === playerId);
 
     state.turn = {
       ...state.turn,
@@ -47,12 +46,11 @@ export default {
       actionsTotal: rules.actionsPerTurn,
       actionsLeft: rules.actionsPerTurn,
       bonus: { movement: 0, attack: 0, defense: 0, actions: 0 },
-      actedRound,
+      actedRound: startsNewRound ? [playerId] : [...new Set([...actedBefore, playerId])],
     };
 
-    if (actedRound.length >= alivePlayers.length) {
+    if (startsNewRound) {
       state.round = (state.round ?? 1) + 1;
-      state.turn.actedRound = [playerId];
     }
 
     return state;
@@ -75,7 +73,8 @@ export default {
  5. Прибавляем к счетчику ходов 1 (turn.index += 1).
  6. Общее количество действий и оставшееся количество действий в ходе сбрасываем на rules.actionsPerTurn.
  7. Обнуляем все временные бонусы (movement, attack, defense, actions).
- 8. В turn.actedRound добавляем текущего игрока (убираем id мёртвых, без дублей); если все живые уже ходили в этом раунде — round += 1, actedRound = [текущий игрок].
+ 8. В turn.actedRound добавляем текущего игрока (id мёртвых выпадают, без дублей). Если ход вернулся к тому,
+    кто в этом круге уже ходил, — круг закрыт: round += 1, actedRound = [текущий игрок].
  9. TODO: проверяем скилл героя активного игрока - срабатывает ли он в этом хуке.
  10. После body core переводит hook в turn.
  */
