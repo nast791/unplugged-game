@@ -32,7 +32,7 @@ import {
   startMarkers,
   tileClipFunc,
   trimSegment,
-} from '../../../app/composables/useBoardGeometry.js';
+} from '../../../app/composables/ui/useBoardGeometry.js';
 import {
   TERRAIN,
   TERRAIN_IDS,

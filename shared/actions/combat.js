@@ -617,6 +617,10 @@ const resolveCombat = partyState => {
     defendedWithCard: Boolean(combat.defendedWithCard),
     attackCardId: cardKey(combat.attackCard),
     defenseCardId: combat.defenseCard == null ? null : cardKey(combat.defenseCard),
+    // обе карты битвы раскрыты в момент расчёта — запись боя сама несёт их: по одним ключам
+    // окно вскрытия не может их найти (снимок боя сделан до действия, карты тогда были в руке)
+    attackCard: combat.attackCard == null ? null : { ...combat.attackCard },
+    defenseCard: combat.defenseCard == null ? null : { ...combat.defenseCard },
   };
 
   if (outcome.combatDamage > 0) {

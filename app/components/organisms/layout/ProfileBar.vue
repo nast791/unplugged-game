@@ -1,9 +1,11 @@
 <template>
   <section class="relative flex items-center gap-16">
-    <span class="text-ink flex items-center gap-6" :title="`Игровая валюта: ${currencyLabel}`">
-      <Icon name="lucide:coins" class="text-gold size-24!" aria-hidden="true" />
-      <span class="text-16 lining-nums">{{ currencyLabel }}</span>
-    </span>
+    <ATooltip :text="currencyTooltip">
+      <span class="text-ink flex items-center gap-6">
+        <Icon name="lucide:coins" class="text-gold size-24!" aria-hidden="true" />
+        <span class="text-16 lining-nums">{{ currencyLabel }}</span>
+      </span>
+    </ATooltip>
 
     <AButton
       variant="ghost"
@@ -26,7 +28,9 @@
 <script setup>
 import AAvatar from '~/components/atoms/AAvatar.vue';
 import AButton from '~/components/atoms/AButton.vue';
-import { useProfile } from '~/composables/useProfile';
+import ATooltip from '~/components/atoms/ATooltip.vue';
+import { TOOLTIPS } from '~/constants/tooltips.js';
+import { useProfile } from '~/composables/ui/useProfile';
 import { openModal } from '~/composables/ui/useModal';
 
 const { nick, avatar, currency } = useProfile();
@@ -36,6 +40,8 @@ const DEFAULT_AVATAR = 'lucide:user-round';
 const currencyLabel = computed(() =>
   String(Math.max(0, Math.trunc(currency.value))).replace(/\B(?=(\d{3})+(?!\d))/g, ' '),
 );
+
+const currencyTooltip = computed(() => TOOLTIPS.profile.currency({ label: currencyLabel.value }));
 
 const openProfile = () => openModal('profile');
 </script>

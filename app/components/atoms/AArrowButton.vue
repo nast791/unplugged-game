@@ -14,7 +14,6 @@
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 
-/** Кнопка-стрелка: сторона в `direction` (`prev` — влево, `next` — вправо). */
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps({

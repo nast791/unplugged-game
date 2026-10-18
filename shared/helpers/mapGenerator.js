@@ -2,45 +2,47 @@ import { TERRAIN_IDS, isTerrainId } from '#shared/constants/terrain.js';
 import { seatSide } from '#shared/constants/seats.js';
 
 /**
- * Генератор полей: раскладка клеток + зоны стихий + симметричные стартовые клетки, всё от сида партии.
+ * Генератор полей: раскладка клеток + земли + стартовые клетки, всё от сида партии.
  *
- * Ориентиры — настоящие поля Unmatched (`.refs/maps`, посчитала владелица игры): всего 28–38 клеток
- * и 6–8 зон, на любое такое поле помещаются все шесть наших стихий. Оттуда же анатомия раскладки:
- * кружки стоят **не по сетке** — со смещениями, и связи между ними разные (у клетки 2–5 соседей,
- * встречаются диагонали и длинные линии). Поэтому зоны выходят неровными, а поле не выглядит
- * зеркальным. Отсюда параметры:
- *  - клеток по числу игроков: 2 → 30, 3 → 32, 4 → 34 (внутри диапазона 28–38);
- *  - зон 6–8; у нас шесть типов стихий, поэтому лишние зоны повторяют стихию — это отдельные участки
- *    поля, но для правил одна область (область = стихия);
- *  - минимум 4 клетки на зону («3 клетки на стихию — мало»);
- *  - клеток с двумя и тремя стихиями немного (≤ 15%), но хотя бы одна двухцветная и одна трёхцветная
- *    обязательны — как расколотые кружки на стыках зон в референсе;
- *  - стартовые клетки симметричны: двое — противоположные стороны, трое — треугольник, четверо — углы.
- *    Герой встаёт на номерную клетку, помощники — в его области, поэтому у стартовой области каждой
- *    стороны должно хватать клеток на всех её бойцов.
+ * Правила земель (решение владельца, m00001): на поле 8–10 разных земель по сиду, каждая — своя зона
+ * без повторов. Стартовых земель ровно по числу игроков: на них стоят номерные клетки и хватает места
+ * на весь пак стороны. Остальные земли — малые: без номеров, у краёв, размером от одной клетки до
+ * размера самой крупной крупной земли. Земли героев (`terrainAffinity`) входят в набор, но старт к ним
+ * не привязан: карта обязана их содержать, а не ставить героя на «его» стихию.
+ * Одна земля не занимает больше `MAX_TERRAIN_CELLS` клеток поля.
  *
+ * Честность старта (правило владельца, m00532): клетка, соседняя с номерной, не может принадлежать
+ * чужой стартовой области — иначе помощник встаёт вплотную к чужому герою. Между номерами остаётся
+ * малая земля или своя крупная, и такие старты генератор только и принимает.
+ *
+ * Ориентиры — настоящие поля Unmatched (`.refs/maps`): всего 28–38 клеток. Оттуда же анатомия
+ * раскладки: кружки стоят не по сетке, связи разные (у клетки 2–5 соседей), зоны выходят неровными.
+ * Клеток с двумя и тремя стихиями немного, но хотя бы одна двухцветная и одна трёхцветная обязательны.
  * Генератор чистый: тот же сид и те же параметры — та же карта.
  */
-
-/**
- * Ориентиры с настоящих полей Unmatched: клеток у 2 игроков 28–32, у 4 героев 28–38, зон 6–8.
- * Поэтому число клеток и зон выбирается **случайно в диапазоне** по сиду партии, а не фиксировано:
- * два поля с разными сидами отличаются и размером, и формой.
- */
 export const BOARD_PRESETS = {
-  2: { cells: [28, 32], zones: [6, 7] },
-  3: { cells: [30, 34], zones: [6, 7] },
-  4: { cells: [30, 38], zones: [6, 8] },
+  2: { cells: [32, 36] },
+  3: { cells: [34, 40] },
+  4: { cells: [34, 42] },
 };
 
-/** Минимум клеток в зоне. */
-export const MIN_ZONE_CELLS = 4;
+/** Сколько разных земель бывает на поле: минимум 8, максимум 10 — по сиду. */
+export const MIN_TERRAIN_COUNT = 8;
+export const MAX_TERRAIN_COUNT = 10;
+/** Предел клеток на один тип земли: больше десяти клеток земля не занимает (правило владельца). */
+export const MAX_TERRAIN_CELLS = 10;
 /**
- * Границы **ручного** размера поля (клетки): «Авто» отдаёт размер сиду по пресетам ниже, а игрок может
- * задать число сам. Меньше 28 — пусто (шесть зон по четыре клетки не набираются), больше 38 — полотно
- * вместо поля (ориентир настоящих полей Unmatched — 28–38).
+ * Минимум шагов между номерными клетками (правило владельца). Считаем **шаги по связям**, а не
+ * пиксели: дальность атаки и шага в правилах — это BFS по соседям, поэтому «четыре клетки» значит
+ * ровно четыре перехода. Наибольшая дальность атаки в игре — 3, значит на четырёх шагах никто не
+ * достаёт чужой номерной клетки с места, и партия не начинается с драки.
  */
-export const CELLS_LIMIT = { min: 28, max: 38 };
+export const START_GAP_STEPS = 4;
+/**
+ * Границы **ручного** размера поля (клетки): «Авто» отдаёт размер сиду по пресетам выше, а игрок может
+ * задать число сам. Меньше 32 — тесно стартовым землям и 4–6 малым, больше 42 — полотно вместо поля.
+ */
+export const CELLS_LIMIT = { min: 32, max: 42 };
 /** Сколько цветных клеток бывает на поле: трёхцветных 1–4, двухцветных 2–8. */
 export const MULTI_CELL_COUNTS = { three: [1, 4], two: [2, 8] };
 /**
@@ -54,8 +56,10 @@ export const CELL_STEP_Y = 158;
 export const CELL_JITTER = 8;
 /** Размер клетки для клиента: кружок с воздухом вокруг, соединители читаются. */
 export const CELL_SIZE = 112;
+/** Предел связей у клетки после прямых линий между клетками одной земли (раскладка даёт до шести). */
+export const MAX_CELL_LINKS = 8;
 /** Сколько раз пробуем другой расклад, если не сошлись гарантии. */
-const ATTEMPTS = 60;
+const ATTEMPTS = 500;
 
 /** Вероятности связей: сетка не полная, поэтому у клеток разное число соседей. */
 const LINK_CHANCE = { ortho: 0.8, diagonal: 0.3 };
@@ -88,6 +92,36 @@ const makeRng = seed => {
 
 const distanceBetween = (left, right) =>
   Math.abs(left.col - right.col) + Math.abs(left.row - right.row);
+
+/**
+ * Расстояние в шагах по связям поля: столько шагов боец пройдёт от клетки до клетки. Именно этой
+ * мерой считают дальность правила (`shared/helpers/board.js`), поэтому и стартовые клетки разводим
+ * ею, а не пикселями: на глаз две клетки могут стоять далеко, а по полю быть в одном шаге.
+ */
+export const stepsBetween = (nodes, from, to) => {
+  const byId = new Map((nodes ?? []).map(node => [String(node.id), node]));
+  const start = String(from);
+  const finish = String(to);
+  if (!byId.has(start) || !byId.has(finish)) return null;
+  if (start === finish) return 0;
+
+  const seen = new Set([start]);
+  let frontier = [start];
+  for (let step = 1; frontier.length; step += 1) {
+    const next = [];
+    for (const id of frontier) {
+      for (const raw of byId.get(id)?.neighbors ?? []) {
+        const neighbour = String(raw);
+        if (seen.has(neighbour)) continue;
+        if (neighbour === finish) return step;
+        seen.add(neighbour);
+        next.push(neighbour);
+      }
+    }
+    frontier = next;
+  }
+  return null;
+};
 
 /** Случайное целое из диапазона [min, max] по генератору карты. */
 const pickRange = (rng, [min, max]) => min + rng.int(max - min + 1);
@@ -428,48 +462,196 @@ const neighboursOf = (nodes, node) => {
   return (node.neighbors ?? []).map(id => index.get(id)).filter(Boolean);
 };
 
-/** Семена зон: farthest-point sampling, чтобы зоны были разбросаны по полю. */
-const pickSeeds = (cells, count, rng) => {
-  const seeds = [rng.pick(cells)];
-  while (seeds.length < count) {
+/** Семена стартовых земель: каждое место получает семя на своей стороне поля. */
+const pickCoreSeeds = (cells, playerCount, rng) => {
+  const seeds = [];
+  for (let index = 0; index < playerCount; index += 1) {
+    const side = seatSide(index + 1);
+    const free = cells.filter(cell => !seeds.includes(cell));
+    const onSide = free.filter(cell => sideEdgeSteps(cells, cell, side) <= 1);
+    const pool = onSide.length ? onSide : free;
     let best = null;
-    for (const cell of cells) {
-      if (seeds.includes(cell)) continue;
-      const distance = Math.min(
-        ...seeds.map(seed => Math.abs(seed.col - cell.col) + Math.abs(seed.row - cell.row)),
-      );
+    for (const cell of pool) {
+      const distance = seeds.length
+        ? Math.min(
+            ...seeds.map(seed => Math.abs(seed.col - cell.col) + Math.abs(seed.row - cell.row)),
+          )
+        : 0;
       const score = distance * 100 + rng.int(50);
       if (!best || score > best.score) best = { cell, score };
     }
-    if (!best) break;
+    if (!best) return null;
     seeds.push(best.cell);
   }
   return seeds;
 };
 
-/** Раскладываем клетки по зонам: растём от семян, всегда от самой маленькой зоны. */
-const growZones = (cells, seeds) => {
-  const owner = new Map(seeds.map((seed, index) => [seed.id, index]));
-  const sizes = () =>
-    seeds.map((_, index) => [...owner.values()].filter(value => value === index).length);
+/** Малые земли: без номера, семена у краёв, farthest-point от стартовых семян. */
+const pickSmallSeeds = (cells, coreSeeds, count, rng, owner, coreCount, required) => {
+  const sizes = regionSizes(coreCount, owner);
+  const removed = new Set();
+  const taken = new Array(coreCount).fill(0);
+  const removable = cell => {
+    const region = owner.get(cell.id);
+    if (region == null || region >= coreCount) return true;
+    const rest = new Set(removed).add(cell.id);
+    return (
+      sizes[region] - taken[region] > required && regionStaysConnected(cells, owner, region, rest)
+    );
+  };
+  const seeds = [...coreSeeds];
+  const picked = [];
+  while (picked.length < count) {
+    const free = cells.filter(cell => !seeds.includes(cell) && removable(cell));
+    const edge = free.filter(
+      cell =>
+        Math.min(
+          ...['left', 'right', 'top', 'bottom'].map(side => sideEdgeSteps(cells, cell, side)),
+        ) <= 1,
+    );
+    const pool = edge.length ? edge : free;
+    let best = null;
+    for (const cell of pool) {
+      const distance = Math.min(
+        ...seeds.map(seed => Math.abs(seed.col - cell.col) + Math.abs(seed.row - cell.row)),
+      );
+      const score = distance * 100 + rng.int(20);
+      if (!best || score > best.score) best = { cell, score };
+    }
+    if (!best) return null;
+    seeds.push(best.cell);
+    picked.push(best.cell);
+    const region = owner.get(best.cell.id);
+    removed.add(best.cell.id);
+    if (region != null && region < coreCount) taken[region] += 1;
+  }
+  return picked;
+};
 
+const regionSizes = (count, owner) => {
+  const sizes = new Array(count).fill(0);
+  for (const region of owner.values()) sizes[region] += 1;
+  return sizes;
+};
+
+/**
+ * Размеры малых земель: от 1 клетки до самой крупной крупной земли. Свободный запас (клетки, которые
+ * крупные земли могут отдать, не оголяя старт) раздаётся случайно: на одном поле малые — островки,
+ * на другом — земли не меньше крупных. `minTotal` — сколько клеток малые обязаны забрать, чтобы ни одна
+ * крупная земля не превысила предел клеток. Хотя бы одна клетка каждой крупной земли остаётся ей.
+ */
+const pickSmallSizes = (count, capacity, maxSize, rng, minTotal = count) => {
+  const sizes = new Array(count).fill(1);
+  if (minTotal > count * maxSize) return null;
+  const budget = Math.max(0, capacity - count);
+  const floor = Math.max(0, minTotal - count);
+  if (floor > budget) return null;
+  const extra = floor + rng.int(budget - floor + 1);
+  if (!extra || maxSize <= 1) return sizes;
+  let left = extra;
+  const order = rng.shuffle(sizes.map((_, index) => index));
+  while (left > 0) {
+    const able = order.filter(index => sizes[index] < maxSize);
+    if (!able.length) break;
+    sizes[rng.pick(able)] += 1;
+    left -= 1;
+  }
+  return sizes;
+};
+
+const touchingRegions = (cells, owner, cell) => [
+  ...new Set(
+    neighboursOf(cells, cell)
+      .filter(other => owner.has(other.id))
+      .map(other => owner.get(other.id)),
+  ),
+];
+
+/**
+ * Малые земли вырезаются из уже разложенного поля: так они не могут отрезать крупной земле
+ * недоступный кусок (цепочка малых зон поперёк поля оставляла клетки без хозяина).
+ *
+ * Растём от семени по связям, а не только по его прямым соседям: земля на 3+ клетки должна быть
+ * цельным участком. У крупной земли не отнимаем последнюю клетку сверх `required` и клетку,
+ * которая разрывает её область на несвязанные куски.
+ */
+const regionStaysConnected = (cells, owner, region, removeIds) => {
+  const removed = removeIds instanceof Set ? removeIds : new Set([removeIds]);
+  const members = cells.filter(cell => owner.get(cell.id) === region && !removed.has(cell.id));
+  if (members.length <= 1) return true;
+  const allowed = new Set(members.map(cell => cell.id));
+  const index = byId(cells);
+  const seen = new Set([members[0].id]);
+  const queue = [members[0]];
+  while (queue.length) {
+    const cell = queue.shift();
+    for (const id of cell.neighbors ?? []) {
+      if (!allowed.has(id) || seen.has(id)) continue;
+      const other = index.get(id);
+      if (!other) continue;
+      seen.add(id);
+      queue.push(other);
+    }
+  }
+  return seen.size === members.length;
+};
+
+const carveSmallZones = (
+  cells,
+  owner,
+  smallSeeds,
+  coreCount,
+  reserved,
+  rng,
+  required = 1,
+  targets = [],
+) => {
+  const index = byId(cells);
+  for (const [offset, seed] of smallSeeds.entries()) {
+    const region = coreCount + offset;
+    owner.set(seed.id, region);
+    const target = targets[offset] ?? 1;
+    let size = 1;
+    while (size < target) {
+      const sizes = regionSizes(coreCount, owner);
+      const frontier = new Set();
+      for (const cell of cells) {
+        if (owner.get(cell.id) !== region) continue;
+        for (const id of cell.neighbors ?? []) {
+          const other = index.get(id);
+          if (other) frontier.add(other);
+        }
+      }
+      const options = [...frontier].filter(
+        cell =>
+          !reserved.has(cell.id) &&
+          owner.get(cell.id) < coreCount &&
+          sizes[owner.get(cell.id)] > required &&
+          regionStaysConnected(cells, owner, owner.get(cell.id), cell.id),
+      );
+      if (!options.length) break;
+      const bestSize = Math.max(...options.map(cell => sizes[owner.get(cell.id)]));
+      const best = options.filter(cell => sizes[owner.get(cell.id)] === bestSize);
+      owner.set(rng.pick(best).id, region);
+      size += 1;
+    }
+  }
+  return owner;
+};
+
+/** Остаток поля делим между стартовыми землями: всегда отдаём самой маленькой. */
+const growCoreZones = (cells, owner, seedCount, coreCount) => {
   while (owner.size < cells.length) {
-    const sizesNow = sizes();
+    const sizes = regionSizes(seedCount, owner);
     let best = null;
     for (const cell of cells) {
       if (owner.has(cell.id)) continue;
-      const touching = [
-        ...new Set(
-          neighboursOf(cells, cell)
-            .filter(other => owner.has(other.id))
-            .map(other => owner.get(other.id)),
-        ),
-      ];
-      if (touching.length === 0) continue;
+      const touching = touchingRegions(cells, owner, cell).filter(region => region < coreCount);
+      if (!touching.length) continue;
       const region = touching.reduce((smallest, index) =>
-        sizesNow[index] < sizesNow[smallest] ? index : smallest,
+        sizes[index] < sizes[smallest] ? index : smallest,
       );
-      const score = sizesNow[region] * 1000 - touching.length;
+      const score = sizes[region] * 1000 - touching.length;
       if (!best || score < best.score) best = { cell, region, score };
     }
     if (!best) break;
@@ -478,55 +660,14 @@ const growZones = (cells, seeds) => {
   return owner;
 };
 
-/**
- * Маленькие зоны: сначала пробуем отобрать клетку у соседа, который выдержит потерю,
- * а если такого нет — вливаем зону в самую большую соседнюю (зон станет меньше).
- */
-const repairZones = (cells, owner, regionCount) => {
-  const sizes = () => {
-    const list = new Array(regionCount).fill(0);
-    for (const region of owner.values()) list[region] += 1;
-    return list;
-  };
-
-  for (let guard = 0; guard < cells.length * regionCount; guard += 1) {
-    const list = sizes();
-    const small = list.findIndex((size, index) => size > 0 && size < MIN_ZONE_CELLS);
-    if (small < 0) return true;
-
-    let moved = false;
-    for (const cell of cells) {
-      if (owner.get(cell.id) !== small) continue;
-      const donors = [
-        ...new Set(neighboursOf(cells, cell).map(other => owner.get(other.id))),
-      ].filter(region => region !== small && list[region] > MIN_ZONE_CELLS);
-      if (donors.length === 0) continue;
-      const donor = donors.reduce((biggest, region) =>
-        list[region] > list[biggest] ? region : biggest,
-      );
-      owner.set(cell.id, donor);
-      moved = true;
-      break;
-    }
-    if (moved) continue;
-
-    const members = cells.filter(cell => owner.get(cell.id) === small);
-    const neighbours = [
-      ...new Set(
-        members.flatMap(cell => neighboursOf(cells, cell).map(other => owner.get(other.id))),
-      ),
-    ].filter(region => region !== small && list[region] > 0);
-    if (neighbours.length === 0) return false;
-    const host = neighbours.reduce((biggest, region) =>
-      list[region] > list[biggest] ? region : biggest,
-    );
-    for (const cell of members) owner.set(cell.id, host);
-  }
-  return false;
-};
-
 /** Цветные клетки: стыки зон, где на одной клетке оказываются две-три стихии. */
-const addMultiCells = (cells, owner, regionTerrains, rng) => {
+const addMultiCells = (
+  cells,
+  owner,
+  regionTerrains,
+  rng,
+  { regionSizes = [], coreCount = 0 } = {},
+) => {
   const neighboursTerrains = (cell, own) => [
     ...new Set(
       neighboursOf(cells, cell)
@@ -556,13 +697,24 @@ const addMultiCells = (cells, owner, regionTerrains, rng) => {
 
   const chosen = new Map();
   const countOf = kind => [...chosen.values()].filter(value => value === kind).length;
+  const countInRegion = region =>
+    [...chosen.keys()].filter(cellId => owner.get(cellId) === region).length;
+  // У малой земли оставляем хотя бы одну чистую клетку: 1-клеточную не красим вовсе,
+  // у большой малой земли цветных может быть сколько угодно, кроме последней.
+  const canColour = entry => {
+    if (entry.own < coreCount) return true;
+    const size = regionSizes[entry.own] ?? 1;
+    return countInRegion(entry.own) < Math.max(0, size - 1);
+  };
   for (const entry of rng.shuffle(three)) {
     if (countOf(3) >= wantThree) break;
+    if (!canColour(entry)) continue;
     chosen.set(entry.cell.id, 3);
   }
   for (const entry of rng.shuffle(two)) {
     if (countOf(2) >= wantTwo) break;
-    if (!chosen.has(entry.cell.id)) chosen.set(entry.cell.id, 2);
+    if (chosen.has(entry.cell.id) || !canColour(entry)) continue;
+    chosen.set(entry.cell.id, 2);
   }
 
   // Цвета берём у «чистых» соседей: тогда рядом с клеткой точно есть клетка этого цвета.
@@ -602,6 +754,94 @@ const terrainList = node => {
   return list.filter(Boolean).map(String);
 };
 
+/** Земля без разрывов: все её клетки достижимы по связям, проходя только по той же стихии. */
+const brokenTerrain = nodes => {
+  const cells = nodes ?? [];
+  const index = new Map(cells.map(cell => [String(cell.id), cell]));
+  const terrains = new Set(cells.flatMap(terrainList));
+  for (const terrain of terrains) {
+    const members = cells.filter(cell => terrainList(cell).includes(terrain));
+    if (members.length <= 1) continue;
+    const allowed = new Set(members.map(cell => String(cell.id)));
+    const seen = new Set([String(members[0].id)]);
+    const queue = [members[0]];
+    while (queue.length) {
+      const cell = queue.shift();
+      for (const raw of cell.neighbors ?? []) {
+        const key = String(raw);
+        if (!allowed.has(key) || seen.has(key)) continue;
+        const other = index.get(key);
+        if (!other) continue;
+        seen.add(key);
+        queue.push(other);
+      }
+    }
+    if (seen.size !== allowed.size) return terrain;
+  }
+  return null;
+};
+
+const primaryTerrain = node => terrainList(node)[0] ?? null;
+
+/**
+ * Предел клеток на землю: цветная клетка принадлежит сразу двум-трём землям, поэтому после стыков
+ * одна земля может перебрать десять клеток. Лишние цвета снимаем с цветных клеток (свою стихию
+ * клетки не трогаем), пока каждая земля не уложится в предел.
+ */
+const limitTerrainFootprint = (cells, max = MAX_TERRAIN_CELLS) => {
+  const out = cells.map(cell => ({ ...cell }));
+  const counts = new Map();
+  for (const cell of out) {
+    for (const terrain of terrainList(cell)) {
+      counts.set(terrain, (counts.get(terrain) ?? 0) + 1);
+    }
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const cell of out) {
+      const list = terrainList(cell);
+      if (list.length < 2) continue;
+      const extra = list.slice(1).find(terrain => (counts.get(terrain) ?? 0) > max);
+      if (!extra) continue;
+      counts.set(extra, counts.get(extra) - 1);
+      const next = list.filter(terrain => terrain !== extra);
+      cell.terrain = next.length === 1 ? next[0] : next;
+      changed = true;
+      break;
+    }
+  }
+  return out;
+};
+
+/**
+ * Прямые линии между соседними клетками одной земли: связность маршрутом — не то же самое, что
+ * «клетки связаны» (жалоба владельца). Пары, которым линия не влезает (третий кружок на отрезке или
+ * предел связей), считаем провалом раскладки — поле с ними не отдаём.
+ */
+const linkSameTerrain = (cells, maxDegree = MAX_CELL_LINKS) => {
+  let blocked = 0;
+  for (let i = 0; i < cells.length; i += 1) {
+    for (let j = i + 1; j < cells.length; j += 1) {
+      const left = cells[i];
+      const right = cells[j];
+      if (!isNeighbourPair(left, right)) continue;
+      if (primaryTerrain(left) !== primaryTerrain(right)) continue;
+      if (left.neighbors.includes(right.id)) continue;
+      if (
+        left.neighbors.length >= maxDegree ||
+        right.neighbors.length >= maxDegree ||
+        !clearsSegment(left, right, cells)
+      ) {
+        blocked += 1;
+        continue;
+      }
+      link(left, right);
+    }
+  }
+  return blocked;
+};
+
 /**
  * Одноцветная клетка. **Номерная клетка обязана быть одноцветной** (правило владельца): по её стихии
  * считается вся область расстановки, и на стыке зон (двух- и трёхцветная клетка) место игрока тянуло бы
@@ -626,14 +866,61 @@ export const numberedCellOf = (map, playerOrder) =>
     node => node.heroStart === true && Number(node.position) === Number(playerOrder),
   ) ?? null;
 
+/**
+ * Клетки одной стихии стоят рядом: считаем **связную область** вокруг клетки (только общая стихия,
+ * через соседей по связям). Так работает расстановка: помощники встают в область героя, и она должна
+ * быть цельным участком поля, а не россыпью по всей карте (правило владельца).
+ */
+export const terrainAreaCellIds = (nodes, cellId) => {
+  const byId = new Map((nodes ?? []).map(node => [String(node.id), node]));
+  const start = byId.get(String(cellId));
+  if (!start) return [];
+  const terrains = terrainList(start);
+
+  const area = new Set([String(start.id)]);
+  const queue = [start];
+  while (queue.length) {
+    const cell = queue.shift();
+    for (const raw of cell.neighbors ?? []) {
+      const key = String(raw);
+      if (area.has(key)) continue;
+      const other = byId.get(key);
+      if (!other) continue;
+      if (!terrainList(other).some(terrain => terrains.includes(terrain))) continue;
+      area.add(key);
+      queue.push(other);
+    }
+  }
+  return [...area];
+};
+
 const chooseStarts = (
-  cells,
+  nodes,
   owner,
   regionTerrains,
   playerCount,
   rng,
-  { regionSizes = null, required = 1, layoutWidth = null, layoutHeight = null } = {},
+  {
+    regionSizes = null,
+    required = 1,
+    packs = null,
+    layoutWidth = null,
+    layoutHeight = null,
+    startRegions = null,
+  } = {},
 ) => {
+  const cells = nodes ?? [];
+  const map = { nodes: cells };
+  /**
+   * Уже занятые клетки выбранных стартов: клетка на стыке зон принадлежит двум областям, поэтому
+   * «своё» место считается по областям, а не по стихиям. Пустая область у чужого старта — та же беда:
+   * помощники соседа займут клетки первыми, и своим бойцам ставить будет некуда.
+   */
+  const takenAreas = new Set();
+  const exclusiveRoom = cell => {
+    const area = areaCellIds(map, cell.id);
+    return area.filter(id => !takenAreas.has(String(id))).length;
+  };
   const centre = cells.reduce(
     (acc, cell) => ({
       x: acc.x + cell.x / cells.length,
@@ -649,17 +936,29 @@ const chooseStarts = (
   /** Старт места стоит у **своей** стороны: в крайней колонке (строке) поля или в следующей от неё. */
   const sideDepth = (cell, side) => sideEdgeSteps(cells, cell, side);
   const onSide = (cell, side) => sideDepth(cell, side) <= 1;
-  /** Насколько стороны должны быть разведены: двое — почти через всё поле, остальные — на 2 клетки. */
-  const gapSteps = playerCount === 2 ? 3.5 : 2;
+  /**
+   * Старты разведены **по шагам поля** (`START_GAP_STEPS`): с номерной клетки никто не должен доставать
+   * чужую — наибольшая дальность атаки 3. Пиксельное расстояние для этого не годится: две клетки могут
+   * стоять через весь экран и быть соседями по связям (жалоба владельца: места 2 и 3 встали рядом,
+   * и герои начали бить друг друга с первого хода).
+   */
+  const gapFrom = (cell, list) =>
+    Math.min(
+      ...list.map(other => stepsBetween(cells, other.id, cell.id) ?? Number.POSITIVE_INFINITY),
+    );
+  const gapEnough = (cell, list) => list.length === 0 || gapFrom(cell, list) >= START_GAP_STEPS;
   const starts = [];
 
   for (const { side } of directions) {
     // Годятся обе клетки у края: и крайняя, и вторая от неё. Какую взять — решает сид, иначе старт
     // всегда прилипает к самой крайней клетке и поле выглядит одинаково на всех партиях.
     const preferredDepth = rng.int(2);
-    const scoreOf = cell => {
+    const ownRequired = packs?.[starts.length] ?? required;
+    const scoreOf = gap => cell => {
       // на старт годится зона, в которой хватит места всем бойцам стороны
       const roomy = regionSizes == null || (regionSizes.get(owner.get(cell.id)) ?? 0) >= required;
+      // и своего места в области: чужие клетки на стыке зон своими не считаются
+      const own = exclusiveRoom(cell) >= ownRequired;
       // глубину выбираем по сиду, а расстояние до чужих стартов просто помогает не сбиться в кучу
       const depth = sideDepth(cell, side);
       const separation = starts.length
@@ -668,56 +967,97 @@ const chooseStarts = (
       return (
         (depth === preferredDepth ? 120 : 0) +
         Math.min(separation, CELL_STEP * 4) / 2 +
+        // из годных по шагам стартов предпочитаем самый дальний: разведённые места читаются лучше
+        (gap ? Math.min(gap, START_GAP_STEPS * 2) * 20 : 0) +
         (roomy ? 40 : 0) +
+        (own ? 60 : 0) +
         rng.int(20)
       );
     };
 
     const ranked = cells
       .filter(cell => !used.has(cell.id))
+      // стартовая земля места: номерная клетка стоит в своей крупной земле, а не в малой
+      .filter(cell => startRegions == null || startRegions[starts.length] === owner.get(cell.id))
       // номерная клетка — только одноцветная: цветную на стыке зон на старт не берём
       .filter(isSingleTerrainCell)
-      .map(cell => ({ cell, score: scoreOf(cell) }))
+      // и у клетки должна быть **связная область** хотя бы на всех бойцов стороны: иначе помощники
+      // вставали бы в разные концы поля, а не в один участок (правило владельца)
+      .filter(cell => terrainAreaCellIds(cells, cell.id).length >= required)
+      .map(cell => ({ cell, gap: gapFrom(cell, starts) }))
+      .map(entry => ({ ...entry, score: scoreOf(entry.gap)(entry.cell) }))
       .sort((left, right) => right.score - left.score);
+    // старты, которые стоят от чужих не ближе `START_GAP_STEPS`: из них и выбираем
+    const apart = ranked.filter(entry => entry.gap >= START_GAP_STEPS);
 
     const takenTerrains = new Set(starts.flatMap(start => terrainList(start)));
     // области стартов не пересекаются: иначе две стороны встают на одни и те же клетки
     const disjoint = entry => !terrainList(entry.cell).some(terrain => takenTerrains.has(terrain));
-    // старты не сбиваются в кучу: держим заданную дистанцию, при неудаче — три четверти от неё
-    const gapEnough = gap => entry =>
-      starts.every(
-        start => Math.hypot(start.x - entry.cell.x, start.y - entry.cell.y) >= CELL_STEP * gap,
-      );
 
     const mine = entry => onSide(entry.cell, side);
+    const ownRoom = entry => exclusiveRoom(entry.cell) >= ownRequired;
     const pick =
-      ranked.find(entry => mine(entry) && disjoint(entry) && gapEnough(gapSteps)(entry)) ??
-      ranked.find(entry => mine(entry) && gapEnough(gapSteps)(entry)) ??
+      apart.find(entry => mine(entry) && ownRoom(entry) && disjoint(entry)) ??
+      apart.find(entry => mine(entry) && ownRoom(entry)) ??
+      apart.find(entry => ownRoom(entry)) ??
+      apart.find(entry => mine(entry) && disjoint(entry)) ??
+      apart.find(mine) ??
+      apart[0] ??
+      ranked.find(entry => mine(entry) && ownRoom(entry) && gapEnough(entry.cell, starts)) ??
+      ranked.find(entry => mine(entry) && disjoint(entry) && gapEnough(entry.cell, starts)) ??
+      ranked.find(entry => mine(entry) && gapEnough(entry.cell, starts)) ??
+      ranked.find(entry => mine(entry) && ownRoom(entry)) ??
       ranked.find(entry => mine(entry) && disjoint(entry)) ??
       ranked.find(mine) ??
-      ranked.find(entry => disjoint(entry) && gapEnough(gapSteps)(entry)) ??
-      ranked.find(gapEnough(gapSteps)) ??
-      ranked.find(disjoint) ??
+      ranked.find(entry => ownRoom(entry)) ??
+      ranked.find(entry => disjoint(entry)) ??
       ranked[0];
     if (!pick) return null;
     used.add(pick.cell.id);
+    for (const id of areaCellIds(map, pick.cell.id)) takenAreas.add(String(id));
     starts.push({ ...pick.cell, heroStart: true, position: directions[starts.length].position });
   }
 
-  // жёсткие проверки: старт у своей стороны, области попарно различны, стороны разведены
+  // жёсткие проверки: старт у своей стороны, области попарно различны, стороны разведены по шагам
   for (let i = 0; i < starts.length; i += 1) {
     if (!onSide(starts[i], directions[i].side)) return null;
     if (!isSingleTerrainCell(starts[i])) return null;
+    if (startRegions != null && startRegions[i] !== owner.get(starts[i].id)) return null;
     for (let j = i + 1; j < starts.length; j += 1) {
       const left = terrainList(starts[i]);
       const right = terrainList(starts[j]);
       if (left.some(terrain => right.includes(terrain))) return null;
-      const gap = Math.hypot(starts[i].x - starts[j].x, starts[i].y - starts[j].y);
-      if (gap < CELL_STEP * gapSteps) return null;
+      if (!gapEnough(starts[j], [starts[i]])) return null;
     }
   }
 
   return starts;
+};
+
+/**
+ * Набор земель: земли героев входят обязательно, но ни одна из них не получает крупную землю по праву —
+ * крупные выбираются случайно, а недостающая любимая земля добирается малой. Старт к земле не привязан.
+ */
+const pickTerrains = (playerCount, smallCount, affinities, rng) => {
+  const required = [];
+  for (const list of affinities) {
+    for (const terrain of list ?? []) {
+      if (!required.includes(terrain)) required.push(terrain);
+    }
+  }
+  const pool = rng.shuffle(TERRAIN_IDS);
+  const core = pool.splice(0, playerCount);
+  const missing = required.filter(terrain => !core.includes(terrain));
+  while (missing.length > smallCount) {
+    const index = core.findIndex(terrain => !required.includes(terrain));
+    if (index < 0) break;
+    core[index] = missing.shift();
+  }
+  const rest = rng.shuffle(
+    TERRAIN_IDS.filter(terrain => !core.includes(terrain) && !missing.includes(terrain)),
+  );
+  const small = [...missing, ...rest].slice(0, smallCount);
+  return [...rng.shuffle(core), ...rng.shuffle(small)];
 };
 
 /**
@@ -726,14 +1066,16 @@ const chooseStarts = (
  * @param {number} options.players число игроков (2–4)
  * @param {number} options.seed сид партии
  * @param {number[]} [options.fightersPerPlayer] сколько бойцов у каждой стороны (для гарантии стартовой области)
+ * @param {string[][]} [options.affinities] земли героев: входят в набор, но старт к ним не привязан
  * @param {number} [options.cells] переопределить число клеток
- * @param {number} [options.zones] переопределить число зон
+ * @param {number} [options.zones] переопределить число земель (8–10)
  * @param {string} [options.id] id карты
  */
 export const generateMap = ({
   players = 2,
   seed = 1,
   fightersPerPlayer = null,
+  affinities = [],
   cells = null,
   zones = null,
   id = 'generated',
@@ -744,13 +1086,24 @@ export const generateMap = ({
   // Размер и форма выбираются по сиду один раз на карту: разные партии — разные поля.
   const shapeRng = makeRng(Number(seed));
   const targetCells = Number(cells) || pickRange(shapeRng, preset.cells);
-  const zoneCount = Math.max(6, Math.min(8, Number(zones) || pickRange(shapeRng, preset.zones)));
+  const maxTerrains = Math.min(MAX_TERRAIN_COUNT, TERRAIN_IDS.length);
+  const minTerrains = Math.min(MIN_TERRAIN_COUNT, maxTerrains);
+  const terrainCount = Math.max(
+    minTerrains,
+    Math.min(maxTerrains, Number(zones) || pickRange(shapeRng, [minTerrains, maxTerrains])),
+  );
+  const smallCount = terrainCount - playerCount;
   const shapeRatio = SHAPE_RATIO_RANGE[0] + shapeRng.int(7) * 0.1; // 2.1 … 2.7
   const momentum = 0.45 + shapeRng.int(5) * 0.05; // 0.45 … 0.65
   const jitter = 25 + shapeRng.int(16); // 25 … 40 % шага: раскладка хаотичная, а не решётка
   const fighters = Array.isArray(fightersPerPlayer)
     ? fightersPerPlayer.map(value => Math.max(1, Number(value) || 1))
     : new Array(playerCount).fill(4);
+  const required = Math.max(...fighters) + 1;
+  const affinityList = Array.from({ length: playerCount }, (_, index) => {
+    const raw = Array.isArray(affinities?.[index]) ? affinities[index] : [];
+    return raw.map(String).filter(isTerrainId);
+  });
 
   const reasons = [];
   /** Поле, у которого всё сошлось, кроме идеальной вытянутости: держим как запасной вариант. */
@@ -774,38 +1127,85 @@ export const generateMap = ({
       continue;
     }
 
-    const seeds = pickSeeds(layoutCells, zoneCount, rng);
-    const owner = growZones(layoutCells, seeds);
+    const coreSeeds = pickCoreSeeds(layoutCells, playerCount, rng);
+    if (!coreSeeds) {
+      reasons.push('стартовые земли не разложились');
+      continue;
+    }
+    const owner = new Map(coreSeeds.map((seed, index) => [seed.id, index]));
+    growCoreZones(layoutCells, owner, playerCount, playerCount);
     if (owner.size !== layoutCells.length) {
-      reasons.push('зоны не разложились');
+      reasons.push('земли не разложились');
       continue;
     }
-    if (!repairZones(layoutCells, owner, seeds.length)) {
-      reasons.push('зона меньше минимума');
+    const coreSizes = regionSizes(playerCount, owner);
+    if (coreSizes.some(size => size < required)) {
+      reasons.push('стартовая земля меньше пака');
       continue;
     }
-
-    const sizeOf = region => [...owner.values()].filter(value => value === region).length;
-    const usedRegions = [...new Set(owner.values())].sort(
-      (left, right) => sizeOf(right) - sizeOf(left),
+    const smallSeeds = pickSmallSeeds(
+      layoutCells,
+      coreSeeds,
+      smallCount,
+      rng,
+      owner,
+      playerCount,
+      required,
     );
-    if (usedRegions.length < 6) {
-      reasons.push('после слияния зон осталось меньше шести');
+    if (!smallSeeds) {
+      reasons.push('малые земли не разложились');
+      continue;
+    }
+    const seeds = [...coreSeeds, ...smallSeeds];
+    // Малые земли обязаны забрать столько клеток, чтобы ни одна крупная не перешла предел.
+    // Запас, который крупные земли могут отдать малым, не оголяя старт.
+    const capacity = layoutCells.length - playerCount * required;
+    const zoneLimit = Math.min(MAX_TERRAIN_CELLS - 1, Math.max(...coreSizes));
+    const minSmallTotal = Math.max(
+      smallCount,
+      layoutCells.length - playerCount * (MAX_TERRAIN_CELLS - 1),
+    );
+    const smallTargets = pickSmallSizes(smallCount, capacity, zoneLimit, rng, minSmallTotal);
+    if (!smallTargets) {
+      reasons.push('малые земли не разложились');
+      continue;
+    }
+    carveSmallZones(
+      layoutCells,
+      owner,
+      smallSeeds,
+      playerCount,
+      new Set(seeds.map(cell => cell.id)),
+      rng,
+      required,
+      smallTargets,
+    );
+    const sizes = regionSizes(seeds.length, owner);
+    if (sizes.slice(0, playerCount).some(size => size < required)) {
+      reasons.push('стартовая земля меньше пака');
+      continue;
+    }
+    if (sizes.slice(playerCount).some(size => size < 1)) {
+      reasons.push('малая земля потерялась');
+      continue;
+    }
+    if (sizes.some(size => size > MAX_TERRAIN_CELLS - 1)) {
+      reasons.push('земля больше десяти клеток');
       continue;
     }
 
-    // у стихий нет привилегий: все шесть тасуются и раздаются зонам по порядку, а зоны сверх шести
-    // (их бывает 7–8) берут случайную стихию. Повтор стихии в двух зонах допустим, «фоновой» нет.
-    const terrainOrder = rng.shuffle(TERRAIN_IDS);
-    const regionTerrains = new Array(seeds.length).fill(null);
-    usedRegions.forEach((region, index) => {
-      regionTerrains[region] =
-        index < terrainOrder.length ? terrainOrder[index] : rng.pick(TERRAIN_IDS);
-    });
-    const usedTerrains = usedRegions.map(region => regionTerrains[region]);
-    const regionSizes = new Map(usedRegions.map(region => [region, sizeOf(region)]));
-
-    const nodesWithTerrain = addMultiCells(layoutCells, owner, regionTerrains, rng);
+    const regionTerrains = pickTerrains(playerCount, smallCount, affinityList, rng);
+    const nodesWithTerrain = limitTerrainFootprint(
+      addMultiCells(layoutCells, owner, regionTerrains, rng, {
+        regionSizes: sizes,
+        coreCount: playerCount,
+      }),
+    );
+    const brokenArea = brokenTerrain(nodesWithTerrain);
+    if (brokenArea) {
+      reasons.push(`земля ${brokenArea} разорвана`);
+      continue;
+    }
     const multiCells = nodesWithTerrain.filter(node => terrainList(node).length > 1);
     const threeColour = multiCells.filter(node => terrainList(node).length === 3).length;
     const twoColour = multiCells.filter(node => terrainList(node).length === 2).length;
@@ -817,31 +1217,75 @@ export const generateMap = ({
       reasons.push('двухцветных клеток не по правилу');
       continue;
     }
+    const footprint = new Map();
+    for (const node of nodesWithTerrain) {
+      for (const terrain of terrainList(node)) {
+        footprint.set(terrain, (footprint.get(terrain) ?? 0) + 1);
+      }
+    }
+    const tooWide = [...footprint].find(([, count]) => count > MAX_TERRAIN_CELLS);
+    if (tooWide) {
+      reasons.push(`земля ${tooWide[0]} занимает больше ${MAX_TERRAIN_CELLS} клеток`);
+      continue;
+    }
     const provisional = { id, nodes: nodesWithTerrain };
 
     const starts = chooseStarts(nodesWithTerrain, owner, regionTerrains, playerCount, rng, {
-      regionSizes,
-      required: Math.max(...fighters) + 1,
+      regionSizes: new Map(sizes.map((size, index) => [index, size])),
+      required,
+      packs: fighters,
       layoutWidth,
       layoutHeight,
+      startRegions: Array.from({ length: playerCount }, (_, index) => index),
     });
     if (!starts) {
       reasons.push('стартовые клетки не выбрались');
       continue;
     }
 
-    // Стартовые области могут соприкасаться (клетки на стыке зон принадлежат обеим), поэтому
-    // считаем не «свои» клетки, а свободные: в области должно хватить места и своим бойцам,
-    // и чужим героям, которые стоят на номерных клетках внутри неё.
+    // Стартовые области могут соприкасаться (клетки на стыке зон принадлежат обеим), поэтому считаем
+    // **свои** клетки: чужой помощник может занять общую клетку первым, и своим бойцам места не останется
+    // (сид 18 на четверых: помощники Ифрита заняли область Медузы, и расстановка встала без хода).
     const startAreas = starts.map(start => new Set(areaCellIds(provisional, start.id)));
-    const enoughCells = starts.every((start, index) => {
-      const foreignHeroes = starts.filter(
-        (other, otherIndex) => otherIndex !== index && startAreas[index].has(String(other.id)),
-      ).length;
-      return startAreas[index].size >= fighters[index] + foreignHeroes;
+    const ownRoom = starts.every((start, index) => {
+      const foreign = new Set(
+        startAreas.filter((_, otherIndex) => otherIndex !== index).flatMap(area => [...area]),
+      );
+      return (
+        [...startAreas[index]].filter(id => !foreign.has(String(id))).length >= fighters[index]
+      );
     });
-    if (!enoughCells) {
-      reasons.push('в стартовой области мало клеток');
+    if (!ownRoom) {
+      reasons.push('в стартовой области мало своих клеток');
+      continue;
+    }
+
+    // Прямые линии добавляем после выбора стартов: они сокращают путь по полю, и разведение
+    // проверяем уже на итоговом графе — иначе места сблизятся незаметно для прежних проверок.
+    const unlinked = linkSameTerrain(nodesWithTerrain);
+    if (unlinked) {
+      reasons.push('соседние клетки одной земли не связаны линией');
+      continue;
+    }
+    const startGapOk = starts.every((start, index) =>
+      starts.every(
+        (_, other) =>
+          other === index ||
+          (stepsBetween(nodesWithTerrain, start.id, starts[other].id) ?? 0) >= START_GAP_STEPS,
+      ),
+    );
+    if (!startGapOk) {
+      reasons.push('связи одной земли сблизили старты');
+      continue;
+    }
+    const neighbourAfterLinks = starts.every((start, index) => {
+      const neighbours = new Set((start.neighbors ?? []).map(String));
+      return starts.every((_, other) =>
+        other === index ? true : ![...startAreas[other]].some(id => neighbours.has(String(id))),
+      );
+    });
+    if (!neighbourAfterLinks) {
+      reasons.push('связь одной земли положила чужую клетку вплотную к номеру');
       continue;
     }
 
@@ -868,9 +1312,10 @@ export const generateMap = ({
       generated: true,
       seed: Number(seed),
       settings: { nodeSize: CELL_SIZE, gridScale: 1 },
-      // служебные данные раскладки: сколько клеток в каждой зоне и какие в ней стихии
-      zoneSizes: usedRegions.map(region => sizeOf(region)),
-      zoneTerrains: usedTerrains,
+      // служебные данные раскладки: размер и стихия каждой земли, крупная она или малая
+      zoneSizes: sizes,
+      zoneTerrains: regionTerrains,
+      zoneKinds: [...new Array(playerCount).fill('core'), ...new Array(smallCount).fill('small')],
       nodes,
     };
     if (shapeOk) return result;

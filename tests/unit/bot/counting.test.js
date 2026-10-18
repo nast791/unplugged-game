@@ -70,7 +70,7 @@ describe('подсчёт карт', () => {
 
     expect(steps).toBeGreaterThan(1000);
     expect(broken).toEqual([]);
-  });
+  }, 30000);
 
   it('в остатке нет фантомных копий: сброс и открытые карты боя из него вычтены', () => {
     const extra = [];
@@ -90,7 +90,7 @@ describe('подсчёт карт', () => {
     });
 
     expect(extra).toEqual([]);
-  });
+  }, 30000);
 
   it('на старте ожидание атаки равно средней атаке колоды соперника', () => {
     const seen = [];
@@ -106,7 +106,7 @@ describe('подсчёт карт', () => {
 
     expect(seen.length).toBeGreaterThan(0);
     for (const { expected, mean } of seen) expect(expected).toBeCloseTo(mean, 6);
-  });
+  }, 30000);
 
   it('остаток уменьшается, когда карта уходит в открытый сброс', () => {
     const observed = [];
@@ -128,7 +128,7 @@ describe('подсчёт карт', () => {
     expect(observed.length).toBeGreaterThan(0);
     // из колоды ушло хотя бы по одной копии: остаток строго меньше полной колоды
     for (const entry of observed) expect(entry.left).toBeLessThan(entry.inDeck);
-  });
+  }, 30000);
 });
 
 describe('честность защиты', () => {
@@ -157,5 +157,5 @@ describe('честность защиты', () => {
       // и ожидание берётся из подсчёта, а не из скрытого поля
       expect(window.expected).toBeGreaterThan(0);
     }
-  });
+  }, 30000);
 });

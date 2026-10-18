@@ -12,7 +12,7 @@
       <div class="flex flex-col gap-4">
         <AButton variant="menu" :disabled="isGameOver" @click="resign">Сдаться</AButton>
 
-        <AButton variant="menu" @click="workInProgress('Настройки')">Настройки</AButton>
+        <AButton variant="menu" @click="openSettings">Настройки</AButton>
 
         <AButton variant="menu" @click="workInProgress('Справка')">Справка</AButton>
 
@@ -24,16 +24,15 @@
 
 <script setup>
 import AButton from '~/components/atoms/AButton.vue';
-import { useGameSession } from '~/composables/useGameSession.js';
+import { useGameSession } from '~/composables/game/useGameSession.js';
 import { askConfirm } from '~/composables/ui/useConfirm.js';
 import { closeGameMenu, openGameMenu, useGameMenu } from '~/composables/ui/useGameMenu.js';
-import { getActiveModals } from '~/composables/ui/useModal.js';
+import { getActiveModals, openModal } from '~/composables/ui/useModal.js';
 import { notify } from '~/composables/ui/useToast';
 
 const { open } = useGameMenu();
 const { isGameOver, onResign } = useGameSession();
 
-/** Верхний слой забирает Esc себе: модалка из реестра или слой, который сам закрывается по Esc. */
 const escapeTaken = () =>
   getActiveModals().value.length > 0 || Boolean(document.querySelector('[data-esc-layer]'));
 
@@ -75,5 +74,10 @@ const leaveToLobby = async () => {
 const workInProgress = title => {
   closeGameMenu();
   notify(`«${title}» — экран в разработке`);
+};
+
+const openSettings = () => {
+  closeGameMenu();
+  openModal('settings');
 };
 </script>

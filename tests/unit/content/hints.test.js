@@ -12,7 +12,8 @@ import { lifecycleHooks } from '#shared/lifecycle/registry.js';
  * исходниках фаз нет строковых литералов в `text:`.
  *
  * Подсказки окна умения (`choose.skillWindow`) — исключение: текст приходит из пака героя, поэтому
- * значение словаря только приводит его к строке и в фазе стоит обёртка.
+ * значение словаря только приводит его к строке (и у окна-переключателя добавляет, чем отметить цель
+ * и что сделает кнопка), а в фазе стоит обёртка.
  */
 
 /** Фазы всех хуков: `hooks[turn].phases` — массив бриков, у каждого своё `hints`. */
@@ -75,9 +76,15 @@ describe('словарь подсказок', () => {
       'choose.skillWindow': { text: 'Обменяйте Дороти и Тото' },
       'handLimit.discardCards': { limit: 5, count: 2 },
       'attack.waitingDefense': { name: 'Медуза' },
+      'waiting.battle': {
+        attacker: 'Амат (Элизиф)',
+        defender: 'Тото (Гость)',
+        numbers: '4 против 2, урон 2',
+      },
       'waiting.waitingMovement': { name: 'Медуза' },
       'waiting.waitingChoice': { name: 'Медуза' },
       'waiting.waitingTurn': { name: 'Тесла' },
+      'place.cellTaken': { name: 'Амат' },
       'finished.finished': { name: 'Дороти' },
       'client.timerExpired': { limit: '30 с' },
       'client.placementExpired': { limit: '2 мин' },
@@ -99,6 +106,12 @@ describe('словарь подсказок', () => {
 
   it('в подсказке с ветками каждый вариант — непустая строка', () => {
     const branches = {
+      'choose.skillWindow': [
+        { text: 'Обменяйте Дороти и Тото' },
+        { text: 'Пламя преисподней', toggle: true, picked: 0 },
+        { text: 'Пламя преисподней', toggle: true, picked: 1 },
+        { text: 'Взвешивание сердца', toggle: true, picked: 0, required: true },
+      ],
       'choose.pickTarget': [
         { cells: true },
         { cells: false },
@@ -122,6 +135,16 @@ describe('словарь подсказок', () => {
       ],
       'defense.combatChoice': [{ movement: true }, { movement: false }],
       'defense.defend': [{ afterCancel: true }, { afterCancel: false }],
+      'waiting.battle': [
+        {},
+        { attacker: 'Амат (Элизиф)' },
+        { attacker: 'Амат (Элизиф)', defender: 'Тото (Гость)' },
+        {
+          attacker: 'Амат (Элизиф)',
+          defender: 'Тото (Гость)',
+          numbers: '4 против 2, урон 2',
+        },
+      ],
     };
 
     const broken = [];

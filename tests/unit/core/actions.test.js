@@ -267,6 +267,21 @@ describe('SET_MOVEMENT', () => {
     );
   });
 
+  /**
+   * Карта усиления видна **всем** и после ухода в сброс: у чужой руки карт не видно, а по открытой
+   * карте над сбросом игроки понимают, откуда взялся бонус. Поэтому черновик перемещения несёт копию
+   * сброшенной карты, а не только число.
+   */
+  it('bonus: черновик перемещения помнит открытую карту усиления', () => {
+    const state = opened();
+    const card = hand(player(state, '0')).find(entry => entry.instanceId === 'fx_0');
+
+    SET_MOVEMENT(state, { op: 'bonus', playerId: '0', cardId: 'fx_0' });
+
+    expect(state.movement.card).toEqual(card);
+    expect(state.movement.card).not.toBe(card);
+  });
+
   it('bonus отклоняет карту без усиления и отсутствующую карту', () => {
     const state = opened();
     player(state, '0').hand.cards.push({
@@ -488,6 +503,9 @@ describe('SET_COMBAT: защита и расчёт', () => {
       defendedWithCard: true,
       attackCardId: 'atk_0',
       defenseCardId: 'bdef_0',
+      // вскрытие — публичный факт: запись боя несёт сами карты, а не только их ключи
+      attackCard: discard(player(state, '0'))[0],
+      defenseCard: discard(player(state, '1'))[0],
       // отчёт боя хранит разрешённую очередь свойств (у этих карт её нет)
       effects: [],
     });
@@ -633,6 +651,39 @@ describe('SET_TARGETING', () => {
 
     expect(state.targeting.auto).toBe(true);
     expect(state.targeting.required).toBe(false);
+  });
+
+  it('open с toggle: true — окно-переключатель: повторный клик снимает отметку', () => {
+    const state = SET_TARGETING(createState(), {
+      op: 'open',
+      playerId: '0',
+      candidates: ['beta', 'gamma'],
+      toggle: true,
+    });
+
+    expect(state.targeting.toggle).toBe(true);
+    SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'beta' });
+    expect(state.targeting.picked).toBe('beta');
+
+    SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'beta' });
+    expect(state.targeting.picked).toBeNull();
+  });
+
+  it('toggle на несколько целей снимает отметку, даже когда набор уже полон', () => {
+    const state = SET_TARGETING(createState(), {
+      op: 'open',
+      playerId: '0',
+      candidates: ['beta', 'gamma'],
+      count: 2,
+      toggle: true,
+    });
+
+    SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'beta' });
+    SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'gamma' });
+    expect(state.targeting).toMatchObject({ picked: ['beta', 'gamma'], complete: true });
+
+    SET_TARGETING(state, { op: 'pick', playerId: '0', fighterId: 'beta' });
+    expect(state.targeting).toMatchObject({ picked: ['gamma'], complete: false });
   });
 
   it('open с kind cells: кандидаты — клетки, выбор по клетке', () => {

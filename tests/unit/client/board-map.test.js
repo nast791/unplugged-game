@@ -6,7 +6,7 @@ import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue';
 /**
  * Геометрия доски — композабл `useBoardMap`: он превращает карту и бойцов в то, что рисует конва
  * (клетки с секторами и текстурами, связи, фишки, маркеры расстановки), и отдаёт доске проверки
- * «что под курсором». Сама математика — `app/composables/useBoardGeometry.js` со своими тестами.
+ * «что под курсором». Сама математика — `app/composables/ui/useBoardGeometry.js` со своими тестами.
  *
  * Композабл зовётся в `setup` (внутри есть `onMounted` для плиток), поэтому пробу монтируем.
  */
@@ -14,8 +14,8 @@ globalThis.computed = computed;
 globalThis.ref = ref;
 globalThis.onMounted = onMounted;
 
-const { useBoardMap } = await import('~/composables/useBoardMap.js');
-const { nodeRadius } = await import('~/composables/useBoardGeometry.js');
+const { useBoardMap } = await import('~/composables/ui/useBoardMap.js');
+const { nodeRadius } = await import('~/composables/ui/useBoardGeometry.js');
 
 const Probe = defineComponent({
   props: {
@@ -27,7 +27,9 @@ const Probe = defineComponent({
     highlightedCellIds: { type: Array, default: () => [] },
     placementCells: { type: Array, default: () => [] },
     highlightedFighterIds: { type: Array, default: () => [] },
+    pickedFighterIds: { type: Array, default: () => [] },
     framedFighterIds: { type: Array, default: () => [] },
+    battleRoles: { type: Object, default: () => ({}) },
   },
   setup(props) {
     const board = useBoardMap(props);
@@ -116,6 +118,59 @@ describe('useBoardMap: что рисуется', () => {
     await wrapper.setProps({ placementCells: [{ id: 2, occupied: false }] });
 
     expect(board.nodeCircleConfig(cell).stroke).not.toBe('#0284c7');
+  });
+});
+
+describe('useBoardMap: метки битвы', () => {
+  const tokenOf = (board, id) =>
+    value(board.placedFighters).find(token => String(token.fighter.id) === id);
+
+  it('атакующий обведён красным, защитник — голубым: метки видны всем смотрящим', () => {
+    const { board } = mountMap({
+      battleRoles: { attackerFighterId: 'anubis', defenderFighterId: 'amat' },
+    });
+
+    const attacker = board.fighterHaloConfig(tokenOf(board, 'anubis'));
+    const defender = board.fighterHaloConfig(tokenOf(board, 'amat'));
+
+    expect(attacker.stroke).toBe('#dc2626');
+    expect(attacker.strokeWidth).toBe(5);
+    expect(defender.stroke).toBe('#0ea5e9');
+    expect(defender.strokeWidth).toBe(5);
+  });
+
+  it('роль в битве сильнее подсветки фазы: атакующий остаётся красным, даже если фаза зовёт его голубым', () => {
+    const { board } = mountMap({
+      battleRoles: { attackerFighterId: 'anubis' },
+      highlightedFighterIds: ['anubis'],
+    });
+
+    expect(board.fighterHaloConfig(tokenOf(board, 'anubis')).stroke).toBe('#dc2626');
+  });
+
+  it('без битвы цвета прежние: рамка фазы красная, кандидат голубой', () => {
+    const { board } = mountMap({
+      framedFighterIds: ['anubis'],
+      highlightedFighterIds: ['amat'],
+    });
+
+    expect(board.fighterHaloConfig(tokenOf(board, 'anubis')).stroke).toBe('#dc2626');
+    expect(board.fighterHaloConfig(tokenOf(board, 'amat')).stroke).toBe('#0ea5e9');
+  });
+
+  it('отмеченная цель — рамка активности, как у выбранного бойца, без заливки', () => {
+    const { board } = mountMap({
+      highlightedFighterIds: ['amat'],
+      pickedFighterIds: ['amat'],
+    });
+
+    const halo = board.fighterHaloConfig(tokenOf(board, 'amat'));
+    expect(halo.fill).toBe('transparent');
+    expect(halo.stroke).toBe('#0ea5e9');
+    expect(halo.strokeWidth).toBe(7);
+    expect(halo.opacity).toBe(1);
+    // кандидат без отметки остаётся только подсвеченным
+    expect(board.fighterHaloConfig(tokenOf(board, 'anubis')).strokeWidth).toBe(0);
   });
 });
 
@@ -265,10 +320,15 @@ describe('useBoardMap: чужая расстановка закрыта до е�
     expect(value(board.placedFighters).map(token => token.fighter.id)).toEqual(['harpies_1']);
   });
 
+  /** Правило игры: чужую расстановку не видит никто — ни пока она идёт, ни после её подтверждения. */
   it('чужой слот не виден и после того, как сам подтвердился: расстановка чужих — не наша', () => {
-    const { board } = mountMap({ players: placing, phase: 'gameStart', viewerId: 'medusa' });
+    const mineReady = placing.map(player =>
+      player.id === 'medusa' ? { ...player, placementReady: true } : player,
+    );
+    const { board } = mountMap({ players: mineReady, phase: 'gameStart', viewerId: 'medusa' });
 
     const ids = value(board.placedFighters).map(token => token.fighter.id);
+    expect(ids).toContain('harpies_1');
     expect(ids).not.toContain('amat');
   });
 

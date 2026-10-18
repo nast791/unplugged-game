@@ -43,9 +43,6 @@
 </template>
 
 <script setup>
-/**
- * Тело всегда через общий скролл: длинные формы и списки не растягивают окно.
- */
 import {
   DialogClose,
   DialogContent,
@@ -65,14 +62,6 @@ import {
   useModalPayload,
 } from '~/composables/ui/useModal';
 
-/**
- * Модалка по имени: `name` регистрирует её в реестре, поэтому `openModal('table', payload)` открывает её
- * снаружи, `closeAllModals()` закрывает все, а пейлоад доступен как `payload` (или `useModalPayload`).
- * Без `name` работает обычное `v-model:open`.
- *
- * `error` — сообщение о том, почему главная кнопка не работает: рисуется в футере **слева** от кнопок.
- * В теле окна сообщение не годится: при появлении скролла его сдвигает вверх и не видно.
- */
 const props = defineProps({
   name: { type: String, default: '' },
   title: { type: String, default: '' },
@@ -97,7 +86,6 @@ const { styles } = useUI(
   () => props.ui,
 );
 
-/** Ключ реестра: имя (если задано) или собственный id экземпляра. */
 const instanceId = useId();
 const registryKey = computed(() => props.name || instanceId);
 const payload = useModalPayload(() => registryKey.value);
@@ -138,7 +126,6 @@ if (import.meta.client) {
   onBeforeUnmount(() => removeActiveModal(registryKey.value));
 }
 
-/** Клик по оверлею и Esc закрывают окно, если это разрешено пропами. */
 const onPointerDownOutside = event => {
   if (!props.closeOnOverlay) event.preventDefault();
 };

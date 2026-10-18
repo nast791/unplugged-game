@@ -22,7 +22,7 @@
 import ALoader from '~/components/atoms/ALoader.vue';
 import HeroDetails from '~/components/game/HeroDetails.vue';
 import { useHeroQuery } from '~/composables/api/heroes.js';
-import { useSeoTitle } from '~/composables/useSeoTitle';
+import { useSeoTitle } from '~/composables/ui/useSeoTitle';
 
 const route = useRoute();
 const { data: hero, isPending: pending } = useHeroQuery(() => route.params.id);

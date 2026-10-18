@@ -1,5 +1,5 @@
 import { onUnmounted, ref } from 'vue';
-import { resolveCallback, resolveValue } from '~/composables/useReactiveOptions.js';
+import { resolveCallback, resolveValue } from '~/composables/ui/useReactiveOptions.js';
 
 const isObjectPosition = value => value !== null && typeof value === 'object' && 'x' in value;
 

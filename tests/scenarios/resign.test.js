@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { runAction, runLifecycle } from '#shared/publicApi.js';
+import { runAction, runLifecycle, runUi } from '#shared/publicApi.js';
 import { ap, createState, discard, fighter, hand, PHASES, player } from '../fixtures/state.js';
 
-/** Карта на трёх игроков: у каждого своя номерная клетка и своя область. */
+/** Карта на трёх игроков: у каждого своя номерная клетка и своя область (у первой — два места). */
 const threePlayerMap = {
   id: 'tri',
   nodes: [
     { id: 1, neighbors: [2], heroStart: true, position: 1, terrain: 'ice' },
+    { id: 4, neighbors: [1], terrain: 'ice' },
     { id: 2, neighbors: [1, 3], heroStart: true, position: 2, terrain: 'lava' },
     { id: 3, neighbors: [2], heroStart: true, position: 3, terrain: 'forest' },
   ],
@@ -124,6 +125,26 @@ describe('scenario: сдача партии (RESIGN)', () => {
     expect(player(next, '0').placementReady).toBe(false);
     expect(player(next, '2').placementReady).toBe(true);
 
+    /**
+     * Сдавшийся уносит своих бойцов с поля, и помощник игрока 0 оказался на его номерной клетке.
+     * «Кто первый поставил, того и тапки»: движок не начинает партию с двух бойцов на одной клетке —
+     * помощник возвращается на полку расстановки, и игрок ставит его заново.
+     */
+    next = runAction(next, { type: 'UI_OK', playerId: '0' });
+    expect(next.hook).toBe(PHASES.gameStart);
+    expect(player(next, '0').placementReady).toBe(false);
+    expect(player(next, '0').fighters.find(f => f.id === 'a_pawn').currentPosition).toBeNull();
+
+    // ставим помощника на свободную клетку своей области и подтверждаем — теперь ход
+    const ui = runUi(next, '0', { selectedFighterId: 'a_pawn' });
+    expect(ui.highlightedCellIds).toContain('4');
+    next = runAction(next, {
+      type: 'PICK',
+      kind: 'cell',
+      id: '4',
+      fighterId: 'a_pawn',
+      playerId: '0',
+    });
     next = runAction(next, { type: 'UI_OK', playerId: '0' });
     expect(next.hook).toBe(PHASES.turn);
     expect(next.turn.playerId).toBe('0');
@@ -195,7 +216,7 @@ describe('scenario: сдача партии (RESIGN)', () => {
   });
 
   /**
-   * Так работает лимит времени на расстановку (`timeoutLosers` в `app/composables/useGameSession.js` +
+   * Так работает лимит времени на расстановку (`timeoutLosers` в `app/composables/game/useGameSession.js` +
    * `resignByTimeout`): при двух
    * местах сдача того, кто не успел, завершает партию победой второго — и расстановка при этом
    * не ждёт сдавшегося (у него нет бойцов, поэтому `allPlayersPlacementReady` его пропускает).

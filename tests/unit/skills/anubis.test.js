@@ -109,6 +109,8 @@ const hpOf = (state, playerId, fighterId) =>
 const clickFighter = (state, id) =>
   runAction(state, { type: 'PICK', kind: 'fighter', id, playerId: '0' });
 
+const confirm = state => runAction(state, { type: 'UI_OK', playerId: '0' });
+
 describe('способность Анубиса (Взвешивание сердца)', () => {
   it('контент использует только известные моменты', () => {
     for (const rule of anubis.skill.rules) {
@@ -122,6 +124,7 @@ describe('способность Анубиса (Взвешивание серд
     expect(anubis.skill.title).toBe('Взвешивание сердца');
     expect(anubis.skill.text).toContain('КОНЕЦ ХОДА');
     expect(anubis.skill.text).toContain('не наносил урон');
+    expect(anubis.skill.text).toContain('выберите');
     expect(anubis.heroes[0]).toMatchObject({ hp: 15, move: 2, attackRange: 2 });
     expect(anubis.assistants[0]).toMatchObject({ id: 'amat', hp: 8, move: 2, attackRange: 1 });
     // предмет — индикатор эффекта: в начале партии пелены нет, подписи и условие видит игрок в панели
@@ -132,17 +135,17 @@ describe('способность Анубиса (Взвешивание серд
     expect(anubis.terrainAffinity).toEqual(['desert']);
   });
 
-  it('пелены нет: один враг в области — движок отмечает его сам и бьёт на 1', () => {
+  it('пелены нет: единственный враг в области — движок бьёт сам, окна нет', () => {
     const state = endTurn(buildState({ shroudState: 'inactive' }));
 
-    // враг один: окна игрок не видит, урон уже нанесён
     expect(state.targeting ?? null).toBeNull();
     expect(hpOf(state, '1', 'beta')).toBe(12);
   });
 
-  it('пелена цела: суд наносит 2 урона', () => {
+  it('пелена цела: единственный враг получает 2 урона сам', () => {
     const state = endTurn(buildState({ shroudState: 'active' }));
 
+    expect(state.targeting ?? null).toBeNull();
     expect(hpOf(state, '1', 'beta')).toBe(11);
   });
 
@@ -169,7 +172,7 @@ describe('способность Анубиса (Взвешивание серд
     expect(hpOf(state, '1', 'beta')).toBe(13);
   });
 
-  it('врагов в области двое — окно с выбором цели, подсказка — текст умения', () => {
+  it('врагов в области двое — окно-переключатель: клик только отмечает, повторный снимает', () => {
     const state = buildState({ shroudState: 'inactive' });
     player(state, '1').fighters.push(unit('beta2', 1, 9));
 
@@ -179,18 +182,48 @@ describe('способность Анубиса (Взвешивание серд
       playerId: '0',
       source: 'anubis_skill',
       kind: 'fighters',
-      required: false,
+      required: true,
+      auto: true,
+      toggle: true,
     });
     expect(opened.targeting.candidates.map(entry => entry.fighterId).sort()).toEqual([
       'beta',
       'beta2',
     ]);
-    expect(runUi(opened, '0').hint).toBe(anubis.skill.text);
+    const ui = runUi(opened, '0');
+    expect(ui.hint).toContain(anubis.skill.text);
+    expect(ui.hint).not.toContain('пропускается');
+    expect(ui.controls.ok.visible).toBe(false);
 
-    const after = clickFighter(opened, 'beta2');
+    const marked = clickFighter(opened, 'beta2');
+    expect(marked.targeting.picked).toBe('beta2');
+    expect(runUi(marked, '0').pickedFighterIds).toEqual(['beta2']);
+    expect(runUi(marked, '0').controls.ok.label).toBe('Завершить умение');
+    expect(hpOf(marked, '1', 'beta2')).toBe(9);
 
-    expect(hpOf(after, '1', 'beta2')).toBe(8);
-    expect(hpOf(after, '1', 'beta')).toBe(13);
+    const cleared = clickFighter(marked, 'beta2');
+    expect(cleared.targeting.picked).toBeNull();
+    expect(runUi(cleared, '0').pickedFighterIds).toEqual([]);
+    expect(runUi(cleared, '0').controls.ok.visible).toBe(false);
+
+    const moved = clickFighter(cleared, 'beta');
+    expect(moved.targeting.picked).toBe('beta');
+
+    const after = confirm(moved);
+    expect(after.targeting).toBeNull();
+    expect(hpOf(after, '1', 'beta')).toBe(12);
+    expect(hpOf(after, '1', 'beta2')).toBe(9);
+  });
+
+  it('обязательное окно без отметки не закрывается', () => {
+    const state = buildState({ shroudState: 'inactive' });
+    player(state, '1').fighters.push(unit('beta2', 1, 9));
+
+    const opened = endTurn(state);
+
+    expect(() => confirm(opened)).toThrow('обязательное окно выбора цели');
+    expect(hpOf(opened, '1', 'beta')).toBe(13);
+    expect(hpOf(opened, '1', 'beta2')).toBe(9);
   });
 
   it('Амат жива — начало хода пелену сохраняет', () => {

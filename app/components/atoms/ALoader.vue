@@ -12,10 +12,6 @@
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 
-/**
- * Лоадер: кольцо и подпись с бегущими точками (анимация точек — `.loader-dot` в `app/assets/styles.css`).
- * Позиционирование задаёт вызывающий: лоадер лобби растянут на экран классом `absolute inset-0`.
- */
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps({

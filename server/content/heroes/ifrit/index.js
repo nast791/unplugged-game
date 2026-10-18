@@ -49,7 +49,7 @@ export default {
             candidates: '$spirits',
             count: 1,
             required: false,
-            auto: true,
+            toggle: true,
           },
         ],
       },

@@ -30,10 +30,6 @@ import { CheckboxIndicator, CheckboxRoot } from 'reka-ui';
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 
-/**
- * Группа чекбоксов: модель — массив значений. Своего примитива в reka-ui нет (чекбокс одиночный),
- * поэтому группа собирается здесь и остаётся такой же безстилевой.
- */
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps({

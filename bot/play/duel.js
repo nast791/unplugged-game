@@ -26,7 +26,7 @@ import { createMetrics, noteAction, noteTransition, snapshotHp } from './metrics
 export { actionsFor, actorOf, nextRandom, pickWeighted } from './decide.js';
 
 /** Отпечаток состояния: по нему видно, изменилось ли что-то после действия. */
-const signature = state =>
+export const signature = state =>
   JSON.stringify({
     hook: state.hook,
     round: state.round,

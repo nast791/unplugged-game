@@ -100,6 +100,12 @@ const battle = state => {
 const fighterOf = (state, playerId, fighterId) =>
   player(state, playerId).fighters.find(entry => entry.id === fighterId);
 
+/** «Оцепенение» и подобные: движок закрывает замороженному обмен и телепорт. */
+const freeze = (state, playerId, fighterId) => {
+  fighterOf(state, playerId, fighterId).frozen = true;
+  return state;
+};
+
 describe('карта dorothy_01 «Тото отвлекает»', () => {
   it('описана правилами, момент — из списка', () => {
     expect(card.rules).toHaveLength(3);
@@ -110,10 +116,10 @@ describe('карта dorothy_01 «Тото отвлекает»', () => {
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({ type: 'attack', value: 4, bonus: 4, fighter: 'dorothy' });
     expect(card.rules[0].then.map(step => step.action)).toEqual(['SWAP_FIGHTERS']);
-    // обмен сложился — одно действие; обмен не сложился (нет Тото или бойца противника) — два
+    // обмен сложился — одно действие; обмен не сложился (нет кого-то из пары или он заморожен) — два
     expect(card.rules[1].then).toEqual([{ action: 'SET_ACTIONS', delta: 1 }]);
     expect(card.rules[2].then).toEqual([{ action: 'SET_ACTIONS', delta: 2 }]);
-    expect(card.rules[2].any).toHaveLength(2);
+    expect(card.rules[2].any).toHaveLength(4);
     // «Тото или боец противника уже не на поле» — `max` пишется на самом факте
     expect(card.rules[2].any[0][0]).toMatchObject({
       fact: 'FIGHTERS',
@@ -141,6 +147,22 @@ describe('карта dorothy_01 «Тото отвлекает»', () => {
     expect(Number(fighterOf(after, '1', 'beta').currentPosition)).toBe(5);
     expect(Number(fighterOf(after, '0', 'toto').currentPosition)).toBe(3);
     expect(after.turn.actionsLeft).toBe(2);
+  });
+
+  it('Тото заморожен — обмена нет и краха нет, карта даёт 2 действия', () => {
+    const after = battle(freeze(buildState({ totoCell: 1 }), '0', 'toto'));
+
+    expect(Number(fighterOf(after, '1', 'beta').currentPosition)).toBe(3);
+    expect(Number(fighterOf(after, '0', 'toto').currentPosition)).toBe(1);
+    expect(after.turn.actionsLeft).toBe(3);
+  });
+
+  it('боец противника заморожен — тоже без обмена и без краха', () => {
+    const after = battle(freeze(buildState({ totoCell: 1 }), '1', 'beta'));
+
+    expect(Number(fighterOf(after, '1', 'beta').currentPosition)).toBe(3);
+    expect(Number(fighterOf(after, '0', 'toto').currentPosition)).toBe(1);
+    expect(after.turn.actionsLeft).toBe(3);
   });
 
   it('Тото убит — обмена нет, но карта даёт 2 действия вместо 1', () => {

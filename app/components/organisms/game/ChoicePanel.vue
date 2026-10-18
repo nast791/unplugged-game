@@ -25,7 +25,7 @@
 
 <script setup>
 import CardOptions from '~/components/molecules/game/CardOptions.vue';
-import { useGameSession } from '~/composables/useGameSession.js';
+import { useGameSession } from '~/composables/game/useGameSession.js';
 
 const { choices, targetingChoices, choiceCount, choicePicked, onChoiceClick } = useGameSession();
 

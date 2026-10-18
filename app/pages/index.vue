@@ -15,6 +15,7 @@
     </template>
 
     <ProfileModal />
+    <SettingsModal />
     <TableSetupModal :content="content" />
 
     <ExitScreen />
@@ -37,9 +38,10 @@ import Footer from '~/components/organisms/layout/Footer.vue';
 import Header from '~/components/organisms/layout/Header.vue';
 import Menu from '~/components/organisms/lobby/Menu.vue';
 import ProfileModal from '~/components/organisms/modals/ProfileModal.vue';
+import SettingsModal from '~/components/organisms/modals/SettingsModal.vue';
 import TableSetupModal from '~/components/organisms/modals/TableSetupModal.vue';
-import { useLobbyBoot } from '~/composables/useLobbyBoot';
-import { useSeoTitle } from '~/composables/useSeoTitle';
+import { useLobbyBoot } from '~/composables/ui/useLobbyBoot';
+import { useSeoTitle } from '~/composables/ui/useSeoTitle';
 import { exitGame } from '~/composables/ui/useExitScreen';
 import { openModal } from '~/composables/ui/useModal';
 import { clearToast, notify, useToast } from '~/composables/ui/useToast';
@@ -58,6 +60,10 @@ const SEASON = 'Сезон 1 · Остановившаяся зима';
 const onSelect = item => {
   if (item.id === 'table') {
     openModal('table');
+    return;
+  }
+  if (item.id === 'settings') {
+    openModal('settings');
     return;
   }
   if (item.id === 'exit') {

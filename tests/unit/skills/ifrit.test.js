@@ -94,14 +94,15 @@ describe('способность Ифрита (Пламя преисподней
     expect(Array.isArray(ifrit.skill.rules)).toBe(true);
   });
 
-  it('три духа — окно с выбором, ход не начался, пока игрок не решил', () => {
+  it('три духа — окно-переключатель: клик только отмечает, применяет кнопка', () => {
     const state = runLifecycle(skillState());
 
     expect(state.targeting).toMatchObject({
       playerId: '0',
       source: 'ifrit_skill',
       required: false,
-      auto: true,
+      toggle: true,
+      auto: false,
       count: 1,
     });
     expect(state.targeting.candidates.map(entry => entry.fighterId)).toEqual([
@@ -109,10 +110,14 @@ describe('способность Ифрита (Пламя преисподней
       'ash_2',
       'ash_3',
     ]);
-    expect(runUi(state, '0').hint).toBe(ifrit.skill.text);
+    const ui = runUi(state, '0');
+    expect(ui.hint).toContain(ifrit.skill.text);
+    expect(ui.hint).toContain('Завершить умение');
+    expect(ui.controls.ok.label).toBe('Завершить умение');
+    expect(ui.pickedFighterIds).toEqual([]);
   });
 
-  it('клик по духу убивает его и даёт действие до конца хода', () => {
+  it('клик по духу только отмечает его: дух жив, окно ждёт кнопку', () => {
     const opened = runLifecycle(skillState());
     const after = runAction(opened, {
       type: 'PICK',
@@ -120,6 +125,64 @@ describe('способность Ифрита (Пламя преисподней
       id: 'ash_2',
       playerId: '0',
     });
+
+    expect(fighterOf(after, 'ash_2')).toBeDefined();
+    expect(lostIds(after)).toEqual([]);
+    expect(after.targeting.picked).toBe('ash_2');
+    expect(runUi(after, '0').pickedFighterIds).toEqual(['ash_2']);
+    expect(ap(after)).toBe(2);
+    expect(after.turn.actionsTotal).toBe(2);
+  });
+
+  it('повторный клик по тому же духу снимает отметку', () => {
+    const opened = runLifecycle(skillState());
+    const marked = runAction(opened, {
+      type: 'PICK',
+      kind: 'fighter',
+      id: 'ash_2',
+      playerId: '0',
+    });
+    const after = runAction(marked, {
+      type: 'PICK',
+      kind: 'fighter',
+      id: 'ash_2',
+      playerId: '0',
+    });
+
+    expect(after.targeting.picked).toBeNull();
+    expect(lostIds(after)).toEqual([]);
+    expect(ap(after)).toBe(2);
+    expect(runUi(after, '0').pickedFighterIds).toEqual([]);
+  });
+
+  it('клик по другому духу переносит отметку', () => {
+    const opened = runLifecycle(skillState());
+    const marked = runAction(opened, {
+      type: 'PICK',
+      kind: 'fighter',
+      id: 'ash_2',
+      playerId: '0',
+    });
+    const after = runAction(marked, {
+      type: 'PICK',
+      kind: 'fighter',
+      id: 'ash_1',
+      playerId: '0',
+    });
+
+    expect(after.targeting.picked).toBe('ash_1');
+    expect(lostIds(after)).toEqual([]);
+  });
+
+  it('отмеченный дух + «Завершить умение» — дух убит, действие получено', () => {
+    const opened = runLifecycle(skillState());
+    const marked = runAction(opened, {
+      type: 'PICK',
+      kind: 'fighter',
+      id: 'ash_2',
+      playerId: '0',
+    });
+    const after = runAction(marked, { type: 'UI_OK', playerId: '0' });
 
     expect(fighterOf(after, 'ash_2')).toBeUndefined();
     expect(lostIds(after)).toEqual(['ash_2']);
@@ -130,13 +193,23 @@ describe('способность Ифрита (Пламя преисподней
     expect(after.targeting).toBeNull();
   });
 
-  it('дух остался один — движок отмечает его сам, окна игрок не видит', () => {
+  it('дух остался один — окно всё равно открывается, автоматически его не убивают', () => {
     const state = runLifecycle(skillState({ spirits: ['ash_3'] }));
 
-    expect(state.targeting).toBeNull();
-    expect(fighterOf(state, 'ash_3')).toBeUndefined();
-    expect(lostIds(state)).toEqual(['ash_3']);
-    expect(ap(state)).toBe(3);
+    expect(state.targeting).toMatchObject({ source: 'ifrit_skill', toggle: true, count: 1 });
+    expect(state.targeting.picked).toBeNull();
+    expect(fighterOf(state, 'ash_3')).toBeDefined();
+    expect(lostIds(state)).toEqual([]);
+    expect(ap(state)).toBe(2);
+
+    const after = runAction(
+      runAction(state, { type: 'PICK', kind: 'fighter', id: 'ash_3', playerId: '0' }),
+      { type: 'UI_OK', playerId: '0' },
+    );
+    expect(fighterOf(after, 'ash_3')).toBeUndefined();
+    expect(lostIds(after)).toEqual(['ash_3']);
+    expect(ap(after)).toBe(3);
+    expect(after.targeting).toBeNull();
   });
 
   it('отказ от окна: духи целы, лишнего действия нет', () => {

@@ -5,14 +5,14 @@ import { computed, defineComponent, h, ref } from 'vue';
 
 /**
  * Шторка героя живёт **на экране партии**, а не внутри полосы с рукой (`pages/game.vue`), и открывается
- * записью в реестре модалок (`openModal('heroSheet', playerId)` из карточки героя).
+ * записью в реестре модалок (`openModal('heroDetails', playerId)` из карточки героя).
  *
  * Так её и проверяем: пейлоад — единственный вход, закрытие убирает запись из реестра. Проверять это
  * обязательно, потому что полоса **прячется, пока открыт любой оверлей** (`isAnyModalOpen`), и шторка,
  * лежащая внутри полосы, снимала бы сама себя: открылась — полоса исчезла — шторка размонтировалась —
  * полоса вернулась (и пересоздала руку со слайдером).
  *
- * `HeroSheet.vue` — SFC приложения: `computed`/`ref`/`watch`/`nextTick` приходят автоимпортами Nuxt,
+ * `HeroDetailsModal.vue` — SFC приложения: `computed`/`ref`/`watch`/`nextTick` приходят автоимпортами Nuxt,
  * в тесте кладём их в `globalThis` до импорта компонента (так же, как `player-card.test.js`).
  */
 globalThis.computed = computed;
@@ -39,8 +39,8 @@ vi.mock('~/composables/api/heroes.js', async () => {
 const { closeAllModals, closeModal, getModalPayload, isModalOpen, openModal } =
   await import('~/composables/ui/useModal.js');
 
-const { default: HeroSheet } =
-  await import('../../../app/components/organisms/modals/HeroSheet.vue');
+const { default: HeroDetailsModal } =
+  await import('../../../app/components/organisms/modals/HeroDetailsModal.vue');
 
 /** Тело шторки (описание героя) и её кнопки в тесте не нужны — проверяем только открытие и закрытие. */
 const stub = name =>
@@ -52,7 +52,7 @@ const stub = name =>
   });
 
 const mountSheet = () =>
-  mount(HeroSheet, {
+  mount(HeroDetailsModal, {
     global: {
       stubs: {
         AButton: stub('AButton'),
@@ -67,7 +67,7 @@ const dialog = wrapper => wrapper.find('[role="dialog"]');
 
 beforeEach(() => closeAllModals());
 
-describe('HeroSheet: открытие и закрытие через реестр', () => {
+describe('HeroDetailsModal: открытие и закрытие через реестр', () => {
   it('без пейлоада шторки нет', () => {
     const wrapper = mountSheet();
 
@@ -78,21 +78,21 @@ describe('HeroSheet: открытие и закрытие через реест�
   it('запись в реестре открывает шторку героя из пейлоада', async () => {
     const wrapper = mountSheet();
 
-    openModal('heroSheet', 'medusa');
+    openModal('heroDetails', 'medusa');
     await wrapper.vm.$nextTick();
 
     expect(dialog(wrapper).exists()).toBe(true);
     expect(dialog(wrapper).attributes('aria-label')).toBe('Медуза');
     // шторка держится открытой, пока её не закрыли: полоса с рукой в это время скрыта
-    expect(isModalOpen('heroSheet')).toBe(true);
+    expect(isModalOpen('heroDetails')).toBe(true);
   });
 
   it('смена пейлоада меняет героя', async () => {
     const wrapper = mountSheet();
 
-    openModal('heroSheet', 'medusa');
+    openModal('heroDetails', 'medusa');
     await wrapper.vm.$nextTick();
-    openModal('heroSheet', 'anubis');
+    openModal('heroDetails', 'anubis');
     await wrapper.vm.$nextTick();
 
     expect(dialog(wrapper).attributes('aria-label')).toBe('Анубис');
@@ -101,37 +101,37 @@ describe('HeroSheet: открытие и закрытие через реест�
   it('закрытие убирает и шторку, и запись в реестре — полоса возвращается', async () => {
     const wrapper = mountSheet();
 
-    openModal('heroSheet', 'medusa');
+    openModal('heroDetails', 'medusa');
     await wrapper.vm.$nextTick();
-    closeModal('heroSheet');
+    closeModal('heroDetails');
     await wrapper.vm.$nextTick();
 
     expect(dialog(wrapper).exists()).toBe(false);
-    expect(isModalOpen('heroSheet')).toBe(false);
-    expect(getModalPayload('heroSheet')).toBeUndefined();
+    expect(isModalOpen('heroDetails')).toBe(false);
+    expect(getModalPayload('heroDetails')).toBeUndefined();
   });
 
   it('клик по подложке закрывает шторку', async () => {
     const wrapper = mountSheet();
 
-    openModal('heroSheet', 'medusa');
+    openModal('heroDetails', 'medusa');
     await wrapper.vm.$nextTick();
     await wrapper.trigger('click');
 
     expect(dialog(wrapper).exists()).toBe(false);
-    expect(isModalOpen('heroSheet')).toBe(false);
+    expect(isModalOpen('heroDetails')).toBe(false);
   });
 
   it('Escape закрывает шторку, а клик по самой карточке героя — нет', async () => {
     const wrapper = mountSheet();
 
-    openModal('heroSheet', 'medusa');
+    openModal('heroDetails', 'medusa');
     await wrapper.vm.$nextTick();
     await dialog(wrapper).trigger('click');
     expect(dialog(wrapper).exists()).toBe(true);
 
     await dialog(wrapper).trigger('keydown', { key: 'Escape' });
     expect(dialog(wrapper).exists()).toBe(false);
-    expect(isModalOpen('heroSheet')).toBe(false);
+    expect(isModalOpen('heroDetails')).toBe(false);
   });
 });

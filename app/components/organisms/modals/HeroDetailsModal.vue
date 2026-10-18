@@ -47,7 +47,7 @@ import HeroDetails from '~/components/game/HeroDetails.vue';
 import { useHeroQuery } from '~/composables/api/heroes.js';
 import { closeModal, useModalPayload } from '~/composables/ui/useModal.js';
 
-const heroId = useModalPayload('heroSheet');
+const heroId = useModalPayload('heroDetails');
 
 const root = ref(null);
 const {
@@ -58,7 +58,7 @@ const {
 
 const heroName = computed(() => hero.value?.name || String(heroId.value ?? ''));
 
-const close = () => closeModal('heroSheet');
+const close = () => closeModal('heroDetails');
 
 watch(heroId, async id => {
   if (!id) return;
@@ -66,7 +66,7 @@ watch(heroId, async id => {
   root.value?.focus?.();
 });
 
-onBeforeUnmount(() => closeModal('heroSheet'));
+onBeforeUnmount(() => closeModal('heroDetails'));
 
 const onKeydown = event => {
   if (event.key === 'Escape') close();

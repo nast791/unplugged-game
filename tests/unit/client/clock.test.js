@@ -8,7 +8,7 @@ import {
   markClock,
   syncNow,
   useClock,
-} from '../../../app/composables/useClock.js';
+} from '../../../app/composables/ui/useClock.js';
 
 /**
  * Счётчик считает **от отметки времени**, поэтому проверяется сдвигом системного времени и `syncNow()`:

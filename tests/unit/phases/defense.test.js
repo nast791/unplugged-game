@@ -76,6 +76,23 @@ describe('phase defense', () => {
     expect(activePhase(state, '1')?.name).toBe('waiting');
   });
 
+  it('запись боя несёт сами раскрытые карты, а не только их ключи', () => {
+    const state = battleState();
+    defense.moves.PICK(state, { kind: 'card', id: 'bdef_0', playerId: '1' });
+
+    // окно вскрытия берёт карты отсюда: снимок боя сделан до действия, и в сбросах их тогда нет
+    expect(state.lastCombat.attackCard).toMatchObject({
+      instanceId: 'atk_0',
+      title: expect.any(String),
+    });
+    expect(state.lastCombat.defenseCard).toMatchObject({
+      instanceId: 'bdef_0',
+      title: expect.any(String),
+    });
+    // это снимок, а не ссылка на карту в сбросе: сброс двигают, вскрытие остаётся прежним
+    expect(state.lastCombat.attackCard).not.toBe(discard(player(state, '0'))[0]);
+  });
+
   it('пас кнопкой: весь урон, своё действие защитник не тратит', () => {
     const state = battleState();
     const actionsBefore = ap(state);

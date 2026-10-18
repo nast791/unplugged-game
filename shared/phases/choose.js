@@ -3,10 +3,15 @@ import { SET_CARDS } from '#shared/actions/cards.js';
 import { SET_COMBAT } from '#shared/actions/combat.js';
 import { SET_MOVEMENT } from '#shared/actions/movement.js';
 import { SET_TARGETING } from '#shared/actions/targeting.js';
-import { openEffect, runEffectMoment } from '#shared/cards/run.js';
+import { effectBrings, openEffect, runEffectMoment } from '#shared/cards/run.js';
 import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer } from '#shared/helpers/base.js';
-import { cardKey, hasFighterForCard, isAttackCard, isEffectCard } from '#shared/helpers/cards.js';
+import {
+  cardKey,
+  hasFighterForCard,
+  isAttackCard,
+  isEffectCard,
+} from '#shared/helpers/cards.js';
 import { attackCandidates, attackRejection } from '#shared/helpers/combat.js';
 import { windowCount, windowPicked, windowReady } from '#shared/helpers/targeting.js';
 import {
@@ -20,6 +25,15 @@ import {
   targetingCandidates,
 } from '#shared/helpers/turn.js';
 import { runSkillMoment } from '#shared/skills/run.js';
+
+/**
+ * Предлагается ли карта эффектом: **розыгрыш должен хоть что-нибудь изменить** (`effectBrings`).
+ * Свойство, которое сейчас не срабатывает («Плач по Амат», пока Амат жива) или собирает пустое окно
+ * («Прыжок в лаву» без свободной лавы), действием не предлагается — карта остаётся топливом: её
+ * сбрасывают ради усиления. Негатив считается изменением: добор из пустой колоды отнимает здоровье,
+ * и карта играется.
+ */
+const offersAsEffect = (partyState, playerId, card) => effectBrings(partyState, playerId, card);
 
 const hiddenControls = () => ({
   ok: { visible: false, enabled: false, label: null },
@@ -64,13 +78,15 @@ const playableAttackCardIds = (partyState, playerId) =>
 
 /**
  * Эффектные карты, которые можно разыграть как действие: их правила в моменте `effect` уже написаны,
- * а привязанный боец на поле. Карта без правил `effect` пока не разыгрывается (эффект не перенесён).
+ * привязанный боец на поле — и **розыгрыш что-то изменит**. Карта, у которой не происходит ничего,
+ * действием не предлагается: она стоит действия и не делает ничего.
  */
 const playableEffectCardIds = (partyState, playerId) =>
   handCards(partyState, playerId)
     .filter(isEffectCard)
     .filter(card => card.rules?.some(rule => rule.moment === 'effect'))
     .filter(card => hasFighterForCard(partyState, playerId, card))
+    .filter(card => offersAsEffect(partyState, playerId, card))
     .map(cardKey);
 
 /** Играбельные карты руки: атака и эффект. */
@@ -185,6 +201,14 @@ const targetingCells = (partyState, playerId) =>
 const targetingFighters = (partyState, playerId) =>
   partyState.targeting?.kind === 'cells' ? [] : targetingCandidates(partyState, playerId);
 
+/** Отмеченные цели окна: клиент обводит их рамкой активности — видно, что именно применит общая кнопка. */
+const pickedFighters = (partyState, playerId) =>
+  isTargetingMine(partyState, playerId) &&
+  partyState.targeting.kind !== 'cells' &&
+  partyState.targeting.kind !== 'options'
+    ? windowPicked(partyState.targeting)
+    : [];
+
 /**
  * Цель отмечена: правила момента `picked` берём у того, чей это выбор — способности или разыгранной карты,
  * дальше окно закрывает движок, а слот разыгранной карты освобождается.
@@ -198,6 +222,8 @@ const pickTarget = (partyState, playerId, pick) => {
 
   // окно вариантов свойства клик только отмечает: применяет выбор общая кнопка (`ok.onPress`)
   if (state.targeting?.kind === 'options') return state;
+  // окно-переключатель (способности Ифрита, Анубиса и Медузы) клик только отмечает или снимает: применяет кнопка
+  if (state.targeting?.toggle === true) return state;
   // окно на несколько целей собирается по отметке за клик: правила `picked` разыгрывает та же кнопка
   if (windowCount(state.targeting) > 1) return state;
 
@@ -243,8 +269,16 @@ export default {
   hints: {
     skillWindow: {
       active: (partyState, playerId) => Boolean(skillWindowOf(partyState, playerId)),
-      text: (partyState, playerId) =>
-        HINTS.choose.skillWindow({ text: skillWindowOf(partyState, playerId)?.text }),
+      text: (partyState, playerId) => {
+        const skill = skillWindowOf(partyState, playerId);
+        const window = skill ? partyState.targeting : null;
+        return HINTS.choose.skillWindow({
+          text: skill?.text,
+          toggle: window?.toggle === true,
+          picked: windowPicked(window).length,
+          required: window?.required === true,
+        });
+      },
     },
     pickTarget: {
       active: (partyState, playerId) => isTargetingMine(partyState, playerId),
@@ -286,6 +320,8 @@ export default {
       deck: { clickable: true },
       highlightedCellIds: targetingCells(partyState, playerId),
       highlightedFighterIds: targets,
+      // отмеченные цели окна: доска обводит их рамкой активности, как выбранного бойца
+      pickedFighterIds: pickedFighters(partyState, playerId),
       // окно цели с бойцами: клик по бойцу уходит в движок, остальное — выбор для хода
       pickFighters: targets.length > 0,
       playableCardIds: playable,
@@ -326,9 +362,11 @@ export default {
         throw new Error('UI_OK: обязательное свойство карты закрывается только выбором варианта');
       }
       const window = isTargetingMine(partyState, playerId) ? partyState.targeting : null;
-      if (window && windowCount(window) > 1 && window.required === true) {
+      if (window?.required === true) {
         throw new Error(
-          'UI_OK: обязательное окно выбора целей закрывается только полным набором целей',
+          windowCount(window) > 1
+            ? 'UI_OK: обязательное окно выбора целей закрывается только полным набором целей'
+            : 'UI_OK: обязательное окно выбора цели закрывается только выбором цели',
         );
       }
       return declineTargetingWindow(partyState, playerId);
@@ -397,8 +435,12 @@ export default {
     (shared/phases/defense.js §5a).
  4. Способность героя: правила скилла прогоняют входы хуков — turnStart (начало хода) и turnEnd (конец
     хода). Если правило открыло окно выбора цели, кандидаты подсвечены, а сверху висит текст способности
-    (hint skillWindow). Клик по подсвеченному бойцу отмечает цель (SET_TARGETING pick), движок прогоняет
-    момент picked и сам закрывает окно. Списка вариантов окну не нужно: «Серебряные башмачки» Дороти
+    (hint skillWindow). Обычное окно: клик по подсвеченному бойцу отмечает цель (SET_TARGETING pick),
+    движок прогоняет момент picked и сам закрывает окно. Окно-переключатель (`SET_TARGETING toggle`,
+    «Пламя преисподней» Ифрита, «Взвешивание сердца» Анубиса, «Взгляд Медузы» Медузы): клик только
+    отмечает цель или снимает отметку, момент picked разыгрывает общая кнопка, а `auto` рядом с `toggle`
+    применяет безальтернативный выбор сам. У необязательного окна без отметки кнопка пропускает
+    способность, обязательное (Анубис с несколькими целями) закрывается только выбором. Списка вариантов окну не нужно: «Серебряные башмачки» Дороти
     подсвечивают Дороти и Тото, клик по любому меняет их местами, а выбор здесь симметричный.
  5. Способность необязательна: объявление любого действия (колода или карта) закрывает её окно — правило
     с моментом turnStart больше не сработает, потому что вход в хук был один. В конце хода окно закрывает

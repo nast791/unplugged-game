@@ -49,7 +49,9 @@ export default {
             op: 'open',
             candidates: '$targets',
             count: 1,
+            // один кандидат — движок отмечает и бьёт сам, несколько — окно-переключатель
             auto: true,
+            toggle: true,
           },
         ],
       },

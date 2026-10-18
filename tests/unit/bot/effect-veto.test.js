@@ -1,55 +1,88 @@
 import { describe, expect, it } from 'vitest';
-import { actionsFor, actorOf } from '../../../bot/play/decide.js';
-import { cardIdOf } from '../../../bot/play/metrics.js';
-import { playDuel } from '../../../bot/play/duel.js';
+import { runUi } from '#shared/publicApi.js';
+import { SET_STATUS } from '#shared/actions/index.js';
+import { createState, fighter, PHASES } from '../../fixtures/state.js';
+import ifritCards from '../../../server/content/heroes/ifrit/cards.js';
 
 /**
- * Вето на пустой эффект: карта, у которой свойство сейчас не срабатывает, получает вес 0 и не играется.
- *
- * Проверяется на живой партии, а не на фикстуре: важно, что правило работает в том же
- * перечислении действий, которым играет бот (`actionsFor`), — до этого эффекты уходили в пустоту
- * в 24% случаев, а «Анубис: Погребальный звон» вообще не различался по условиям.
+ * Связка с ботом: перечисление ходов (`bot/play/decide.js: enumerateActions`) берёт карты из
+ * `ui.playableCardIds`, поэтому вето бота на пустой эффект (`acceptCard`: `known && fires === 0` → вес 0)
+ * до такого варианта уже не доходит — карту не предлагает движок. Стережём именно это: у бота в
+ * перечислении пустого эффекта нет, а сама карта остаётся доступной сбросом (в `disabledCardIds`).
  */
-const findUselessEffect = () => {
-  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
-    let found = null;
-    playDuel({
-      seed,
-      heroA: 'anubis',
-      heroB: 'dorothy',
-      policy: 'greedy',
-      maxSteps: 60,
-      onStep: ({ state, playerId }) => {
-        if (found) return;
-        const options = actionsFor(state, playerId, { policy: 'greedy' });
-        for (const entry of options) {
-          if (entry.action?.kind !== 'card') continue;
-          const card = (state.players ?? [])
-            .find(player => String(player.id) === String(playerId))
-            ?.hand?.cards?.find(
-              item => String(item.instanceId ?? item.id) === String(entry.action.id),
-            );
-          if (card?.type !== 'effect') continue;
-          // карта с нулевым весом — это и есть «свойство сейчас не сработает»
-          if (Number(entry.weight) === 0) {
-            found = { state, playerId, action: entry.action, options, cardId: cardIdOf(card.id) };
-            return;
-          }
-        }
+const card = ifritCards.find(entry => entry.id === 'ifrit_10');
+
+const zone = cards => ({ visibility: [], cards });
+const unit = (id, cell, hp, extra = {}) => ({
+  ...fighter({
+    id,
+    name: id,
+    type: 'hero',
+    currentPosition: cell,
+    currentHp: hp,
+    move: 2,
+    attackRange: 1,
+  }),
+  startHp: hp,
+  ...extra,
+});
+
+/** Поле без лавы: «Прыжок в лаву» не найдёт свободной клетки стихии. */
+const desertMap = {
+  id: 'line',
+  nodes: [
+    { id: 1, neighbors: [2], terrain: 'desert' },
+    { id: 2, neighbors: [1, 3], terrain: 'desert' },
+    { id: 3, neighbors: [2, 4], terrain: 'desert' },
+    { id: 4, neighbors: [3], terrain: 'desert' },
+  ],
+};
+
+const buildState = () => {
+  const state = createState({
+    phase: PHASES.turn,
+    map: desertMap,
+    players: [
+      {
+        id: '0',
+        name: 'Ифрит',
+        order: 1,
+        placementReady: true,
+        deck: zone(Array.from({ length: 10 }, (_, index) => ({ id: `d${index}`, bonus: 1 }))),
+        hand: zone([{ ...card, instanceId: 'ifrit_10_1' }]),
+        discard: zone([]),
+        fighters: [unit('ifrit', 1, 14, { attackRange: 2 })],
+        items: [],
       },
-    });
-    if (found) return found;
-  }
-  return null;
+      {
+        id: '1',
+        name: 'Бета',
+        order: 2,
+        placementReady: true,
+        deck: zone([]),
+        hand: zone([]),
+        discard: zone([]),
+        fighters: [unit('beta', 3, 13)],
+        items: [],
+      },
+    ],
+    turn: { index: 1, playerId: '0', actedRound: ['0'] },
+    _enteredHooks: { gameStart: true, turn: true },
+  });
+
+  SET_STATUS(state, { fighterIds: ['ifrit'], status: 'frozen', value: true });
+  return state;
 };
 
 describe('вето на пустой эффект', () => {
-  it('эффектная карта без срабатывающего свойства имеет вес 0, и есть из чего выбрать', () => {
-    const found = findUselessEffect();
-    expect(found).not.toBeNull();
+  it('замороженный Ифрит без лавы: карты нет в перечислении, но она — топливо', () => {
+    const state = buildState();
+    const ui = runUi(state, '0');
 
-    // у того же решения есть варианты с положительным весом: вето не оставляет игрока без хода
-    expect(found.options.some(entry => Number(entry.weight) > 0)).toBe(true);
-    expect(actorOf(found.state)).toBeTruthy();
+    // свойства не будет: и боец заморожен, и клеток лавы нет — движок карту не предлагает
+    expect(ui.playableCardIds).not.toContain('ifrit_10_1');
+    expect(ui.disabledCardIds).toContain('ifrit_10_1');
+    // карта с бонусом 3: сбросить её ради усиления по-прежнему можно
+    expect(card.bonus).toBe(3);
   });
 });

@@ -13,6 +13,7 @@ export { SET_ITEM } from './items.js';
 export { SET_REVEAL } from './reveal.js';
 export { SET_STATUS } from './status.js';
 export { SET_HAND_LIMIT } from './handLimit.js';
+export { SET_SKILL } from './skill.js';
 
 import { SET_ACTIONS, SET_RESIGNED } from './base.js';
 import { SET_CARDS } from './cards.js';
@@ -28,6 +29,7 @@ import { SET_ITEM } from './items.js';
 import { SET_REVEAL } from './reveal.js';
 import { SET_STATUS } from './status.js';
 import { SET_HAND_LIMIT } from './handLimit.js';
+import { SET_SKILL } from './skill.js';
 
 /** Универсальные actions (CAPS) — манипуляторы доменами; вызываются из фаз и из phase.moves. */
 export const actions = {
@@ -46,4 +48,5 @@ export const actions = {
   SET_REVEAL,
   SET_STATUS,
   SET_HAND_LIMIT,
+  SET_SKILL,
 };

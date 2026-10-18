@@ -76,7 +76,7 @@ export const actorOf = state => {
 
 /**
  * Не доставил ли кто-то из **компьютеров** своих бойцов. Нужно там, где решение принимается вне очереди:
- * на расстановке слот играет сам, не дожидаясь чужого «ОК» (`app/composables/useGameAi.js`),
+ * на расстановке слот играет сам, не дожидаясь чужого «ОК» (`app/composables/game/useGameAi.js`),
  * и поиск внутри такого решения обязан знать, что двигается именно этот слот.
  */
 export const pendingPlacementAi = state =>
@@ -248,6 +248,53 @@ const sourceDefinition = (state, playerId, source) => {
   if (skill && String(skill.id) === wanted) return skill;
 
   return cardById(cardIdOf(wanted));
+};
+
+/**
+ * Свой боец, которого переносит окно клеток («Путь на закат», «Прыжок в лаву», карта-телепорт): карта пишет
+ * перенос в правиле `picked` (`SET_FIGHTER_CELL`, `cellId: '$picked'`), оттуда и берём бойца. Чужой перенос
+ * не оцениваем: врага выгодно ставить под удар, а не выводить из-под него.
+ */
+const teleportCellFighter = (state, playerId, targeting) => {
+  const card = sourceDefinition(state, playerId, targeting?.source);
+  const step = (card?.rules ?? [])
+    .filter(rule => rule.moment === 'picked')
+    .flatMap(rule => rule.then ?? [])
+    .find(entry => entry.action === 'SET_FIGHTER_CELL' && String(entry.cellId ?? '') === '$picked');
+  if (step?.fighterId == null) return null;
+
+  return (
+    fightersOf(state, playerId).find(fighter => String(fighter.id) === String(step.fighterId)) ??
+    null
+  );
+};
+
+/**
+ * Вес клетки для переноса своего бойца: те же виды, что у шага в перемещении («выйти на дистанцию удара,
+ * подойти ближе, выйти из-под удара, топтание»), — перенос это тоже выбор позиции. Ноль не отдаём:
+ * обязательное окно с нулевыми весами иначе нечем закрыть.
+ */
+const cellPlacementWeight = (state, playerId, fighter, cellId, weights) => {
+  const cell = Number(cellId);
+  const range = Number(fighter.attackRange) || 1;
+  const here = fighter.currentPosition;
+  const hereDistance = distanceToNearestEnemy(state, playerId, here);
+  const distance = distanceToNearestEnemy(state, playerId, cell);
+  const improves = !(hereDistance <= range) && distance <= range;
+  const away =
+    !improves &&
+    threatenedBy(state, playerId, here) > 0 &&
+    threatenedBy(state, playerId, cell) === 0 &&
+    reachFrom(state, playerId, cell, range) > 0 &&
+    distance > hereDistance;
+  const closer = !improves && !away && distance < hereDistance;
+  const kind = improves ? 'step' : away ? 'away' : closer ? 'closer' : 'idle';
+  const affinity = new Set(terrainAffinity(playerOf(state, playerId)?.heroId));
+
+  return Math.max(
+    0.01,
+    movementWeight(weights, { kind, affinity: onAffinity(state, cell, affinity) }),
+  );
 };
 
 /** Сброс карты кормит ресурс героя (метка осколка Снежной королевы) — это вложение, а не трата. */
@@ -1068,6 +1115,9 @@ const enumerateActions = (
   if (targeting && String(targeting.playerId) === String(playerId)) {
     const weights = weightsFor(policy, situation);
     const marked = targetingPicked(targeting);
+    // окно клеток, которое переносит своего бойца: клетку выбираем как позицию, а не как равный жребий
+    const placed =
+      targeting.kind === 'cells' ? teleportCellFighter(state, playerId, targeting) : null;
     /** Отметка кандидата ключом окна: у клеток cellId, у вариантов optionId, иначе fighterId. */
     const candidateId = candidate =>
       String(
@@ -1089,7 +1139,9 @@ const enumerateActions = (
             ? fighterPickWeight(weights, candidate.fighterId)
             : targeting.kind === 'options'
               ? optionPickWeight(weights, candidate.optionId)
-              : weights.pick,
+              : placed
+                ? cellPlacementWeight(state, playerId, placed, candidate.cellId, weights)
+                : weights.pick,
         action:
           targeting.kind === 'cells'
             ? { type: 'PICK', kind: 'cell', id: Number(candidate.cellId) }

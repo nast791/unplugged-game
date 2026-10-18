@@ -43,7 +43,7 @@
 import AButton from '~/components/atoms/AButton.vue';
 import AInput from '~/components/atoms/AInput.vue';
 import AModal from '~/components/atoms/AModal.vue';
-import { DEFAULT_NICK, useProfile } from '~/composables/useProfile';
+import { DEFAULT_NICK, useProfile } from '~/composables/ui/useProfile';
 import { closeModal, useIsModalOpen } from '~/composables/ui/useModal';
 import { notify } from '~/composables/ui/useToast';
 

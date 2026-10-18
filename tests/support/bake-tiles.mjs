@@ -32,9 +32,13 @@ const SOURCES = {
   sand: '.refs/patterns/sand-texture.svg',
   stones: '.refs/patterns/mountain-texture.svg',
   water: '.refs/patterns/water-texture.svg',
-  forest: '.refs/patterns/forest-branches.png',
+  forest: '.refs/patterns/forest-branches.webp',
   ice: '.refs/patterns/ice-snowflakes.jpg',
   kintsugi: '.refs/patterns/lava-kintsugi.jpg',
+  cracked: '.refs/patterns/26933757_grunge_style_cracked_texture_2501 (1).svg',
+  botanical: '.refs/patterns/vecteezy_luxury-botanical-art-background_20478570.svg',
+  pastel:
+    '.refs/patterns/vecteezy_colorful-pastel-drawing-paper-texture-vector-bright-banner_7740962.svg',
 };
 
 // качество WebP: акварельному песку и мрамору воды хватает 80 (на клетке это 134 px из 512),
@@ -159,6 +163,44 @@ const veinTile = async ({ file, ground, vein, size = CELLS }) => {
     .toBuffer();
 };
 
+/**
+ * Непрозрачная плитка «ковыль»: стебли рисуем сами — в исходниках травы нет. Наклон и высота
+ * считаются от индекса, поэтому плитка повторяема и не зависит от Math.random.
+ */
+const grassTile = async ({ size = CELLS, ground, blade, count = 340 }) => {
+  const blades = Array.from({ length: count }, (_, index) => {
+    const x = (index * 97) % size;
+    const height = size * (0.2 + ((index * 37) % 100) / 180);
+    const bend = (((index * 53) % 80) - 40) * 0.5;
+    const width = 1 + ((index * 13) % 3);
+    const opacity = 0.25 + ((index * 29) % 70) / 100;
+    return `<path d="M ${x} ${size} Q ${x + bend} ${size - height * 0.55} ${x + bend * 2} ${size - height}" stroke="rgb(${blade.join(',')})" stroke-width="${width}" fill="none" opacity="${opacity.toFixed(2)}"/>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" fill="rgb(${ground.join(',')})"/>${blades}</svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+};
+
+/**
+ * Споры поверх готовой плитки: круги и кольца считаются от индекса, поэтому рисунок повторяем.
+ * Нужны грибнице: акварельный фон сам по себе читается как облако, а не как грибная земля.
+ */
+const sporeTile = async ({ base, size = CELLS, color, count = 240 }) => {
+  const png = await sharp(base).png().toBuffer();
+  const href = `data:image/png;base64,${png.toString('base64')}`;
+  const dots = Array.from({ length: count }, (_, index) => {
+    const cx = (index * 89) % size;
+    const cy = (index * 151) % size;
+    const radius = 1 + ((index * 7) % 6);
+    const opacity = (0.15 + ((index * 31) % 60) / 100).toFixed(2);
+    const ring = index % 11 === 0;
+    return ring
+      ? `<circle cx="${cx}" cy="${cy}" r="${radius + 4}" fill="none" stroke="rgb(${color.join(',')})" stroke-width="1.5" opacity="${opacity}"/>`
+      : `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="rgb(${color.join(',')})" opacity="${opacity}"/>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${size}" height="${size}"><image xlink:href="${href}" width="${size}" height="${size}"/>${dots}</svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+};
+
 const main = async () => {
   mkdirSync(OUT, { recursive: true });
 
@@ -218,6 +260,40 @@ const main = async () => {
   });
   await sharp(water).webp(WEBP).toFile(`${OUT}/water-marble.webp`);
 
+  // кристаллы: белая плитка с чёрными трещинами; трещины уводим в тёмно-лиловый
+  const crystal = await toneTile({
+    file: SOURCES.cracked,
+    dark: [96, 72, 136],
+    light: [204, 186, 238],
+  });
+  await sharp(crystal).webp(WEBP_DETAIL).toFile(`${OUT}/crystal-shards.webp`);
+
+  // болото: тёмная ботаника с золотыми линиями; листья — глубокий мох, просветы — олива
+  const swamp = await toneTile({
+    file: SOURCES.botanical,
+    dark: [50, 62, 28],
+    light: [170, 192, 96],
+    brightness: 1.05,
+  });
+  await sharp(swamp).webp(WEBP_DETAIL).toFile(`${OUT}/swamp-moss.webp`);
+
+  // грибница: акварельная пастель в лилово-розовых спорах, сверху — круги и кольца спор
+  const fungusBase = await toneTile({
+    file: SOURCES.pastel,
+    dark: [104, 54, 80],
+    light: [214, 168, 196],
+    brightness: 1.02,
+  });
+  const fungus = await sporeTile({ base: fungusBase, color: [118, 66, 94] });
+  await sharp(fungus).webp(WEBP_DETAIL).toFile(`${OUT}/fungus-spores.webp`);
+
+  // степь: ковыль рисуем сами — в исходниках травы нет
+  const steppe = await grassTile({
+    ground: [217, 180, 92],
+    blade: [148, 110, 38],
+  });
+  await sharp(steppe).webp(WEBP_DETAIL).toFile(`${OUT}/steppe-grasses.webp`);
+
   // проба: те же клетки, что рисует доска, — чтобы смотреть результат глазами
   const probe = [
     { label: 'лёд', fill: '#CFE9F7', tile: 'ice-snowflakes.webp' },
@@ -226,6 +302,10 @@ const main = async () => {
     { label: 'пустыня', fill: '#F0DFA8', tile: 'desert-sand.webp' },
     { label: 'горы', fill: '#C2CBD8', tile: 'mountain-stones.webp' },
     { label: 'вода', fill: '#2E9FB8', tile: 'water-marble.webp' },
+    { label: 'кристаллы', fill: '#B9A6E8', tile: 'crystal-shards.webp' },
+    { label: 'болото', fill: '#8FA83E', tile: 'swamp-moss.webp' },
+    { label: 'грибница', fill: '#C77BA6', tile: 'fungus-spores.webp' },
+    { label: 'степь', fill: '#D9B45C', tile: 'steppe-grasses.webp' },
   ];
   const radius = 100;
   const box = 246;
@@ -258,7 +338,7 @@ const main = async () => {
     .png()
     .toFile(PROBE);
 
-  console.log(`плитки: ${OUT} (лава — трещины «${LAVA_CRACKS}»), проба: ${PROBE}`);
+  console.log(`плитки: ${OUT}, проба: ${PROBE}`);
 };
 
 await main();

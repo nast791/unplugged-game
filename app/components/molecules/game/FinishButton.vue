@@ -1,6 +1,7 @@
 <template>
   <button
     type="button"
+    data-ok-control
     class="group relative flex size-152 shrink-0 items-center justify-center rounded-full border-2 text-center transition-[transform,background-color,border-color,box-shadow] duration-200"
     :class="
       active
@@ -35,7 +36,7 @@
 </template>
 
 <script setup>
-import { useGameSession } from '~/composables/useGameSession.js';
+import { useGameSession } from '~/composables/game/useGameSession.js';
 
 const { okControl, pending, isGameOver, onFinishAction, choicePicked, choiceComplete } =
   useGameSession();

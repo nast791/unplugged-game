@@ -20,7 +20,7 @@ const session = vi.hoisted(() => ({
   ok: { visible: false, enabled: false, label: null },
 }));
 
-vi.mock('~/composables/useGameSession.js', async () => {
+vi.mock('~/composables/game/useGameSession.js', async () => {
   const { computed } = await import('vue');
   return {
     useGameSession: () => ({

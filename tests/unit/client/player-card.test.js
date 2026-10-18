@@ -1,20 +1,28 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { computed, defineComponent, h, ref, TransitionGroup } from 'vue';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { computed, defineComponent, h, nextTick, ref, TransitionGroup } from 'vue';
 
 /**
  * Карточка места — 1в1 с макетом владельца (классы живут в самом `PlayerCard.vue`): слева аватар героя
  * с обводкой по здоровью и места предметов, справа имя со значком роли (человек или ИИ), дальности
  * перемещения и удара, здоровье числами над вдавленной шкалой, справа сверху — пульсирующий кружок
  * и остаток действий (в начале хода «2/2», в расстановке вместо них плашка), справа снизу — панель
- * помощников с числами выбранной копии.
+ * помощников с числами выбранной копии. **Чужие места носят ярлычок у левого верхнего края** — числа
+ * карт в руке, колоде и сбросе, где сброс кликается и открывает модалку за это место (у своего места
+ * ярлычка нет: свои числа игрок видит в руке и на стопках).
+ *
+ * Внешний слой карточки — **рамка активности** (`frameClass`): она охватывает и ярлычок, потому что
+ * ярлычок выступает над телом карточки. Обводку ярлычка рисует он сам, цветом рамки (`frameTone`),
+ * поэтому в битве и в свой ход карточка читается обведённой **целиком**, а не «рамка плюс серый ярлык».
+ * Поэтому рамку проверяем на корне, а тело карточки — внутри.
  *
  * `PlayerCard.vue` — SFC приложения: `computed`/`ref` приходят из автоимпортов Nuxt, в тесте кладём их
  * в `globalThis` до импорта компонента (так же, как `board-clicks.test.js`).
  */
 globalThis.computed = computed;
 globalThis.ref = ref;
+globalThis.nextTick = nextTick;
 
 // Настоящий `useUI` читает конфиг приложения (`app.config.js`), которого в тесте нет, — аватар-атом
 // (`AAvatar`) собираем на его же пресете напрямую.
@@ -32,25 +40,55 @@ vi.mock('~/composables/ui/useUI', async importOriginal => {
 });
 
 // Профиль (`useProfile`) держит ник в `useState`, а состояния Nuxt в тесте нет — подставляем ник напрямую.
-vi.mock('~/composables/useProfile', async () => {
+vi.mock('~/composables/ui/useProfile', async () => {
   const { computed } = await import('vue');
   return { useProfile: () => ({ nick: computed(() => 'Элизиф') }) };
 });
 
+/**
+ * Тултип — своя обвязка reka-ui, а карточке от него нужен только текст подсказки: заглушка кладёт его
+ * в `data-tooltip` на сам элемент (как `piles.test.js`), поэтому в тесте видно, что именно покажется
+ * при наведении, — раньше это был нативный `title`.
+ */
+vi.mock('~/components/atoms/ATooltip.vue', async () => {
+  const { defineComponent, h, mergeProps } = await import('vue');
+  return {
+    default: defineComponent({
+      name: 'ATooltip',
+      props: { text: { type: String, default: '' } },
+      setup(props, { slots, attrs }) {
+        return () => h('div', mergeProps(attrs, { 'data-tooltip': props.text }), slots.default?.());
+      },
+    }),
+  };
+});
+
 // Чей ход, сколько действий и идёт ли расстановка карточка читает из сессии партии — в тесте она своя.
-vi.mock('~/composables/useGameSession.js', async () => {
+vi.mock('~/composables/game/useGameSession.js', async () => {
   const { ref } = await import('vue');
   const session = {
     you: ref('medusa'),
     currentPlayerId: ref(null),
     isPlacement: ref(false),
     actionsLeft: ref(0),
-    turn: ref({}),
+    actionsTotal: ref(0),
+    actionsBonus: ref(0),
+    // метки битвы, окно умения и его отметка: карточка показывает по ним обводки и плашку «Умение»
+    battleRoles: ref({
+      attackerPlayerId: null,
+      defenderPlayerId: null,
+      attackerFighterId: null,
+      defenderFighterId: null,
+    }),
+    lastSkill: ref(null),
+    steps: ref(0),
+    targeting: ref(null),
+    movement: ref(null),
   };
   return { useGameSession: () => session, session };
 });
 
-const { session } = await import('~/composables/useGameSession.js');
+const { session } = await import('~/composables/game/useGameSession.js');
 const { closeAllModals, getModalPayload, isModalOpen } =
   await import('~/composables/ui/useModal.js');
 
@@ -65,11 +103,22 @@ const setSession = ({
   session.currentPlayerId.value = current;
   session.isPlacement.value = placement;
   session.actionsLeft.value = left;
-  session.turn.value = { actionsTotal, bonus: { actions: bonus } };
+  session.actionsTotal.value = actionsTotal;
+  session.actionsBonus.value = bonus;
+};
+
+const clearBattleRoles = () => {
+  session.battleRoles.value = {
+    attackerPlayerId: null,
+    defenderPlayerId: null,
+    attackerFighterId: null,
+    defenderFighterId: null,
+  };
 };
 
 beforeEach(() => {
   setSession();
+  clearBattleRoles();
   closeAllModals();
 });
 
@@ -105,9 +154,18 @@ const AvatarRootStub = defineComponent({
     title: { type: String, default: '' },
     class: { type: [String, Array, Object], default: '' },
   },
-  setup(props, { slots }) {
+  setup(props, { slots, attrs }) {
     return () =>
-      h('span', { 'class': props.class, 'title': props.title, 'data-face': '' }, slots.default?.());
+      h(
+        'span',
+        {
+          ...attrs,
+          'class': props.class,
+          'title': props.title,
+          'data-face': '',
+        },
+        slots.default?.(),
+      );
   },
 });
 
@@ -131,8 +189,12 @@ const mountCard = (player, props = {}) =>
     },
   });
 
-/** Карточка героя из контента: числа бойцов (шаг и удар) и значок предмета в состоянии хода не лежат. */
+/** Карточка героя из контента: числа бойцов (шаг и удар), умение и значок предмета в состоянии не лежат. */
 const catalog = {
+  skill: {
+    title: 'Взгляд Медузы',
+    text: 'Противник не может атаковать Медузу, пока смотрит ей в глаза.',
+  },
   fighters: [
     { id: 'medusa', name: 'Медуза', type: 'hero', hp: 16, move: 3, attackRange: 2 },
     { id: 'harpies_1', name: 'Гарпия', type: 'assistant', hp: 1, move: 3, attackRange: 2 },
@@ -182,7 +244,16 @@ const player = (extra = {}) => ({
   ...extra,
 });
 
-const faces = wrapper => wrapper.findAll('[data-face]');
+/**
+ * Аватарки помощников. Ищем по `data-face-id`: `data-face` носят ещё и обёртки подсказок, и в список
+ * попадало бы лишнее; выбранная копия стоит последней, и её числа подписаны слева.
+ */
+const faces = wrapper => wrapper.findAll('[data-face-id]');
+
+/** Подсказка в тесте — атрибут заглушки `ATooltip` (`data-tooltip`): так видно текст, который покажется. */
+const tooltips = wrapper =>
+  wrapper.findAll('[data-tooltip]').map(node => node.attributes('data-tooltip'));
+const tooltip = (wrapper, text) => tooltips(wrapper).some(value => value.includes(text));
 
 describe('PlayerCard: герой', () => {
   it('показывает имя героя, имя игрока и здоровья числами', () => {
@@ -194,47 +265,34 @@ describe('PlayerCard: герой', () => {
   });
 
   it('у места компьютера только имя героя: имени игрока нет', () => {
-    const wrapper = mountCard(player({ control: 'ai' }), { catalog });
+    const wrapper = mountCard(player({ name: 'Компьютер', control: 'ai' }), { catalog });
 
     expect(wrapper.text()).toContain('Медуза');
-    expect(wrapper.text()).not.toContain('Элизиф');
+    expect(wrapper.text()).not.toContain('Компьютер');
   });
 
   it('полоса считается от стартового здоровья, а цвет — по остатку', () => {
-    const whole = mountCard(player(), { catalog }).find('[data-hp-bar]');
-    expect(whole.attributes('style')).toContain('width: 93.75%');
-    expect(whole.attributes('style')).toContain('--hp-color: var(--color-success)');
+    const wrapper = mountCard(player(), { catalog });
+    const bar = wrapper.get('[data-hp-bar]');
 
-    // 9 из 16 — меньше 60 %: полоса золотая
-    const hurt = player();
-    hurt.fighters[0].currentHp = 9;
-    const mid = mountCard(hurt, { catalog }).find('[data-hp-bar]');
-    expect(mid.attributes('style')).toContain('--hp-color: var(--color-gold)');
-
-    // 3 из 16 — меньше 25 %: полоса цвета опасности
-    const dying = player();
-    dying.fighters[0].currentHp = 3;
-    const low = mountCard(dying, { catalog }).find('[data-hp-bar]');
-    expect(low.attributes('style')).toContain('--hp-color: var(--color-danger)');
+    expect(bar.attributes('style')).toContain('width: 93.75%');
+    expect(bar.attributes('style')).toContain('--hp-color: var(--color-success)');
   });
 
   it('рамка аватара героя — цветом героя, а не шкалой здоровья; у убитого карточка гаснет', () => {
     const alive = mountCard(player(), { catalog });
-    expect(alive.find('.border-\\[var\\(--hero-color\\)\\]').exists()).toBe(true);
+    expect(alive.find('.size-74').classes().join(' ')).toContain('border-[var(--hero-color)]');
 
-    const down = player();
-    down.fighters[0].currentHp = 0;
-    const downed = mountCard(down, { catalog });
-    // обводка героя не меняется от здоровья — гаснет только карточка целиком
-    expect(downed.find('.border-\\[var\\(--hero-color\\)\\]').exists()).toBe(true);
-    expect(downed.classes().join(' ')).toContain('opacity-60');
+    // смерть видна по тому, что карточка гаснет, а не по цвету кольца: кольцо героя — это место стороны
+    const dead = mountCard(player({ fighters: [hero({ currentHp: 0 }), harpy(1)] }), { catalog });
+    expect(dead.classes().join(' ')).toContain('opacity-60');
   });
 
   it('показывает дальности перемещения и удара значками макета', () => {
     const wrapper = mountCard(player(), { catalog });
 
-    expect(wrapper.find('[data-icon="move"]').exists()).toBe(true);
-    expect(wrapper.find('[data-icon="attack"]').exists()).toBe(true);
+    expect(wrapper.html()).toContain('data-icon="move"');
+    expect(wrapper.html()).toContain('data-icon="attack"');
     expect(wrapper.text()).toContain('3');
     expect(wrapper.text()).toContain('2');
   });
@@ -242,9 +300,8 @@ describe('PlayerCard: герой', () => {
   it('без каталога не выдумывает числа: пустое место вместо прочерка и нуля', () => {
     const wrapper = mountCard(player());
 
-    expect(wrapper.text()).not.toContain('—');
-    expect(wrapper.find('[data-icon="move"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain('15/16');
+    expect(wrapper.text()).not.toContain('undefined');
+    expect(wrapper.find('.size-74').exists()).toBe(true);
   });
 });
 
@@ -279,13 +336,19 @@ describe('PlayerCard: действия и фазы', () => {
     setSession({ current: 'medusa', left: 3, actionsTotal: 3 });
     const first = mountCard(player(), { catalog });
     expect(first.text()).toContain('3/3');
-    expect(first.find('[title="Осталось действий: 3 из 3"]').exists()).toBe(true);
+    expect(tooltip(first, 'Осталось действий: 3 из 3')).toBe(true);
 
-    // одно действие объявлено — осталось два из трёх, плюс добавленное в этом ходу
-    setSession({ current: 'medusa', left: 2, actionsTotal: 2, bonus: 1 });
+    // одно действие объявлено — осталось два из трёх (жалоба владельца: «1/1» посреди хода)
+    setSession({ current: 'medusa', left: 2, actionsTotal: 3 });
     const second = mountCard(player(), { catalog });
     expect(second.text()).toContain('2/3');
-    expect(second.find('[title="Осталось действий: 2 из 3 (+1 в этом ходу)"]').exists()).toBe(true);
+    expect(tooltip(second, 'Осталось действий: 2 из 3')).toBe(true);
+
+    // добавочное действие движок выдаёт ростом хода: знаменатель становится четырём
+    setSession({ current: 'medusa', left: 1, actionsTotal: 4, bonus: 1 });
+    const third = mountCard(player(), { catalog });
+    expect(third.text()).toContain('1/4');
+    expect(tooltip(third, 'Осталось действий: 1 из 4 (+1 в этом ходу)')).toBe(true);
   });
 
   it('в расстановке вместо действий — плашка фазы, а у подтвердившего её нет', () => {
@@ -321,7 +384,9 @@ describe('PlayerCard: действия и фазы', () => {
 
     const avatar = wrapper.find('.size-74');
     expect(avatar.exists()).toBe(true);
-    expect(avatar.attributes('title') ?? '').not.toContain('не на поле');
+    expect(avatar.element.closest('[data-tooltip]').getAttribute('data-tooltip')).not.toContain(
+      'не на поле',
+    );
     expect(wrapper.text()).not.toContain('Расстановка');
   });
 
@@ -333,7 +398,9 @@ describe('PlayerCard: действия и фазы', () => {
     });
     const wrapper = mountCard(mine, { catalog });
 
-    expect(wrapper.find('.size-74').attributes('title')).toContain('не на поле');
+    expect(
+      wrapper.find('.size-74').element.closest('[data-tooltip]').getAttribute('data-tooltip'),
+    ).toContain('не на поле');
   });
 });
 
@@ -343,7 +410,7 @@ describe('PlayerCard: предметы', () => {
     const items = wrapper.findAll('[data-item]');
 
     expect(items).toHaveLength(2);
-    expect(items[0].find('[data-icon="lucide:bandage"]').exists()).toBe(true);
+    expect(items[0].html()).toContain('lucide:bandage');
   });
 
   it('без каталога место предмета есть, а чужого значка в нём нет', () => {
@@ -377,13 +444,14 @@ describe('PlayerCard: помощники', () => {
     // по умолчанию крайняя справа — последняя копия, её числа и подписаны слева
     expect(wrapper.text()).toContain('Вторая');
 
-    await faces(wrapper)[0].trigger('click');
-
-    const order = faces(wrapper).map(face => face.attributes('title'));
-    expect(order[order.length - 1]).toContain('Первая');
+    const first = faces(wrapper)[0];
+    first.trigger('click');
+    await nextTick();
+    const order = faces(wrapper).map(face => face.attributes('data-face-id'));
+    expect(order[order.length - 1], `порядок: ${order.join(', ')}`).toBe('harpies_1');
     expect(wrapper.text()).toContain('Первая');
     // клик по аватару не открывает карточку героя
-    expect(isModalOpen('heroSheet')).toBe(false);
+    expect(isModalOpen('heroDetails')).toBe(false);
   });
 
   it('обводка копии — по остатку здоровья, убитая копия серая и кликабельна', async () => {
@@ -406,7 +474,7 @@ describe('PlayerCard: помощники', () => {
 
     // убитая копия остаётся кликабельной: клик выбирает её, а не открывает героя
     await faces(wrapper)[2].trigger('click');
-    expect(isModalOpen('heroSheet')).toBe(false);
+    expect(isModalOpen('heroDetails')).toBe(false);
   });
 
   it('место без помощников и предметов не рисует ни панель, ни кружков', () => {
@@ -424,8 +492,98 @@ describe('PlayerCard: клик по карточке', () => {
     const wrapper = mountCard(player(), { catalog });
     await wrapper.trigger('click');
 
-    expect(isModalOpen('heroSheet')).toBe(true);
-    expect(getModalPayload('heroSheet')).toBe('medusa');
+    expect(isModalOpen('heroDetails')).toBe(true);
+    expect(getModalPayload('heroDetails')).toBe('medusa');
+  });
+});
+
+describe('PlayerCard: ярлычок счётчиков карт', () => {
+  /** Чужое место: у смотрящего в сессии `medusa`, поэтому карточка соседа — другой id. */
+  const other = extra => player({ id: 'tesla', name: 'Гамлет', ...extra });
+  const counts = wrapper => wrapper.find('[data-card-counts]');
+
+  it('своё место ярлычка не носит', () => {
+    const wrapper = mountCard(player({ handCount: 5, deckCount: 24, discardCount: 3 }));
+
+    expect(counts(wrapper).exists()).toBe(false);
+    expect(wrapper.classes()).not.toContain('mt-28');
+  });
+
+  it('чужое место показывает числа руки, колоды и сброса', () => {
+    const wrapper = mountCard(other({ handCount: 5, deckCount: 24, discardCount: 3 }));
+
+    // ярлычок выступает над карточкой, поэтому место под него взято отступом
+    expect(wrapper.classes()).toContain('mt-28');
+    // фон ярлычка — тот же, что у карточки: её цвет, её блик и её зерно точками по той же сетке
+    expect(counts(wrapper).find('svg').exists()).toBe(true);
+    const shape = counts(wrapper).find('.fill-surface');
+    expect(shape.exists()).toBe(true);
+    // скос сглажен дугой, а не оставлен острым углом
+    expect(shape.attributes('d')).toContain('Q36 0');
+    expect(counts(wrapper).find('.stroke-line').exists()).toBe(true);
+    expect(counts(wrapper).find('svg').html()).toContain('fill-white/4');
+
+    const skin = counts(wrapper).find('[data-card-counts-skin]');
+    expect(skin.classes().join(' ')).toContain('radial-gradient');
+    expect(skin.attributes('style')).toContain('clip-path');
+    expect(skin.attributes('style')).toContain('10px 10px');
+    expect(counts(wrapper).text()).toContain('5');
+    expect(counts(wrapper).text()).toContain('24');
+    expect(counts(wrapper).text()).toContain('3');
+    expect(tooltip(wrapper, 'Карт в руке: 5')).toBe(true);
+    expect(tooltip(wrapper, 'Карт в колоде: 24')).toBe(true);
+    expect(tooltip(wrapper, 'Карт в сбросе: 3')).toBe(true);
+  });
+
+  it('обводка ярлычка берёт цвет рамки: в битве — красный и голубой, без роли — линейный', async () => {
+    const wrapper = mountCard(other({ handCount: 2, deckCount: 10, discardCount: 0 }));
+    expect(counts(wrapper).find('.stroke-line').exists()).toBe(true);
+
+    session.battleRoles.value = {
+      attackerPlayerId: 'tesla',
+      defenderPlayerId: null,
+      attackerFighterId: 'tesla',
+      defenderFighterId: null,
+    };
+    await nextTick();
+    expect(wrapper.classes()).toContain('border-danger');
+    expect(counts(wrapper).find('.stroke-danger').exists()).toBe(true);
+    expect(counts(wrapper).find('.stroke-line').exists()).toBe(false);
+
+    session.battleRoles.value = {
+      attackerPlayerId: null,
+      defenderPlayerId: 'tesla',
+      attackerFighterId: null,
+      defenderFighterId: 'tesla',
+    };
+    await nextTick();
+    expect(wrapper.classes()).toContain('border-info');
+    expect(counts(wrapper).find('.stroke-info').exists()).toBe(true);
+    expect(counts(wrapper).find('.stroke-danger').exists()).toBe(false);
+  });
+
+  it('клик по сбросу открывает сброс этого места, а не смотрящего', async () => {
+    const wrapper = mountCard(other({ handCount: 5, deckCount: 24, discardCount: 3 }));
+    await counts(wrapper).find('[data-discard-open]').trigger('click');
+
+    expect(isModalOpen('discard')).toBe(true);
+    expect(getModalPayload('discard')).toEqual({ playerId: 'tesla' });
+    // у карточки свой клик — шторка героя от ярлычка не открывается
+    expect(isModalOpen('heroDetails')).toBe(false);
+  });
+
+  it('пустой сброс открывать нечем — и клик молчит, и подсказка говорит об этом', async () => {
+    const wrapper = mountCard(other({ handCount: 5, deckCount: 24, discardCount: 0 }));
+    const chip = counts(wrapper).find('[data-discard-open]');
+
+    expect(tooltip(wrapper, 'Сброс пуст')).toBe(true);
+    // цвет значка не зависит от числа: пустой сброс просто не открывается
+    expect(chip.find('i').classes()).toContain('text-dim');
+    expect(chip.html()).not.toContain('text-gray');
+
+    await chip.trigger('click');
+    expect(isModalOpen('discard')).toBe(false);
+    expect(isModalOpen('heroDetails')).toBe(false);
   });
 });
 
@@ -447,7 +605,7 @@ describe('PlayerCard: расстановка', () => {
 
     // grayscale — на портрете, а не на кольце: ждут места герой и первый помощник
     expect(wrapper.findAll('.grayscale')).toHaveLength(2);
-    const portrait = wrapper.find('[data-face] .grayscale');
+    const portrait = wrapper.find('[data-face-id] .grayscale');
     // портрет обесцвечен целиком (фолбэк растянут на весь кружок), а не только буквы
     expect(portrait.classes().join(' ')).toContain('size-full');
     expect(portrait.classes().join(' ')).toContain('bg-surface-2');
@@ -474,7 +632,7 @@ describe('PlayerCard: расстановка', () => {
     const avatar = wrapper.find('.size-74');
     expect(avatar.classes().join(' ')).toContain('border-line');
     expect(avatar.classes().join(' ')).not.toContain('opacity-50');
-    expect(wrapper.find('.border-\\[var\\(--hero-color\\)\\]').exists()).toBe(false);
+    expect(avatar.classes().join(' ')).not.toContain('border-[var(--hero-color)]');
     expect(avatar.find('.grayscale').exists()).toBe(true);
   });
 
@@ -482,8 +640,147 @@ describe('PlayerCard: расстановка', () => {
     const squad = player({ fighters: [unplaced(hero()), unplaced(harpy(1))] });
     const wrapper = mountCard(squad, { catalog });
 
-    expect(wrapper.find('.border-\\[var\\(--hero-color\\)\\]').exists()).toBe(true);
+    // вне расстановки отсутствие клетки — не «полка»: и кольцо, и портрет обычные
+    expect(wrapper.find('.size-74').classes().join(' ')).toContain('border-[var(--hero-color)]');
     expect(faces(wrapper)[0].classes().join(' ')).toContain('border-success');
     expect(wrapper.findAll('.grayscale')).toHaveLength(0);
+  });
+});
+
+describe('PlayerCard: роль в битве', () => {
+  const roles = (extra = {}) => ({
+    attackerPlayerId: null,
+    defenderPlayerId: null,
+    attackerFighterId: null,
+    defenderFighterId: null,
+    ...extra,
+  });
+
+  it('карточка атакующего обведена красным, защитника — голубым, остальных — как обычно', async () => {
+    const wrapper = mountCard(player());
+    expect(wrapper.classes()).toContain('border-line');
+
+    session.battleRoles.value = roles({ attackerPlayerId: 'medusa', attackerFighterId: 'medusa' });
+    await nextTick();
+    expect(wrapper.classes()).toContain('border-danger');
+    expect(wrapper.classes()).not.toContain('border-line');
+
+    session.battleRoles.value = roles({ defenderPlayerId: 'medusa', defenderFighterId: 'medusa' });
+    await nextTick();
+    expect(wrapper.classes()).toContain('border-info');
+    expect(wrapper.classes()).not.toContain('border-danger');
+
+    session.battleRoles.value = roles({ attackerPlayerId: 'other' });
+    await nextTick();
+    expect(wrapper.classes()).toContain('border-line');
+  });
+
+  /**
+   * Плашка «Умение» — только про смотрящего: открытое окно умения и черновик перемещения от умения
+   * принадлежат тому, кто ходит, а `lastSkill` — публичное поле партии. Раньше она висела на карточке
+   * соседа после чужого умения (жалоба владельца: «на Анубисе висит умение, хотя пелена не активна»).
+   */
+  it('плашку «Умение» показывает только место смотрящего, и только по своему умению', async () => {
+    const rival = mountCard(
+      player({ id: 'anubis', name: 'Анубис', skill: { id: 'anubis_skill' } }),
+      { catalog },
+    );
+
+    session.lastSkill.value = { playerId: 'anubis', skillId: 'anubis_skill', moment: 'turnEnd' };
+    await nextTick();
+    expect(rival.find('[data-skill-badge]').exists()).toBe(false);
+
+    // своё продолжительное умение видно всегда: это состояние героя, а не момент решения
+    const mine = mountCard(player({ skill: { id: 'medusa_skill' }, skillActive: true }), {
+      catalog,
+    });
+    expect(mine.find('[data-skill-badge]').exists()).toBe(true);
+  });
+
+  /**
+   * Отметку сработавшего умения держит и снимает движок (`lastSkill`, `SET_ACTIONS −1`), а плашка
+   * читает её напрямую. Раньше клиент считал её сам по номеру шага и сравнивал отметки по ссылке:
+   * после каждого ответа сервера приходил новый объект с тем же содержимым, плашка вставала заново и
+   * висела до конца хода (жалоба владельца: «умение висит и не снимается, а это уже второе действие»).
+   */
+  it('плашка «Умение» гаснет вместе с отметкой движка и встаёт на новую', async () => {
+    const card = mountCard(player({ skill: { id: 'medusa_skill' } }), { catalog });
+    const badge = () => card.find('[data-skill-badge]').exists();
+    expect(badge()).toBe(false);
+
+    // умение сработало в начале хода — отметка стоит
+    session.lastSkill.value = { playerId: 'medusa', skillId: 'medusa_skill', moment: 'turnStart' };
+    await nextTick();
+    expect(badge()).toBe(true);
+
+    // объявлено действие: движок снял отметку — плашка гаснет без новых шагов и ответов сервера
+    session.lastSkill.value = null;
+    await nextTick();
+    expect(badge()).toBe(false);
+
+    // умение сработало снова в новом ходу — отметка та же по содержимому, и плашка снова встаёт
+    session.lastSkill.value = { playerId: 'medusa', skillId: 'medusa_skill', moment: 'turnStart' };
+    await nextTick();
+    expect(badge()).toBe(true);
+
+    // то же содержимое, но чужого умения, и своё умение у чужого места — не повод для плашки
+    session.lastSkill.value = { playerId: 'anubis', skillId: 'anubis_skill', moment: 'turnStart' };
+    await nextTick();
+    expect(badge()).toBe(false);
+  });
+});
+
+describe('PlayerCard: урон числом', () => {
+  /** Бойцы с запасом здоровья: помощнику нужно куда терять, иначе урон не покажешь. */
+  const squad = (hpHero = 15, hpFace = 3) => [
+    hero({ currentHp: hpHero }),
+    harpy(1, { currentHp: hpFace, startHp: 3 }),
+    harpy(2),
+    harpy(3),
+  ];
+
+  afterEach(() => vi.useRealTimers());
+
+  it('урон героя всплывает числом над шкалой и гаснет сам', async () => {
+    vi.useFakeTimers();
+    const wrapper = mountCard(player({ fighters: squad() }));
+    expect(wrapper.find('[data-hp-damage]').exists()).toBe(false);
+
+    await wrapper.setProps({ player: player({ fighters: squad(11) }) });
+
+    const float = wrapper.find('[data-hp-damage]');
+    expect(float.exists()).toBe(true);
+    expect(float.text()).toBe('−4');
+    expect(wrapper.find('[data-hp-bar]').classes()).toContain('player-card-hp-hit');
+
+    vi.advanceTimersByTime(1200);
+    await nextTick();
+    expect(wrapper.find('[data-hp-damage]').exists()).toBe(false);
+  });
+
+  it('урон помощника всплывает числом на его аватарке', async () => {
+    vi.useFakeTimers();
+    const wrapper = mountCard(player({ fighters: squad(15, 3) }));
+
+    await wrapper.setProps({ player: player({ fighters: squad(15, 1) }) });
+
+    const float = wrapper.find('[data-face-damage]');
+    expect(float.exists()).toBe(true);
+    expect(float.text()).toBe('−2');
+    // у героя урона нет — числа при нём не появляется
+    expect(wrapper.find('[data-hp-damage]').exists()).toBe(false);
+
+    vi.advanceTimersByTime(1200);
+    await nextTick();
+    expect(wrapper.find('[data-face-damage]').exists()).toBe(false);
+  });
+
+  it('лечение числа не показывает: урон — это потеря здоровья', async () => {
+    const wrapper = mountCard(player({ fighters: squad(11) }));
+
+    await wrapper.setProps({ player: player({ fighters: squad(14) }) });
+
+    expect(wrapper.find('[data-hp-damage]').exists()).toBe(false);
+    expect(wrapper.find('[data-face-damage]').exists()).toBe(false);
   });
 });

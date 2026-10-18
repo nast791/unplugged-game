@@ -1,6 +1,6 @@
 <template>
   <div class="bg-app text-ink relative flex h-full min-h-0 flex-col">
-    <Header :mode="modeTitle" :stage="stageLabel" :elapsed="partyTime" menu />
+    <Header :mode="modeTitle" :stage="stageLabel" :elapsed="partyTime" menu compact />
 
     <main class="relative min-h-0 flex-1 overflow-hidden">
       <GameBoard
@@ -13,12 +13,29 @@
       <div
         class="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col items-center gap-8 px-24 pt-12"
       >
-        <HintsWindow :text="gameHint?.text ?? ''" :tone="gameHint?.tone" />
-
         <ChoicePanel class="pointer-events-auto" />
       </div>
 
+      <HintsWindow :text="hintText" :tone="gameHint?.tone" />
+
+      <div class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-24">
+        <BattleWindow :focus="boardFocus" />
+      </div>
+
       <div class="pointer-events-none absolute top-12 right-12 z-20 flex flex-col items-end gap-8">
+        <ATooltip :text="focusToggleLabel" side="left">
+          <AButton
+            variant="secondary"
+            icon
+            class="bg-surface/95 pointer-events-auto"
+            :aria-label="focusToggleLabel"
+            data-board-focus
+            @click="toggleBoardFocus"
+          >
+            <Icon :name="focusToggleIcon" class="size-20!" aria-hidden="true" />
+          </AButton>
+        </ATooltip>
+
         <p
           v-if="activeLimitSeconds"
           class="text-16 rounded-6 pointer-events-auto flex flex-wrap items-center gap-3 border-2 px-16 py-10"
@@ -43,18 +60,25 @@
         </p>
       </div>
 
-      <div v-if="!anyModalOpen" class="fixed right-0 bottom-0 left-0 z-10 flex items-end gap-12">
-        <PlayersPanel class="max-h-[calc(100dvh_-_96*var(--spacing))]" />
+      <div
+        v-if="!anyModalOpen"
+        class="pointer-events-none fixed right-0 bottom-0 left-0 z-10 flex items-end gap-12"
+      >
+        <PlayersPanel
+          v-if="!boardFocus"
+          class="pointer-events-none"
+          wrapper-class="max-h-[calc(100dvh_-_96*var(--spacing))]"
+        />
 
-        <CardsPanel />
+        <CardsPanel v-if="!boardFocus" />
 
-        <div class="flex flex-col items-end gap-8 p-12">
+        <div class="pointer-events-none ml-auto flex flex-col items-end gap-8 self-end p-12">
           <PlacementTray />
 
-          <div class="flex items-end gap-12">
-            <DeckPile />
+          <div class="pointer-events-auto flex items-end gap-12">
+            <DeckPile v-if="!boardFocus" />
 
-            <DiscardPile />
+            <DiscardPile v-if="!boardFocus" />
 
             <FinishButton />
           </div>
@@ -63,9 +87,15 @@
 
       <DiscardModal />
 
-      <HeroSheet />
+      <CardDragLayer />
+
+      <CardFlights />
+
+      <HeroDetailsModal />
 
       <ProfileModal />
+
+      <SettingsModal />
 
       <ConfirmModal />
 
@@ -100,30 +130,45 @@
 <script setup>
 import { HINTS } from '#shared/constants/hints.js';
 import { modes } from '#shared/constants/modes.js';
+import AButton from '~/components/atoms/AButton.vue';
+import ATooltip from '~/components/atoms/ATooltip.vue';
 import GameBoard from '~/components/organisms/game/Board.vue';
 import DeckPile from '~/components/molecules/game/DeckPile.vue';
 import DiscardPile from '~/components/molecules/game/DiscardPile.vue';
 import FinishButton from '~/components/molecules/game/FinishButton.vue';
 import PlacementTray from '~/components/molecules/game/PlacementTray.vue';
 import CardsPanel from '~/components/organisms/game/CardsPanel.vue';
+import BattleWindow from '~/components/organisms/game/BattleWindow.vue';
+import CardDragLayer from '~/components/organisms/game/CardDragLayer.vue';
+import CardFlights from '~/components/organisms/game/CardFlights.vue';
 import ChoicePanel from '~/components/organisms/game/ChoicePanel.vue';
 import PlayersPanel from '~/components/organisms/game/PlayersPanel.vue';
 import DiscardModal from '~/components/organisms/modals/DiscardModal.vue';
-import HeroSheet from '~/components/organisms/modals/HeroSheet.vue';
+import HeroDetailsModal from '~/components/organisms/modals/HeroDetailsModal.vue';
 import ProfileModal from '~/components/organisms/modals/ProfileModal.vue';
+import SettingsModal from '~/components/organisms/modals/SettingsModal.vue';
 import ConfirmModal from '~/components/organisms/modals/ConfirmModal.vue';
 import GameMenu from '~/components/organisms/game/Menu.vue';
 import HintsWindow from '~/components/organisms/game/HintsWindow.vue';
 import Header from '~/components/organisms/layout/Header.vue';
-import { ensureClock, useClock } from '~/composables/useClock.js';
+import { TOOLTIPS } from '~/constants/tooltips.js';
+import { ensureClock, useClock } from '~/composables/ui/useClock.js';
 import { addActiveModal, isAnyModalOpen, removeActiveModal } from '~/composables/ui/useModal.js';
-import { useGameHint } from '~/composables/useGameHint.js';
-import { useSeoTitle } from '~/composables/useSeoTitle';
+import { useGameAi } from '~/composables/game/useGameAi.js';
+import { useGameHint } from '~/composables/game/useGameHint.js';
+import { useGameSession } from '~/composables/game/useGameSession.js';
+import { useGameView } from '~/composables/game/useGameView.js';
+import { useSeoTitle } from '~/composables/ui/useSeoTitle';
 
 const route = useRoute();
 const { bootstrap, clear } = useGameView();
 
 const anyModalOpen = isAnyModalOpen();
+
+const boardFocus = ref(false);
+const toggleBoardFocus = () => {
+  boardFocus.value = !boardFocus.value;
+};
 
 const partyFailure = err => {
   const status = Number(err?.statusCode ?? err?.status ?? err?.data?.statusCode ?? 0);
@@ -268,12 +313,16 @@ useSeoTitle(() => modeTitle.value || 'Партия');
 
 const { aiThinking } = useGameAi();
 
-/**
- * «Компьютер думает» показываем только тогда, когда он думает **за себя в игре**: свою расстановку он
- * ведёт параллельно с человеком, и подсказка движка про расстановку в этот момент адресована человеку.
- */
 const boardWaitingForAi = computed(() => aiThinking.value && !isPlacement.value);
 const { hint: gameHint } = useGameHint({ error, aiThinking: boardWaitingForAi, hint, pending });
+
+const focusToggleLabel = computed(() =>
+  boardFocus.value ? TOOLTIPS.board.exit() : TOOLTIPS.board.focus(),
+);
+const focusToggleIcon = computed(() =>
+  boardFocus.value ? 'lucide:minimize-2' : 'lucide:maximize-2',
+);
+const hintText = computed(() => (boardFocus.value ? '' : (gameHint.value?.text ?? '')));
 
 const onScreenClick = event => {
   if (!isPlacement.value) return;

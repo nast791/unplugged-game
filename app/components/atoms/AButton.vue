@@ -18,7 +18,6 @@
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 
-/** Безстилевая кнопка: классы берутся из пресета `button`, вариант — из `variant`. */
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps({

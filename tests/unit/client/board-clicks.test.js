@@ -28,7 +28,7 @@ globalThis.watch = watch;
 globalThis.onMounted = onMounted;
 globalThis.onBeforeUnmount = onBeforeUnmount;
 
-vi.mock('~/composables/useGameSession.js', async () => {
+vi.mock('~/composables/game/useGameSession.js', async () => {
   const { ref } = await import('vue');
   const session = {
     view: ref({ map: null }),
@@ -42,7 +42,7 @@ vi.mock('~/composables/useGameSession.js', async () => {
   return { useGameSession: () => session, session };
 });
 
-const { session } = await import('~/composables/useGameSession.js');
+const { session } = await import('~/composables/game/useGameSession.js');
 const { default: Board } = await import('../../../app/components/organisms/game/Board.vue');
 
 /** Пропускает слот дальше: в тесте ClientOnly и слои конвы ничего не рисуют, но и не мешают. */

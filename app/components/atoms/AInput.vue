@@ -38,18 +38,6 @@
 </template>
 
 <script setup>
-/**
- * Универсальное поле ввода — единственный `<input>` в проекте (как `AScroll` для скролла): подпись,
- * подсказка и ошибка, слоты `prev`/`next` для кнопок рядом (например «случайный сид»), режим `numeric`
- * для числовых полей.
- *
- * Значение — **строка** и всегда через `v-model`: `numeric` фильтрует ввод по цифрам, поэтому ввод
- * обрабатывается вручную (`:value` + `@input`), а не `v-model` на самом `<input>` — иначе два обработчика
- * `input` спорили бы за одно значение. Приведение к числу — забота потребителя: пустая строка значит
- * «не задано», а не ноль.
- *
- * `error` и `hint` связаны с полем через `aria-describedby`: ошибка важнее подсказки, показывается одна.
- */
 defineOptions({ inheritAttrs: false });
 
 import { useUI } from '~/composables/ui/useUI';
@@ -60,7 +48,7 @@ const props = defineProps({
   error: { type: String, default: '' },
   type: { type: String, default: 'text' },
   placeholder: { type: String, default: '' },
-  /** Только цифры: сид партии, размер поля — всё, что набирают с цифровой панели. */
+
   numeric: { type: Boolean, default: false },
   maxlength: { type: [Number, String], default: 0 },
   autocomplete: { type: String, default: 'off' },
@@ -85,7 +73,6 @@ const hintId = `${inputId}-hint`;
 const errorId = `${inputId}-error`;
 const inputRef = ref(null);
 
-/** Что описывает поле: ошибка важнее подсказки — читаем одну. */
 const describedBy = computed(() => {
   if (props.error) return errorId;
   if (props.hint) return hintId;
@@ -100,7 +87,7 @@ const restAttrs = computed(() => {
 const onInput = event => {
   const raw = event.target.value;
   const value = props.numeric ? raw.replace(/\D+/g, '') : raw;
-  // Отфильтрованное возвращаем в само поле: значение связывается вручную, `v-model` ввод не правит.
+
   if (value !== raw) event.target.value = value;
   model.value = value;
 };

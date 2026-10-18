@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HINT_TONES, resolveGameHint } from '../../../app/composables/useGameHint.js';
+import { HINT_TONES, resolveGameHint } from '../../../app/composables/game/useGameHint.js';
 
 /**
  * Старшинство подсказок экрана партии: пока правило не было сведено в `resolveGameHint`, ошибка хода

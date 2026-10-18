@@ -1,19 +1,8 @@
 import { computed } from 'vue';
+import { cardBonus } from '#shared/helpers/cards.js';
+import { CARD_MOMENT_PREFIXES } from '~/constants/cards.js';
+import { HEALTH_THRESHOLDS, HEALTH_TONES } from '~/constants/health.js';
 import { useGameView } from './useGameView.js';
-
-const HEALTH_TONES = {
-  ok: { key: 'ok', color: 'var(--color-success)' },
-  mid: { key: 'mid', color: 'var(--color-gold)' },
-  low: { key: 'low', color: 'var(--color-danger)' },
-  down: { key: 'down', color: 'var(--color-line)' },
-};
-
-const CARD_TYPES = {
-  attack: { label: 'Атака', icon: 'lucide:swords', plate: 'bg-danger' },
-  defense: { label: 'Защита', icon: 'lucide:shield', plate: 'bg-info' },
-  hybrid: { label: 'Гибрид', icon: 'lucide:shuffle', plate: 'bg-violet' },
-  effect: { label: 'Эффект', icon: 'game-icons:magic-palm', plate: 'bg-accent' },
-};
 
 const seatOf = player => Number(player?.order) || String(player?.id ?? '');
 
@@ -46,7 +35,8 @@ export const hpPercent = fighter =>
 export const hpLabel = fighter =>
   `${Number(fighter?.currentHp ?? 0)}/${Number(fighter?.startHp ?? 0)}`;
 
-export const hpToneKey = percent => (percent <= 25 ? 'low' : percent <= 60 ? 'mid' : 'ok');
+export const hpToneKey = percent =>
+  percent <= HEALTH_THRESHOLDS.low ? 'low' : percent <= HEALTH_THRESHOLDS.mid ? 'mid' : 'ok';
 
 export const healthTone = fighter => {
   const current = Number(fighter?.currentHp ?? 0);
@@ -55,14 +45,41 @@ export const healthTone = fighter => {
   return HEALTH_TONES[hpToneKey(Math.max(0, Math.min(100, (current / start) * 100)))];
 };
 
-export const CARD_TYPE_ORDER = ['attack', 'defense', 'hybrid', 'effect'];
+const PREFIX_PATTERN = `(${CARD_MOMENT_PREFIXES.flatMap(entry => entry.keys).join('|')})\\s*:`;
 
-export const cardType = type =>
-  CARD_TYPES[String(type)] ?? {
-    label: String(type ?? ''),
-    icon: 'lucide:circle-help',
-    plate: 'bg-surface-2',
-  };
+export const momentOfPrefix = prefix => {
+  const key = String(prefix ?? '');
+  return CARD_MOMENT_PREFIXES.find(entry => entry.keys.includes(key))?.moment ?? null;
+};
+
+// Текст свойства режется по префиксам момента («МГНОВЕННО:», «ПОСЛЕ БИТВЫ:»): своего текста у правил нет,
+// а окно битвы подсвечивает ту часть, которая играет сейчас.
+export const cardTextParts = text => {
+  const source = String(text ?? '');
+  if (!source.trim()) return [];
+
+  const matches = [...source.matchAll(new RegExp(PREFIX_PATTERN, 'g'))];
+  if (matches.length === 0) return [{ moment: null, text: source.trim() }];
+
+  const parts = [];
+  const head = source.slice(0, matches[0].index).trim();
+  if (head) parts.push({ moment: null, text: head });
+
+  matches.forEach((match, index) => {
+    const to = index + 1 < matches.length ? matches[index + 1].index : source.length;
+    parts.push({ moment: momentOfPrefix(match[1]), text: source.slice(match.index, to).trim() });
+  });
+
+  return parts;
+};
+
+export const momentsOfStage = stage => {
+  if (stage === 'reveal') return ['immediately', 'duringCombat'];
+  if (stage === 'close') return ['afterCombat'];
+  return [];
+};
+
+export const cardMoveBonus = card => cardBonus(card);
 
 export const useGameHelpers = () => {
   const { view, playerId } = useGameView();
@@ -90,6 +107,8 @@ export const useGameHelpers = () => {
   const turn = computed(() => view.value?.turn ?? 0);
   const phase = computed(() => view.value?.phase ?? null);
   const actionsLeft = computed(() => view.value?.actionsLeft ?? 0);
+  const actionsTotal = computed(() => view.value?.actionsTotal ?? 0);
+  const actionsBonus = computed(() => view.value?.actionsBonus ?? 0);
   const winner = computed(() => view.value?.winner ?? null);
   const isGameOver = computed(() => phase.value === 'gameEnd' || winner.value != null);
 
@@ -102,6 +121,8 @@ export const useGameHelpers = () => {
     turn,
     phase,
     actionsLeft,
+    actionsTotal,
+    actionsBonus,
     winner,
     isGameOver,
     me,

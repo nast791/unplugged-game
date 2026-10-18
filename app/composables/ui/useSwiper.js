@@ -161,6 +161,13 @@ export const useSwiper = (input = {}) => {
   const update = () => instance.value?.update();
   const reinit = () => (import.meta.client ? nextTick(() => init()) : Promise.resolve());
 
+  const setEnabled = value => {
+    const swiper = instance.value;
+    if (!swiper) return;
+    if (value) swiper.enable();
+    else swiper.disable();
+  };
+
   if (import.meta.client) {
     if (isRef(input) || typeof input === 'function') {
       watch(input, () => reinit(), { deep: true });
@@ -199,6 +206,7 @@ export const useSwiper = (input = {}) => {
     update,
     reinit,
     destroy,
+    setEnabled,
   };
 };
 

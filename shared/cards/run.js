@@ -1,11 +1,64 @@
 import { SET_COMBAT } from '#shared/actions/combat.js';
+import { actions } from '#shared/actions/index.js';
 import { combatMomentsAt } from '#shared/constants/moments.js';
+import { runConditions } from '#shared/facts/run.js';
 import { cardKey } from '#shared/helpers/cards.js';
+import { forkState } from '#shared/helpers/fork.js';
 import { closeTargetingWindow, pickAutoCandidates } from '#shared/helpers/targeting.js';
+import { hasMissing, resolveVars } from '#shared/helpers/vars.js';
 import { ruleMatches, runRules } from '#shared/rules/run.js';
 
 /** Запас шагов: эффектов в бою мало, но защищаемся от зацикливания. */
 const MAX_COMBAT_STEPS = 64;
+
+const isTargetingStep = step => ['cells', 'fighters', 'options'].includes(step?.kind);
+
+/**
+ * Изменит ли розыгрыш карты хоть что-нибудь: состояние на форке сравнивается со входным. Эффект
+ * «ничего не произошло» — это ветка, которая не сошлась или собрала пустое окно (`SET_TARGETING` без
+ * кандидатов), либо действие, которое не нашло цели. Негатив считается: добор из пустой колоды
+ * отнимает здоровье, и карта остаётся играбельной.
+ *
+ * Сравниваем значения, а не ссылки: движок правит вложенные объекты на месте, а на форке появляются
+ * новые обёртки, поэтому ссылки разошлись бы и без правок.
+ */
+export const effectBrings = (partyState, playerId, card) => {
+  // окно выбора или черновик перемещения уже открыт: в этот момент эффект не предлагается вовсе
+  if (partyState?.targeting || partyState?.movement) return false;
+
+  // Копируем только то, что движок вообще правит (`forkState`), и сравниваем эти ветки: `JSON.stringify`
+  // всего состояния тянул бы за собой карты и поле, которых правки не касаются.
+  const before = JSON.stringify(forkState(partyState));
+  const draft = forkState(partyState);
+  const owner = String(playerId);
+  const source = cardKey(card);
+
+  for (const rule of card?.rules ?? []) {
+    if (rule.moment !== 'effect') continue;
+    const matched = runConditions(draft, rule, { playerId });
+    if (!matched.ok) continue;
+
+    for (const step of rule.then ?? []) {
+      const { action: actionName, ...params } = step;
+      const action = actions[actionName];
+      if (typeof action !== 'function') {
+        throw new Error(`rules: действие "${actionName}" не найдено`);
+      }
+
+      const resolved = resolveVars(params, matched.vars, { remembered: draft._remember });
+      if (hasMissing(resolved)) continue;
+      // окно, которое нечем собрать, розыгрыш не открывает — свойства тут просто нет
+      if (isTargetingStep(resolved) && resolved.candidates?.length === 0) continue;
+      if (draft.targeting && isTargetingStep(resolved)) continue;
+
+      action(draft, { ...resolved, playerId: owner, source, playedCard: card });
+    }
+
+    if (JSON.stringify(forkState(draft)) !== before) return true;
+  }
+
+  return false;
+};
 
 const cardOf = (combat, side) => (side === 'defender' ? combat.defenseCard : combat.attackCard);
 

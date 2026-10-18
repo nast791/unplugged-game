@@ -51,12 +51,18 @@ export default {
       {
         moment: 'turnEnd',
         when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } }],
-        then: [{ action: 'SET_HAND_LIMIT', of: 'enemies', value: 5 }],
+        then: [
+          { action: 'SET_HAND_LIMIT', of: 'enemies', value: 5 },
+          { action: 'SET_SKILL', active: true },
+        ],
       },
       {
         moment: 'turnEnd',
         when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard' }, max: 4 }],
-        then: [{ action: 'SET_HAND_LIMIT', of: 'enemies', value: null }],
+        then: [
+          { action: 'SET_HAND_LIMIT', of: 'enemies', value: null },
+          { action: 'SET_SKILL', active: false },
+        ],
       },
       {
         moment: 'lost',

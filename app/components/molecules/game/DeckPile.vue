@@ -1,5 +1,5 @@
 <template>
-  <ATooltip :disabled="isPlacement" text="Клик — добрать карту и перейти к перемещению">
+  <ATooltip :disabled="isPlacement" :text="tooltip">
     <button
       type="button"
       class="group flex shrink-0 flex-col items-center gap-6"
@@ -18,6 +18,7 @@
       <span
         class="rounded-6 border-line bg-surface-2 relative block h-160 w-115 shrink-0 border-2 transition-transform duration-200"
         :class="{ 'group-hover:-translate-y-6': !isPlacement }"
+        data-card-anchor="deck"
       >
         <span class="rounded-4 border-line/70 absolute inset-6 border-2" />
 
@@ -35,13 +36,16 @@
 <script setup>
 import ATooltip from '~/components/atoms/ATooltip.vue';
 import MoveIcon from '~/svg/game/move.svg';
-import { useGameSession } from '~/composables/useGameSession.js';
+import { TOOLTIPS } from '~/constants/tooltips.js';
+import { useGameSession } from '~/composables/game/useGameSession.js';
 
 const { deckCount, onDeckClick, isPlacement } = useGameSession();
 
 const label = computed(() =>
   isPlacement.value
-    ? 'Колода: до начала партии недоступна'
-    : `Колода: ${deckCount.value} карт. Клик — добор карты и перемещение`,
+    ? TOOLTIPS.deck.placement()
+    : `${TOOLTIPS.deck.count({ count: deckCount.value })}. ${TOOLTIPS.deck.click()}`,
 );
+
+const tooltip = label;
 </script>

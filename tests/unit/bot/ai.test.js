@@ -5,7 +5,7 @@ import { aiSeatIds, aiStep, isAiSeat } from '../../../bot/play/ai.js';
 import { actionsFor, actorOf, createDuel, pickWeighted } from '../../../bot/play/duel.js';
 
 /**
- * Ход компьютера (`bot/play/ai.js`) — то, что клиент зовёт в режиме `vs_ai` (`app/composables/useGameAi.js`).
+ * Ход компьютера (`bot/play/ai.js`) — то, что клиент зовёт в режиме `vs_ai` (`app/composables/game/useGameAi.js`).
  * Проверяем: компьютер играет только за свои слоты, его ход принимает движок, а цикл «пока ходит
  * компьютер» доводит партию до конца — то есть в браузере та же игра, что и в прогонах.
  *

@@ -1,5 +1,5 @@
 import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue';
-import { resolveCallback, resolveValue } from '~/composables/useReactiveOptions.js';
+import { resolveCallback, resolveValue } from '~/composables/ui/useReactiveOptions.js';
 
 const TICK_MS = 250;
 const STORAGE_PREFIX = 'unplugged:clock:';

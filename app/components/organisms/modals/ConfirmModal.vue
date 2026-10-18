@@ -19,7 +19,6 @@ import { useConfirm } from '~/composables/ui/useConfirm.js';
 
 const { request, isOpen, answerConfirm } = useConfirm();
 
-/** Закрытие окна без кнопки (Esc, крестик, клик по подложке) — тот же отказ, иначе промис вызывающего повиснет. */
 watch(isOpen, open => {
   if (!open) answerConfirm(false);
 });

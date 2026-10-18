@@ -99,6 +99,8 @@ const answerTargeting = (partyState, playerId, action) => {
 
   const pick = wantCell ? { cellId: action.id } : { fighterId: action.id };
   let state = SET_TARGETING(partyState, { op: 'pick', playerId, ...pick });
+  // окно-переключатель клик только отмечает или снимает: применяет его общая кнопка (`confirmOption`)
+  if (window?.toggle === true) return endGameIfFinished(state);
   if (windowCount(state.targeting) > 1) return state;
 
   state = runCombatPicked(state);

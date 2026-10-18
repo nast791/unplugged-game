@@ -16,6 +16,8 @@ export const stateFields = {
   targeting: ['self', 'team', 'enemy'],
   lastCombat: ['self', 'team', 'enemy'],
   lastBonus: ['self', 'team', 'enemy'],
+  // последнее сработавшее умение: карточка героя показывает по нему плашку «Умение»
+  lastSkill: ['self', 'team', 'enemy'],
   log: ['self', 'team', 'enemy'],
 };
 
@@ -28,6 +30,8 @@ export const playerFields = {
   team: ['self', 'team', 'enemy'],
   color: ['self', 'team', 'enemy'],
   skill: ['self', 'team', 'enemy'],
+  // продолжительное умение действует сейчас: ставит и снимает само правило умения (`SET_SKILL`)
+  skillActive: ['self', 'team', 'enemy'],
   items: ['self', 'team', 'enemy'],
   fighters: ['self', 'team', 'enemy'],
   placementReady: ['self', 'team', 'enemy'],

@@ -145,6 +145,15 @@ export const placementRejection = (partyState, playerId, fighterId, cellId) => {
   if (occupiedCellIds(partyState, fighter.id).has(String(node.id))) {
     return `клетка ${node.id} уже занята`;
   }
+  // чужая занятость — тот же запрет (кто первый поставил, того и тапки): клетки общих областей
+  // могут быть заняты бойцами соперника ещё до подтверждения его расстановки
+  const foreign = (partyState.players ?? [])
+    .filter(other => String(other.id) !== String(playerId))
+    .flatMap(other => other.fighters ?? [])
+    .find(other => String(other.currentPosition) === String(node.id));
+  if (foreign) {
+    return `клетка ${node.id} уже занята`;
+  }
 
   return null;
 };
@@ -170,6 +179,67 @@ export const playerFightersPlaced = player => {
   return player.fighters.every(fighter => fighter.currentPosition != null);
 };
 
+/**
+ * Почему расстановка игрока больше не годится: боец, чью клетку занял кто-то другой, или боец,
+ * оказавшийся на одной клетке с чужим. `null` — всё в порядке.
+ *
+ * Клетка одна на всех, а стороны расставляются одновременно: пока один думал, другой мог занять ту же
+ * клетку. Правило владельца — «кто первый поставил, того и тапки»: занятую клетку никто не отбирает, а
+ * проигравший возвращает бойца на полку расстановки и ставит его заново на свободную подсвеченную.
+ * Бойцы без клетки (ещё на полке) конфликтом не считаются.
+ */
+export const placementConflictFighterId = (partyState, playerId) => {
+  const player = findPlayer(partyState, playerId);
+  if (!player) return null;
+
+  const mine = (player.fighters ?? []).filter(fighter => fighter.currentPosition != null);
+  for (const fighter of mine) {
+    const cellId = String(fighter.currentPosition);
+    // клетка перестала быть частью области героя: игрок поставил бойца, а потом переставил героя
+    if (!isPlacementAreaCell(partyState, playerId, findNode(partyState, cellId))) {
+      return String(fighter.id);
+    }
+    const sameCell = mine.filter(other => String(other.currentPosition) === cellId);
+    if (sameCell.length > 1) return String(fighter.id);
+
+    const foreign = (partyState.players ?? [])
+      .filter(other => String(other.id) !== String(playerId))
+      .flatMap(other => other.fighters ?? [])
+      .find(other => String(other.currentPosition) === cellId);
+    if (foreign) return String(fighter.id);
+  }
+
+  return null;
+};
+
+/**
+ * Вернуть бойца на полку расстановки: его клетку занял кто-то другой (или он остался на клетке,
+ * которой больше нет в области героя). Возвращает id бойца либо `null`, если возвращать некого.
+ * Героя на его номерной клетке не трогаем: это место стороны, а не расстановка помощника.
+ */
+export const returnFighterToTray = (partyState, playerId, fighterId) => {
+  const { fighter } = findOwnedFighter(partyState, playerId, fighterId);
+  if (!fighter) return null;
+  if (isLockedHero(fighter, partyState, playerId)) return null;
+  if (fighter.currentPosition == null) return null;
+
+  fighter.currentPosition = null;
+  fighter.startPosition = null;
+  return String(fighter.id);
+};
+
+/** Вернуть на полку всех бойцов, чьи клетки заняты чужими; возвращает id вернувшихся. */
+export const returnConflictedFighters = (partyState, playerId) => {
+  const returned = [];
+  for (;;) {
+    const fighterId = placementConflictFighterId(partyState, playerId);
+    if (fighterId == null) break;
+    if (returnFighterToTray(partyState, playerId, fighterId) == null) break;
+    returned.push(fighterId);
+  }
+  return returned;
+};
+
 export const allPlayersPlacementReady = partyState =>
   (partyState.players ?? []).every(player => {
     if (!Array.isArray(player.fighters) || player.fighters.length === 0) {
@@ -181,7 +251,7 @@ export const allPlayersPlacementReady = partyState =>
 /**
  * Компьютер не ждёт нажатия «ОК»: как только все его бойцы стоят на клетках, расстановка слота
  * подтверждена. Тогда плашка «Расстановка» уходит с его карточки сразу, а не когда подтвердится человек,
- * и цикл ходов компьютера (`app/composables/useGameAi.js`) останавливается сам — расставлять ему больше
+ * и цикл ходов компьютера (`app/composables/game/useGameAi.js`) останавливается сам — расставлять ему больше
  * нечего. Человек подтверждает расстановку кнопкой (исключение — герой без помощников: там подтверждает
  * `confirmIfNothingToPlace`).
  */
@@ -236,5 +306,12 @@ export const placementAreaCells = (partyState, playerId) => {
       .filter(fighter => fighter.currentPosition != null)
       .map(fighter => String(fighter.currentPosition)),
   );
+  // чужая занятость видна и здесь: занятую соперником клетку не подсвечиваем как свободную
+  for (const other of partyState.players ?? []) {
+    if (String(other.id) === String(playerId)) continue;
+    for (const fighter of other.fighters ?? []) {
+      if (fighter.currentPosition != null) busy.add(String(fighter.currentPosition));
+    }
+  }
   return startAreaCellIds(partyState, playerId).map(id => ({ id, occupied: busy.has(id) }));
 };

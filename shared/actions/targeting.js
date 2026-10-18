@@ -96,6 +96,8 @@ const openTargeting = (partyState, action) => {
     required: action.required === true,
     // окно открыто «без выбора»: если кандидатов ровно столько, сколько просит окно, движок отметит их сам (autoPick в runRules)
     auto: action.auto === true,
+    // окно-переключатель: клик только отмечает или снимает цель, применяет отметку общая кнопка (UI_OK)
+    ...(action.toggle === true ? { toggle: true } : {}),
     kind,
     count,
     candidates,
@@ -140,11 +142,23 @@ const pickTargeting = (partyState, action) => {
   const key = byCell ? 'cellId' : byOption ? 'optionId' : 'fighterId';
   const id = chosen[key];
 
+  // окно-переключатель: клик отмечает цель, повторный клик по ней же — снимает; окно ждёт общей кнопки
+  if (targeting.toggle === true && Number(targeting.count) === 1) {
+    targeting.picked = String(targeting.picked ?? '') === id ? null : id;
+    return partyState;
+  }
+
   // окно на несколько целей: клик добавляет цель к списку, дублей и перебора быть не может
   if (Number(targeting.count) > 1) {
     const noun = byCell ? 'клетка' : byOption ? 'вариант' : 'боец';
     const picked = Array.isArray(targeting.picked) ? targeting.picked : [];
 
+    // у окна-переключателя повторный клик снимает отметку, даже если набор уже полон
+    if (targeting.toggle === true && picked.includes(id)) {
+      targeting.picked = picked.filter(entry => entry !== id);
+      targeting.complete = targeting.picked.length >= Number(targeting.count);
+      return partyState;
+    }
     if (picked.length >= Number(targeting.count)) {
       throw new Error(`SET_TARGETING: в окне уже отмечено ${targeting.count} цели`);
     }
@@ -177,11 +191,13 @@ const closeTargeting = (partyState, action) => {
  * SET_TARGETING — выбор цели: подсветка кандидатов и клик по одному из них.
  * Движок открывает окно (`open` с кандидатами и `count`), отмечает клик (`pick`) и закрывает окно (`close`).
  * Эффект применяет тот, кто открыл выбор, а не сам выбор.
- * params: { op: 'open' | 'pick' | 'close', playerId?, source?, candidates?, count?, required?, auto?, fighterId? }
+ * params: { op: 'open' | 'pick' | 'close', playerId?, source?, candidates?, count?, required?, auto?, toggle?, fighterId? }
  * `count` (`max` — синоним) — сколько целей отметить. Одна цель — отметка закрывает окно;
  * несколько — окно собирает список (`picked` — массив id, `complete` — набран ли весь набор):
  * закрывает такое окно общая кнопка (`UI_OK`), а `required: false` позволяет закрыть его раньше срока.
  * `auto: true` — выбора нет: если кандидатов ровно столько, сколько просит окно, движок отмечает их сам.
+ * `toggle: true` — окно-переключатель: клик только отмечает цель или снимает отметку с неё,
+ * а применяет выбор общая кнопка (у необязательного окна без отметки она отказывается от выбора).
  */
 export const SET_TARGETING = (partyState, action = {}) => {
   const op = action.op ?? 'open';

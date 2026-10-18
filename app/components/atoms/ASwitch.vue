@@ -18,7 +18,6 @@
 import { SwitchRoot, SwitchThumb } from 'reka-ui';
 import { useUI } from '~/composables/ui/useUI';
 
-/** Переключатель: одно булево значение, подпись — проп `label` или слот. */
 const props = defineProps({
   label: { type: String, default: '' },
   name: { type: String, default: '' },

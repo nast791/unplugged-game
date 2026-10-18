@@ -4,7 +4,7 @@ import { load } from '../../../server/party.js';
 import { runAction, runUi } from '#shared/publicApi.js';
 import { startAreaCellIds, numberedCellId } from '#shared/helpers/placement.js';
 import { aiStep, think } from '../../../bot/play/ai.js';
-import { AI_TIME_MS } from '../../../app/composables/useGameAi.js';
+import { AI_TIME_MS } from '../../../app/composables/game/useGameAi.js';
 import { player } from '../../fixtures/state.js';
 
 const create = () => {
@@ -134,7 +134,7 @@ describe('расстановка: компьютер подтверждаетс�
   /**
    * Компьютер доходит до состояния «расстановка подтверждена» ровно на своём последнем бойце: решений
    * движок ему больше не предлагает (`aiStep` пуст), значит и цикл клиента
-   * (`app/composables/useGameAi.js`) останавливается сам — ждать ему нечего.
+   * (`app/composables/game/useGameAi.js`) останавливается сам — ждать ему нечего.
    */
   it('готовому компьютеру движок больше не предлагает решений — цикл останавливается сам', () => {
     const before = humanReady();

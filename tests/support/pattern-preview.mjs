@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
-import { PATTERN_TILES, cellPatterns, nodeRadius } from '../../app/composables/useBoardGeometry.js';
+import { PATTERN_TILES, cellPatterns, nodeRadius } from '../../app/composables/ui/useBoardGeometry.js';
 import { TERRAIN_IDS, terrainColor, terrainName } from '#shared/constants/terrain.js';
 
 /**

@@ -110,7 +110,7 @@ describe('способность Медузы (Взгляд Медузы)', () =
     expect(runUi(state, '0').hint).not.toBe(medusa.skill.text);
   });
 
-  it('врагов в области несколько — окно с кандидатами и подсветкой', () => {
+  it('врагов в области несколько — окно-переключатель с кандидатами и подсветкой', () => {
     const state = runLifecycle(skillState({ enemies: twoEnemies() }));
 
     expect(state.targeting).toEqual({
@@ -118,6 +118,7 @@ describe('способность Медузы (Взгляд Медузы)', () =
       source: 'medusa_skill',
       required: false,
       auto: true,
+      toggle: true,
       kind: 'fighters',
       count: 1,
       candidates: [
@@ -130,13 +131,15 @@ describe('способность Медузы (Взгляд Медузы)', () =
     const ui = runUi(state, '0');
     expect(ui.phase).toBe('choose');
     expect(ui.highlightedFighterIds).toEqual(['beta', 'gamma']);
-    expect(ui.hint).toBe(medusa.skill.text);
+    expect(ui.hint).toContain(medusa.skill.text);
+    expect(ui.hint).toContain('Завершить умение');
+    expect(ui.controls.ok.label).toBe('Завершить умение');
 
     // чужому игроку кандидатов не видно
     expect(runUi(state, '1').highlightedFighterIds).toEqual([]);
   });
 
-  it('клик по подсвеченному бойцу наносит ровно 1 урон и закрывает окно', () => {
+  it('клик только отмечает цель, повторный клик снимает отметку', () => {
     let state = runLifecycle(skillState({ enemies: twoEnemies() }));
 
     state = runAction(state, {
@@ -145,6 +148,32 @@ describe('способность Медузы (Взгляд Медузы)', () =
       id: 'beta',
       playerId: '0',
     });
+
+    expect(state.targeting.picked).toBe('beta');
+    expect(runUi(state, '0').pickedFighterIds).toEqual(['beta']);
+    expect(fighterOf(state, '1', 'beta').currentHp).toBe(10);
+
+    state = runAction(state, {
+      type: 'PICK',
+      kind: 'fighter',
+      id: 'beta',
+      playerId: '0',
+    });
+
+    expect(state.targeting.picked).toBeNull();
+    expect(runUi(state, '0').pickedFighterIds).toEqual([]);
+  });
+
+  it('«Завершить умение» наносит 1 урон отмеченному и закрывает окно', () => {
+    let state = runLifecycle(skillState({ enemies: twoEnemies() }));
+
+    state = runAction(state, {
+      type: 'PICK',
+      kind: 'fighter',
+      id: 'beta',
+      playerId: '0',
+    });
+    state = runAction(state, { type: 'UI_OK', playerId: '0' });
 
     expect(fighterOf(state, '1', 'beta').currentHp).toBe(9);
     expect(fighterOf(state, '1', 'gamma').currentHp).toBe(10);

@@ -230,6 +230,7 @@ export default [
         // её заново нельзя — `SET_REVEAL open` на открытую колоду падает. Свойства тогда просто нет
         when: [
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'] }, min: 1 },
+          { fact: 'DECK', params: { min: 1 } },
           { fact: 'REVEALED', params: { of: 'self', select: 'cards' }, max: 0 },
         ],
         then: [{ action: 'SET_REVEAL', op: 'open', of: 'self', count: 1 }],
@@ -326,7 +327,8 @@ export default [
     ],
   },
   {
-    // единственная карта, которая сама ломает покой: дойти до песка или выйти из окружения
+    // выход из окружения на любое расстояние: постановка без прохода (`teleport`), поэтому покой
+    // не ломается — «Суд молчит» и «Погребальный звон» в этом же ходу ещё работают
     id: 'anubis_12',
     title: 'Путь на закат',
     type: 'effect',
@@ -334,12 +336,33 @@ export default [
     bonus: 1,
     quantity: 2,
     fighter: 'anubis',
-    text: 'Анубис проходит до 2 клеток.',
+    text: 'Поставьте Анубиса на свободную клетку пустыни.',
     rules: [
       {
         moment: 'effect',
+        // замороженный не телепортируется: без проверки окно открывалось, а клик падал
+        when: [
+          { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], frozen: false }, min: 1 },
+          { fact: 'CELLS', params: { terrain: 'desert', free: true, min: 1 }, var: 'cells' },
+        ],
         then: [
-          { action: 'SET_MOVEMENT', op: 'open', fighters: ['anubis'], budget: 2, optional: true },
+          {
+            action: 'SET_TARGETING',
+            op: 'open',
+            kind: 'cells',
+            candidates: '$cells',
+            count: 1,
+            required: true,
+            // свободный песок может быть один: тогда движок отмечает его сам
+            auto: true,
+          },
+        ],
+      },
+      {
+        moment: 'picked',
+        when: [{ fact: 'PICKED', var: 'picked' }],
+        then: [
+          { action: 'SET_FIGHTER_CELL', fighterId: 'anubis', cellId: '$picked', teleport: true },
         ],
       },
     ],

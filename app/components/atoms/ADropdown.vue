@@ -52,10 +52,6 @@ import {
 import AScroll from '~/components/atoms/AScroll.vue';
 import { useUI } from '~/composables/ui/useUI';
 
-/**
- * Дропдаун (меню профиля и любые контекстные меню): триггер в слоте `trigger`, пункты — либо массив
- * `{ id, label, icon?, disabled?, separator?, heading? }`, либо свой разметкой в слоте по умолчанию.
- */
 const props = defineProps({
   items: { type: Array, default: () => [] },
   align: { type: String, default: 'end' },

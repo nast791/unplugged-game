@@ -3,7 +3,7 @@ import { createGame } from '../../../server/create.js';
 import { load } from '../../../server/party.js';
 import { runAction, runUi } from '#shared/publicApi.js';
 import { startAreaCellIds, numberedCellId } from '#shared/helpers/placement.js';
-import { pendingAiPlacer, runAiCycle, AI_TIME_MS } from '../../../app/composables/useGameAi.js';
+import { pendingAiPlacer, runAiCycle, AI_TIME_MS } from '../../../app/composables/game/useGameAi.js';
 import { player } from '../../fixtures/state.js';
 
 /**

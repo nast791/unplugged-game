@@ -29,7 +29,7 @@ globalThis.onBeforeUnmount = onBeforeUnmount;
 
 const resign = vi.fn();
 
-vi.mock('~/composables/useGameSession.js', async () => {
+vi.mock('~/composables/game/useGameSession.js', async () => {
   const { ref } = await import('vue');
   const session = { isGameOver: ref(false), onResign: resign };
   return { useGameSession: () => session, session };
@@ -85,8 +85,9 @@ vi.mock('#app/composables/router', async importOriginal => {
   return { ...actual, navigateTo };
 });
 
-const { session } = await import('~/composables/useGameSession.js');
-const { closeAllModals, addActiveModal } = await import('~/composables/ui/useModal.js');
+const { session } = await import('~/composables/game/useGameSession.js');
+const { closeAllModals, addActiveModal, closeModal, isModalOpen } =
+  await import('~/composables/ui/useModal.js');
 const { closeGameMenu, useGameMenu } = await import('~/composables/ui/useGameMenu.js');
 const { default: GameMenu } = await import('../../../app/components/organisms/game/Menu.vue');
 const { default: ConfirmModal } =
@@ -244,18 +245,21 @@ describe('Меню партии: как открывается', () => {
   });
 });
 
-describe('Меню партии: пункты-заглушки', () => {
-  it('«Настройки» честно говорят, что экрана пока нет', async () => {
+describe('Меню партии: настройки и заглушки', () => {
+  it('«Настройки» открывают окно настроек и закрывают меню партии', async () => {
     const wrapper = mountHost();
     await pressEscape();
 
     await itemButton(wrapper, 'Настройки').trigger('click');
 
-    expect(notify).toHaveBeenLastCalledWith(expect.stringContaining('Настройки'));
+    expect(isModalOpen('settings')).toBe(true);
+    expect(notify).not.toHaveBeenCalled();
     expect(panel(wrapper).exists()).toBe(false);
+
+    closeModal('settings');
   });
 
-  it('«Справка» тоже в разработке и закрывает меню', async () => {
+  it('«Справка» ещё в разработке и закрывает меню', async () => {
     const wrapper = mountHost();
     await pressEscape();
 

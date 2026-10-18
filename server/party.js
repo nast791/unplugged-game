@@ -166,6 +166,12 @@ const projectZone = (name, zone, rel) => {
 
 const projectPlayer = (player, state, you) => {
   const rel = role(you, player);
+  /**
+   * Позиции на расстановке прячем у всех, кроме смотрящего (правило игры): стороны расставляются
+   * одновременно, и до конца расстановки никто не видит чужую. Флаг готовности (`placementReady`) при
+   * этом открыт — по нему карточка снимает плашку «Расстановка», а «не на поле» решает не позиция,
+   * а намерение карточки (`PlayerCard`: вне расстановки признак не работает вовсе).
+   */
   const hidePos = state.hook === 'gameStart' && rel !== 'self';
   const movementOwnerId = state.movement?.playerId == null ? null : String(state.movement.playerId);
   const hideMoved = movementOwnerId != null && movementOwnerId !== String(you.id);

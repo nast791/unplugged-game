@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adaptPartyView } from '../../../app/composables/useGameView.js';
+import { adaptPartyView } from '../../../app/composables/game/useGameView.js';
 import { createGame } from '../../../server/create.js';
 import { view } from '../../../server/party.js';
 
@@ -28,6 +28,9 @@ describe('adaptPartyView: проекция сервера → view клиент�
     expect(adapted.currentPlayer).toBe(raw.turn.playerId);
     expect(adapted.turn).toBe(raw.turn.index);
     expect(adapted.actionsLeft).toBe(raw.turn.actionsLeft);
+    // счётчик карточки — числа движка: «осталось/всего» хода и выданный в этом ходу запас
+    expect(adapted.actionsTotal).toBe(raw.turn.actionsTotal);
+    expect(adapted.actionsBonus).toBe(raw.turn.bonus.actions);
     expect(adapted.winner).toBeNull();
 
     const mine = adapted.players.find(p => String(p.id) === String(first.id));
@@ -40,6 +43,12 @@ describe('adaptPartyView: проекция сервера → view клиент�
     // колода закрыта всем: клиент показывает её размером; сброс открыт всем и приезжает картами
     expect(mine.deckCount).toBeGreaterThan(0);
     expect(typeof enemy.deckCount).toBe('number');
+    // рука закрыта картами, но её размер открыт: чужие числа видит ярлычок карточки места
+    expect(enemy.handCount).toBe(
+      raw.players.find(p => String(p.id) === String(second.id)).hand.count,
+    );
+    expect(enemy.handCount).toBeGreaterThan(0);
+    expect(mine.handCount).toBe(mine.hand.length);
     expect(mine.discard).toEqual([]);
     expect(mine.discardCount).toBe(0);
 
@@ -50,10 +59,8 @@ describe('adaptPartyView: проекция сервера → view клиент�
     expect(after.discard).toHaveLength(1);
     expect(after.discardCount).toBe(1);
 
-    // закрытая колода и счётчики, которых клиенту не нужно, в состояние не едут
-    for (const key of ['deck', 'handCount']) {
-      expect(mine).not.toHaveProperty(key);
-    }
+    // карты колоды не едут никому, даже владельцу: у клиента от колоды только число
+    expect(mine).not.toHaveProperty('deck');
   });
 
   it('пустой ответ — null: клиент не падает на несостоявшемся запросе', () => {

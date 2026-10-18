@@ -22,10 +22,6 @@
 </template>
 
 <script setup>
-/**
- * Свой кадр на брейкпоинт: `lg:src="/wide.webp"`. Широкие идут первыми — `<picture>` берёт первый
- * подошедший `<source>`, поэтому на большом экране победит `lg:src`, а не базовый `src`.
- */
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 
@@ -42,15 +38,6 @@ const negateMinWidthMedia = list => {
   return parts.length ? parts.join(' and ') : undefined;
 };
 
-/**
- * Картинка проекта: `<picture>` с art-direction по брейкпоинтам и honest-прелоадом.
- *
- * - растровые файлы у нас **всегда WebP**, поэтому пропов формата нет: `@nuxt/image` отдаёт источник как
- *   есть, а `NuxtPicture` с конвертацией нам не нужен — нужен контроль над `<source media>`;
- * - `preload` вешает `<link rel="preload" as="image" media="…">` на каждый кадр, поэтому браузер
- *   действительно тянет **только тот, что подходит текущему разрешению** (и не тянет остальные);
- * - по умолчанию `loading="lazy"`, `preload` переводит кадр в `eager` со `decoding="sync"`.
- */
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps({
@@ -58,17 +45,16 @@ const props = defineProps({
   alt: { type: String, default: '' },
   width: { type: [Number, String], default: undefined },
   height: { type: [Number, String], default: undefined },
-  /** Плотности для retina, когда задана ширина: `[1, 2]` → в srcset попадут 1x и 2x. */
+
   densities: { type: Array, default: () => [1, 2] },
   preload: { type: Boolean, default: false },
-  /** Перебивает `loading` вручную: `lazy` (по умолчанию) или `eager`. */
+
   loading: { type: String, default: '' },
   modifiers: { type: Object, default: () => ({}) },
   preset: { type: String, default: 'picture' },
   ui: { type: Object, default: () => ({}) },
 });
 
-/** Атрибут брейкпоинта: `lg:src`, `md:src`, `sm:src` — имя экрана из `ui.screens`. */
 const BREAKPOINT_SRC = /^([a-z0-9-]+):src$/;
 
 const attrs = useAttrs();
@@ -82,7 +68,6 @@ const { styles } = useUI(
 
 const pictureClass = computed(() => cn(styles.value.picture_root, attrs.class));
 
-/** Всё, кроме брейкпоинтовых `src`, уходит на `<picture>`: id, data-*, aria-*. */
 const rootAttrs = computed(() => {
   const rest = {};
   for (const [key, value] of Object.entries(attrs)) {
@@ -93,7 +78,6 @@ const rootAttrs = computed(() => {
 
 const url = (value, extra = {}) => img(value, { ...props.modifiers, ...extra });
 
-/** Когда у кадра есть ширина, отдаём srcset с плотностями — иначе хватит одного URL. */
 const srcset = (value, extra = {}) => {
   const modifiers = { ...props.modifiers, ...extra };
   if (!value || !modifiers.width) return url(value, extra);
@@ -134,7 +118,6 @@ const fallback = computed(() => ({ src: url(props.src), srcset: srcset(props.src
 const loadingAttr = computed(() => props.loading || (props.preload ? 'eager' : 'lazy'));
 const decodingAttr = computed(() => (loadingAttr.value === 'eager' ? 'sync' : 'async'));
 
-/** Прелоад: у каждого кадра свой `media`, поэтому лишние разрешения браузер не тянет. */
 const preloadLinks = computed(() => {
   if (!props.preload || !props.src) return [];
 

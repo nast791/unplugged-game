@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reorder } from '../../../app/composables/useSortable.js';
+import { reorder } from '../../../app/composables/ui/useSortable.js';
 
 const list = ['a', 'b', 'c', 'd'];
 

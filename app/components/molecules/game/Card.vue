@@ -10,58 +10,77 @@
           class="rounded-b-6 absolute top-0 left-0 flex h-62 w-38 flex-col items-center justify-center gap-2 p-4"
           :class="type.plate"
         >
-          <Icon
-            :name="type.icon"
-            class="size-22! shrink-0 text-white"
-            :title="type.label"
-            aria-hidden="true"
-          />
+          <ATooltip :text="TOOLTIPS.card.type({ label: type.label })">
+            <Icon
+              v-if="type.icon"
+              :name="type.icon"
+              class="size-22! shrink-0 text-white"
+              aria-hidden="true"
+            /><span v-else data-icon-missing :data-card="JSON.stringify(card.type)"></span>
+          </ATooltip>
 
-          <span v-if="card.value != null" class="text-22 font-semibold text-white lining-nums">
-            {{ card.value }}
+          <span
+            v-if="shownValue != null"
+            class="text-22 font-semibold lining-nums"
+            :class="valueChanged ? 'text-gold' : 'text-white'"
+          >
+            {{ shownValue }}
           </span>
         </div>
 
-        <span
-          class="rounded-2 absolute right-8 -bottom-14 z-10 flex size-24 rotate-45 items-center justify-center border-2 border-black bg-white"
-          :title="`Усиление карты: +${card.bonus}`"
-        >
-          <span class="text-16 text-app -rotate-45 font-semibold lining-nums">
-            {{ card.bonus }}
+        <ATooltip v-if="card.bonus" :text="TOOLTIPS.card.bonus({ bonus: card.bonus })">
+          <span
+            class="rounded-2 absolute right-8 -bottom-14 z-10 flex size-24 rotate-45 items-center justify-center border-2 border-black bg-white"
+          >
+            <span class="text-16 text-app -rotate-45 font-semibold lining-nums">
+              {{ card.bonus }}
+            </span>
           </span>
-        </span>
+        </ATooltip>
 
-        <span
-          v-if="props.disabled"
-          class="absolute bottom-8 left-8 z-30 text-white/80"
-          :title="'Карту нельзя разыграть сейчас'"
-          aria-hidden="true"
-        >
-          <Icon name="lucide:lock" class="size-18!" />
-        </span>
+        <ATooltip v-if="props.disabled" :text="TOOLTIPS.card.locked()">
+          <span class="absolute bottom-8 left-8 z-30 text-white/80" aria-hidden="true">
+            <Icon name="lucide:lock" class="size-18!" />
+          </span>
+        </ATooltip>
       </div>
 
       <div class="flex h-[52%] min-h-0 flex-col gap-6 p-8">
-        <p class="text-15 leading-1.1 shrink-0 font-semibold tracking-tight text-white uppercase">
+        <p
+          class="text-15 leading-1.1 shrink-0 font-semibold tracking-tight text-white uppercase"
+          :class="titleInset"
+        >
           {{ card.title }}
         </p>
 
         <div class="h-1 w-full shrink-0 bg-white/20" />
 
         <AScroll class="min-h-0 flex-1">
-          <p class="text-14 font-light text-white">{{ card.text }}</p>
+          <p class="text-14 font-light text-white">
+            <span
+              v-for="part in textParts"
+              :key="part.key"
+              class="block"
+              :class="part.active && 'text-accent font-semibold'"
+            >
+              {{ part.text }}
+            </span>
+          </p>
 
           <CardOptions v-if="options.length" :options="options" class="mt-6" />
         </AScroll>
 
         <div class="flex min-w-0 items-center justify-end gap-4 leading-none">
-          <span class="text-13 min-w-0 truncate text-white" :title="`Владелец карты: ${owner}`">
-            {{ owner }}
-          </span>
+          <ATooltip :text="TOOLTIPS.card.fighter({ name: ownerLabel })">
+            <span class="text-13 min-w-0 truncate text-white">{{ ownerLabel }}</span>
+          </ATooltip>
           <div class="h-13 w-1 min-w-0 bg-white/40" />
-          <span class="text-13 min-w-0 text-white/60" :title="`Копий в колоде: ${card.quantity}`">
-            ×{{ card.quantity }}
-          </span>
+          <ATooltip
+            v-if="card.quantity != null"
+            :text="TOOLTIPS.card.copies({ count: card.quantity })"
+          >
+            <span class="text-13 min-w-0 text-white/60">×{{ card.quantity }}</span>
+          </ATooltip>
         </div>
       </div>
     </div>
@@ -77,18 +96,38 @@
 <script setup>
 import APicture from '~/components/atoms/APicture.vue';
 import AScroll from '~/components/atoms/AScroll.vue';
+import ATooltip from '~/components/atoms/ATooltip.vue';
 import CardOptions from '~/components/molecules/game/CardOptions.vue';
-import { useGameSession } from '~/composables/useGameSession.js';
-import { cardType } from '~/composables/useGameHelpers.js';
+import { cardType } from '~/constants/cards.js';
+import { TOOLTIPS } from '~/constants/tooltips.js';
+import { useGameSession } from '~/composables/game/useGameSession.js';
+import { cardTextParts } from '~/composables/game/useGameHelpers.js';
 
 const props = defineProps({
   card: { type: Object, required: true },
   disabled: { type: Boolean, default: false },
+
+  highlight: { type: Array, default: () => [] },
+
+  value: { type: Number, default: null },
+  valueChanged: { type: Boolean, default: false },
 });
 
 const { cardFighterLabel } = useGameSession();
 
 const type = computed(() => cardType(props.card.type));
-const owner = computed(() => cardFighterLabel(props.card));
+const titleInset = computed(() => (props.card.bonus ? 'pr-32' : null));
+
+const ownerLabel = computed(() => cardFighterLabel(props.card));
 const options = computed(() => props.card.options ?? []);
+const shownValue = computed(() =>
+  props.value == null ? (props.card.value ?? null) : Number(props.value),
+);
+const textParts = computed(() =>
+  cardTextParts(props.card.text).map((part, index) => ({
+    ...part,
+    key: `${index}-${part.moment ?? 'text'}`,
+    active: part.moment != null && props.highlight.includes(part.moment),
+  })),
+);
 </script>

@@ -50,7 +50,7 @@ const swipers = [];
 vi.mock('swiper', () => ({ default: FakeSwiper }));
 vi.mock('swiper/modules', () => ({ Navigation: {}, Scrollbar: {}, Mousewheel: {} }));
 
-const { useSwiper } = await import('~/composables/useSwiper.js');
+const { useSwiper } = await import('~/composables/ui/useSwiper.js');
 
 /** Проба: композабл без разметки, контейнер — один `div` (фейковому Swiper его хватает). */
 const Probe = defineComponent({

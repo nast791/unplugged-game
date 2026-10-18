@@ -103,6 +103,7 @@ export const createGame = (body, { testId, testSeed } = {}) => {
           cells,
           id: 'generated',
           fightersPerPlayer: playerSlots.map(slot => packFighterCount(HEROES[slot.heroId])),
+          affinities: playerSlots.map(slot => HEROES[slot.heroId]?.terrainAffinity ?? []),
         })
       : MAPS[mapId];
   const nodes = mapPack.nodes ?? [];

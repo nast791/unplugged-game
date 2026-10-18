@@ -52,7 +52,8 @@ export default [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'DECK', params: { min: 1 } },
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
-          { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1, var: 'alive' },
+          // замороженному телепорт закрыт движком: без этой проверки окно открывалось, а клик падал
+          { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: false }, min: 1, var: 'alive' },
           { fact: 'CELLS', params: { terrain: 'ice', free: true, min: 1 }, var: 'cells' },
         ],
         then: [

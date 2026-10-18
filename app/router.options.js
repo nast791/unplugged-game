@@ -1,7 +1,6 @@
 import routerWrapper from '~/layouts/routerWrapper.vue';
 
 export default {
-  // https://router.vuejs.org/api/interfaces/routeroptions.html#routes
   routes: _routes => [
     {
       path: '',

@@ -13,7 +13,7 @@ import { computed, defineComponent, h } from 'vue';
  */
 globalThis.computed = computed;
 
-vi.mock('~/composables/useProfile', async () => {
+vi.mock('~/composables/ui/useProfile', async () => {
   const { ref } = await import('vue');
   return {
     useProfile: () => ({
@@ -46,6 +46,15 @@ const stub = name =>
         h('span', slots.default?.()),
   });
 
+/** Тултип — обвязка reka-ui: полосе от него нужен только элемент-триггер. */
+const TooltipStub = defineComponent({
+  name: 'ATooltip',
+  props: { text: { type: String, default: '' } },
+  setup(_props, { slots }) {
+    return () => h('span', { 'data-tooltip': _props.text }, slots.default?.());
+  },
+});
+
 const mountBar = () =>
   mount(ProfileBar, {
     global: {
@@ -54,6 +63,7 @@ const mountBar = () =>
         NuxtIcon: IconStub,
         AButton: stub('AButton'),
         AAvatar: stub('AAvatar'),
+        ATooltip: TooltipStub,
       },
     },
   });

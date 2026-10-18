@@ -1,7 +1,10 @@
 import { runUi } from '#shared/core.js';
 import { cardKey } from '#shared/helpers/cards.js';
 import { fighterClickIntent, fighterPickExpected } from '#shared/helpers/ui.js';
-import { useGameView } from '~/composables/useGameView.js';
+import { markCardFlightsViewerChanged } from '~/composables/animations/useCardFlights.js';
+import { useGameView } from '~/composables/game/useGameView.js';
+import { useProfile } from '~/composables/ui/useProfile.js';
+import { useGameHelpers } from './useGameHelpers.js';
 
 export const timeoutLosers = ({ placement = false, players = [], actorId = null } = {}) => {
   const humans = (players ?? []).filter(
@@ -18,6 +21,38 @@ export const timeoutLosers = ({ placement = false, players = [], actorId = null 
     .map(player => String(player.id));
 };
 
+export const placementActor = (players = []) => {
+  const waiting = (players ?? [])
+    .filter(
+      player =>
+        String(player?.control ?? 'human') === 'human' &&
+        player?.resigned !== true &&
+        player?.placementReady !== true,
+    )
+    .sort((left, right) => (Number(left?.order) || 0) - (Number(right?.order) || 0));
+  return waiting.length ? String(waiting[0].id) : null;
+};
+
+export const handoverTarget = ({
+  placement = false,
+  seating = '',
+  players = [],
+  actingId = null,
+  viewerId = null,
+} = {}) => {
+  if (String(seating ?? '') !== 'local') return null;
+
+  const humans = (players ?? []).filter(player => String(player?.control ?? 'human') === 'human');
+  if (humans.length < 2) return null;
+
+  const target = placement ? placementActor(humans) : actingId;
+  if (target == null) return null;
+  if (!humans.some(player => String(player.id) === String(target))) return null;
+  return String(target) === String(viewerId ?? '') ? null : String(target);
+};
+
+const bonusArmedKey = ref('');
+
 export const useGameSession = () => {
   const { view, hostState, gameId, playerId, sendAction, refresh, steps, selectedFighterId } =
     useGameView();
@@ -31,10 +66,14 @@ export const useGameSession = () => {
     turn,
     phase,
     actionsLeft,
+    actionsTotal,
+    actionsBonus,
     winner,
     isGameOver,
     me,
   } = useGameHelpers();
+
+  const { nick } = useProfile();
 
   const pending = ref(false);
   const message = ref('');
@@ -46,6 +85,53 @@ export const useGameSession = () => {
   const movement = computed(() => view.value?.movement ?? null);
   const targeting = computed(() => view.value?.targeting ?? null);
   const lastCombat = computed(() => view.value?.lastCombat ?? null);
+  const lastSkill = computed(() => view.value?.lastSkill ?? null);
+
+  const battleRoles = computed(() => {
+    const current = combat.value;
+    const key = value => (value == null ? null : String(value));
+    return {
+      attackerPlayerId: key(current?.attackerPlayerId),
+      defenderPlayerId: key(current?.defenderPlayerId),
+      attackerFighterId: key(current?.attackerFighterId),
+      defenderFighterId: key(current?.targetFighterId),
+    };
+  });
+
+  const isBattleParticipant = id => {
+    const roles = battleRoles.value;
+    if (id == null) return false;
+    return String(id) === roles.attackerPlayerId || String(id) === roles.defenderPlayerId;
+  };
+
+  const inBattle = computed(() => isBattleParticipant(you.value));
+
+  const askingCard = computed(() => {
+    const source =
+      targeting.value?.source ?? combat.value?.choice?.source ?? movement.value?.source ?? null;
+    if (source == null) return null;
+
+    const key = String(source);
+    const own = [
+      combat.value?.attackCard,
+      combat.value?.defenseCard,
+      ...(me.value?.hand ?? []),
+    ].find(card => card && cardKey(card) === key);
+    if (own) return own;
+
+    for (const player of players.value ?? []) {
+      const found = (player.discard ?? []).find(card => cardKey(card) === key);
+      if (found) return found;
+    }
+    return null;
+  });
+
+  const bonusCard = computed(() => movement.value?.card ?? null);
+  const bonusUsed = computed(() => movement.value?.bonusUsed === true);
+  const movementBonus = computed(() => Number(movement.value?.bonus) || 0);
+  const canDiscardBonus = computed(
+    () => Boolean(movement.value) && movement.value.source == null && !bonusUsed.value,
+  );
 
   const ui = computed(() => {
     const state = hostState.value;
@@ -61,6 +147,7 @@ export const useGameSession = () => {
   const placementPhase = computed(() => ui.value?.phase ?? null);
   const highlightedCellIds = computed(() => (ui.value?.highlightedCellIds ?? []).map(String));
   const highlightedFighterIds = computed(() => (ui.value?.highlightedFighterIds ?? []).map(String));
+  const pickedFighterIds = computed(() => (ui.value?.pickedFighterIds ?? []).map(String));
   const framedFighterIds = computed(() => (ui.value?.framedFighterIds ?? []).map(String));
   const playableCardIds = computed(() => (ui.value?.playableCardIds ?? []).map(String));
   const disabledCardIds = computed(() => (ui.value?.disabledCardIds ?? []).map(String));
@@ -79,8 +166,9 @@ export const useGameSession = () => {
 
   const myFighters = computed(() => me.value?.fighters ?? []);
   const myHand = computed(() => me.value?.hand ?? []);
-  const myDiscard = computed(() => me.value?.discard ?? []);
-  const myDiscardCount = computed(() => me.value?.discardCount ?? myDiscard.value.length);
+  const myDiscardCount = computed(() =>
+    Number(me.value?.discardCount ?? me.value?.discard?.length ?? 0),
+  );
   const myHeroes = computed(() => myFighters.value.filter(fighter => fighter.type === 'hero'));
   const deckCount = computed(() => me.value?.deckCount ?? 0);
   const results = computed(() => ui.value?.results ?? null);
@@ -172,6 +260,27 @@ export const useGameSession = () => {
     return String(id);
   };
 
+  const cardFighterLabel = card => {
+    if (card?.fighter == null) return 'любой';
+    const binding = String(card.fighter);
+    if (binding === 'any') return 'любой';
+    const mine = myFighters.value;
+    const fighter =
+      mine.find(entry => String(entry.id) === binding) ??
+      mine.find(entry => String(entry.group) === binding);
+    return fighter ? fighter.name || fighter.id : binding;
+  };
+
+  const holderName = ownerId => {
+    if (ownerId == null) return '';
+    const holder = (players.value ?? []).find(player => String(player.id) === String(ownerId));
+    if (!holder) return '';
+    if (String(holder.id) === String(you.value ?? '')) {
+      return String(nick.value ?? '') || String(holder.name ?? '');
+    }
+    return String(holder.name ?? '');
+  };
+
   const combatInfo = computed(() => {
     const current = combat.value;
     if (!current) return '';
@@ -179,7 +288,7 @@ export const useGameSession = () => {
     const parts = [];
     const attackCard = current.attackCard;
     if (attackCard) {
-      parts.push(`карта боя «${attackCard.title ?? attackCard.id}»`);
+      parts.push(`карта битвы «${attackCard.title ?? attackCard.id}»`);
     }
     if (current.attackerFighterId) {
       parts.push(`атакует ${fighterLabel(current.attackerFighterId)}`);
@@ -193,7 +302,7 @@ export const useGameSession = () => {
     }
     if (!parts.length) return '';
 
-    return `Бой (${current.stage}): ${parts.join(' · ')}`;
+    return `Битва (${current.stage}): ${parts.join(' · ')}`;
   });
 
   const boardInteractive = computed(
@@ -243,16 +352,13 @@ export const useGameSession = () => {
   watch(myFighters, () => ensureSelection(), { immediate: true });
 
   const switchViewer = async id => {
+    markCardFlightsViewerChanged();
     playerId.value = String(id);
     selectedFighterId.value = null;
     selectedNumHeroId.value = null;
     await refresh();
     ensureSelection();
   };
-
-  const hasAiSeats = computed(() =>
-    (view.value?.settings?.heroes ?? []).some(slot => String(slot.control) === 'ai'),
-  );
 
   const actingPlayerId = computed(() => {
     const current = view.value;
@@ -289,17 +395,18 @@ export const useGameSession = () => {
     });
 
   const syncHotseat = async () => {
-    if (hasAiSeats.value) {
+    const target = handoverTarget({
+      placement: isPlacement.value,
+      seating: view.value?.settings?.seating,
+      players: players.value,
+      actingId: actingPlayerId.value,
+      viewerId: playerId.value,
+    });
+    if (target == null) {
       ensureSelection();
       return;
     }
-
-    const target = actingPlayerId.value;
-    if (target != null && String(playerId.value) !== String(target)) {
-      await switchViewer(target);
-      return;
-    }
-    ensureSelection();
+    await switchViewer(target);
   };
 
   const send = action =>
@@ -309,6 +416,10 @@ export const useGameSession = () => {
     });
 
   const pick = payload => send({ type: 'PICK', ...payload });
+
+  watch(canDiscardBonus, allowed => {
+    if (!allowed) bonusArmedKey.value = '';
+  });
 
   const onDeckClick = () => {
     if (!deckClickable.value) {
@@ -327,6 +438,47 @@ export const useGameSession = () => {
   };
 
   const onFinishAction = () => send({ type: 'UI_OK' });
+
+  const armBonusCard = card => {
+    const key = cardKey(card);
+    if (!canDiscardBonus.value) {
+      message.value = 'Усиление перемещения сейчас недоступно';
+      return false;
+    }
+    if (!isCardPlayable(card)) {
+      message.value = 'У этой карты нет усиления перемещения';
+      return false;
+    }
+    if (bonusArmedKey.value === key) {
+      bonusArmedKey.value = '';
+      return true;
+    }
+    bonusArmedKey.value = key;
+    return true;
+  };
+
+  const disarmBonusCard = () => {
+    bonusArmedKey.value = '';
+  };
+
+  const armedBonusCard = computed(
+    () => myHand.value.find(card => cardKey(card) === bonusArmedKey.value) ?? null,
+  );
+
+  const onBonusDiscard = () => {
+    const card = armedBonusCard.value;
+    if (!card) {
+      message.value = 'Сначала выберите карту для усиления';
+      return undefined;
+    }
+    if (!canDiscardBonus.value) {
+      message.value = 'Усиление перемещения сейчас недоступно';
+      return undefined;
+    }
+    const key = cardKey(card);
+    bonusArmedKey.value = '';
+    return pick({ kind: 'card', id: key });
+  };
 
   const onChoiceClick = optionId => {
     const list = [...choices.value, ...targetingChoices.value];
@@ -392,6 +544,10 @@ export const useGameSession = () => {
     return undefined;
   };
 
+  const freePlacementCellIds = computed(() =>
+    placementCells.value.filter(cell => cell.occupied !== true).map(cell => String(cell.id)),
+  );
+
   const onCellClick = cellId => {
     if (cellId == null) {
       if (isPlacement.value) clearFighterSelection();
@@ -403,7 +559,9 @@ export const useGameSession = () => {
       return undefined;
     }
 
-    if (highlightedCellIds.value.includes(String(cellId))) {
+    const target = String(cellId);
+    const placementTarget = isPlacement.value && freePlacementCellIds.value.includes(target);
+    if (highlightedCellIds.value.includes(target) || placementTarget) {
       const fighterId = selectedFighterId.value;
       const picked = pick({ kind: 'cell', id: cellId, fighterId });
       if (isPlacement.value) clearFighterSelection();
@@ -422,6 +580,7 @@ export const useGameSession = () => {
   onMounted(() => {
     if (!view.value?.id) return;
     ensureSelection();
+    void syncHotseat();
   });
 
   return {
@@ -436,6 +595,8 @@ export const useGameSession = () => {
     turn,
     phase,
     actionsLeft,
+    actionsTotal,
+    actionsBonus,
     winner,
     isGameOver,
     me,
@@ -448,14 +609,25 @@ export const useGameSession = () => {
     ui,
     placementPhase,
     isPlacement,
-    hasAiSeats,
     combat,
     movement,
     targeting,
     lastCombat,
+    lastSkill,
+    battleRoles,
+    isBattleParticipant,
+    inBattle,
+    askingCard,
+    bonusCard,
+    bonusUsed,
+    movementBonus,
+    canDiscardBonus,
+    armedBonusCard,
+    armBonusCard,
+    disarmBonusCard,
+    onBonusDiscard,
     myFighters,
     myHand,
-    myDiscard,
     myDiscardCount,
     myHeroes,
     deckCount,
@@ -471,6 +643,7 @@ export const useGameSession = () => {
     disabledCardIds,
     highlightedCellIds,
     highlightedFighterIds,
+    pickedFighterIds,
     framedFighterIds,
     placementCells,
     placementFighters,
@@ -487,18 +660,9 @@ export const useGameSession = () => {
     choiceCount,
     choicePicked,
     choiceComplete,
-    cardFighterLabel: card => {
-      if (card?.fighter == null) return 'любой';
-      const binding = String(card.fighter);
-      const mine = myFighters.value;
-      const fighter =
-        mine.find(entry => String(entry.id) === binding) ??
-        mine.find(entry => String(entry.group) === binding);
-      if (fighter) {
-        return fighter.name || fighter.id;
-      }
-      return binding === 'any' ? 'любой' : binding;
-    },
+
+    holderName,
+    cardFighterLabel,
     selectFighter,
     clearFighterSelection,
     onSwitchPlayer,

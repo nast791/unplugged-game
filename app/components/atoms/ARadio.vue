@@ -13,7 +13,6 @@
 import { RadioGroupIndicator, RadioGroupItem } from 'reka-ui';
 import { useUI } from '~/composables/ui/useUI';
 
-/** Радиокнопка: живёт внутри `ARadioGroup` (обязательное условие reka-ui), классы — из пресета `radio`. */
 const props = defineProps({
   value: { type: String, required: true },
   label: { type: String, default: '' },

@@ -17,15 +17,6 @@ import switchPreset from '~/ui/switch.js';
 import tabs from '~/ui/tabs.js';
 import tooltip from '~/ui/tooltip.js';
 
-/**
- * Пресеты UI — по файлу на компонент (`app/ui/*.js`), здесь они собираются в конфиг приложения
- * (`docs/ui-plan.md` §9.4). Ключ — имя пресета: `useUI('button')` читает `ui.button`.
- *
- * Импорты идут через `~`, а не относительным путём: относительные в dev-сборке Nitro разрешались от
- * корня диска (`Cannot find module 'C:\app\ui\avatar.js'`), alias такой ошибки не даёт.
- *
- * Брейкпоинты (`ui.screens`) сюда не входят: их парсит `nuxt.config.ts` из `--breakpoint-*` в теме CSS.
- */
 export default defineAppConfig({
   ui: {
     arrowButton,

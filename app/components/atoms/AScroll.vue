@@ -36,11 +36,6 @@ import {
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 
-/**
- * Единственный скролл в проекте: применяем везде, в том числе внутри других атомов (модалка, селект,
- * дропдаун, табы) — они прокидывают свой `styles` в проп `ui`, чтобы слоты скролла остались от пресета
- * родителя.
- */
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps({

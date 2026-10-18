@@ -24,7 +24,7 @@
 | **истощение**      | урон герою за карту, которой не нашлось в колоде                              | exhaustion    | `rules.exhaustionDamage`                          |
 | **сдача**          | игрок прекращает партию                                                       | resign        | `RESIGN`, `SET_RESIGNED`                          |
 | **сид**            | число, из которого детерминированно рождается вся случайность партии          | seed          | `state.settings.seed`, `shared/helpers/random.js` |
-| **хотсит**         | режим, где за одним экраном играют оба игрока                                 | hotseat       | `app/composables/useGameSession.js`               |
+| **хотсит**         | режим, где за одним экраном играют оба игрока                                 | hotseat       | `app/composables/game/useGameSession.js`               |
 
 ## 2. Поле
 

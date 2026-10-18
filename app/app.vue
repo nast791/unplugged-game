@@ -11,6 +11,5 @@
 </template>
 
 <script setup>
-/** Заголовок по умолчанию: страницы перекрывают его своим `useSeoTitle`. */
 useHead({ title: 'Настольная игра' });
 </script>

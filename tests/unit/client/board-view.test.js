@@ -17,6 +17,9 @@ import {
  * Проверяем две вещи: арифметику вида (вписанное поле, зум вокруг курсора, пределы, сдвиг не теряет
  * поле) и то, что доска эти жесты действительно отдаёт — колесо мыши и перетаскивание сцены.
  *
+ * Вписывание оставляет запас по краям: `fitPad` — тот же отступ, что у панелей (`p-12`), поэтому карта
+ * занимает поле целиком, а панели лежат поверх неё.
+ *
  * `Board.vue`/`useBoardView.js` — код приложения: `computed`, `ref`, `watch`, `onMounted`,
  * `onBeforeUnmount` приходят автоимпортами Nuxt, в тесте кладём их в `globalThis` до импорта.
  * Состояние партии доска читает сама (`useGameSession`), поэтому сессию подменяем — карта нужна
@@ -28,7 +31,7 @@ globalThis.watch = watch;
 globalThis.onMounted = onMounted;
 globalThis.onBeforeUnmount = onBeforeUnmount;
 
-vi.mock('~/composables/useGameSession.js', async () => {
+vi.mock('~/composables/game/useGameSession.js', async () => {
   const { ref } = await import('vue');
   const session = {
     view: ref({ map: null }),
@@ -42,22 +45,40 @@ vi.mock('~/composables/useGameSession.js', async () => {
   return { useGameSession: () => session, session };
 });
 
-const { session } = await import('~/composables/useGameSession.js');
-const { useBoardView } = await import('~/composables/useBoardView.js');
+const { session } = await import('~/composables/game/useGameSession.js');
+const { useBoardView, FIT_PAD } = await import('~/composables/ui/useBoardView.js');
 const { default: Board } = await import('../../../app/components/organisms/game/Board.vue');
 
 const SIZE = { width: 800, height: 600 };
 const BOUNDS = { minX: 100, minY: 50, maxX: 1100, maxY: 550 };
 
-const makeView = (size = SIZE, bounds = BOUNDS) => {
+const makeView = (size = SIZE, bounds = BOUNDS, fitPad = null) => {
   const sizeRef = ref({ ...size });
   const boundsRef = ref({ ...bounds });
   return {
     size: sizeRef,
     bounds: boundsRef,
-    view: useBoardView({ size: sizeRef, bounds: boundsRef }),
+    view: useBoardView({ size: sizeRef, bounds: boundsRef, fitPad }),
   };
 };
+
+/** Вписанный вид по той же формуле, что у `useBoardView`: запас по краям и центрирование карты. */
+const fitOf = (size, bounds, pad = 0) => {
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  const area = {
+    width: Math.max(size.width - pad * 2, 1),
+    height: Math.max(size.height - pad * 2, 1),
+  };
+  const scale = Math.min(area.width / width, area.height / height, 4);
+  return {
+    scale,
+    x: pad + (area.width - width * scale) / 2 - bounds.minX * scale,
+    y: pad + (area.height - height * scale) / 2 - bounds.minY * scale,
+  };
+};
+
+const FIELD = fitOf(SIZE, BOUNDS);
 
 const configOf = view => view.stageConfig.value;
 
@@ -66,20 +87,29 @@ describe('useBoardView: вписанное поле', () => {
     const { view } = makeView();
     const config = configOf(view);
 
-    expect(config.scaleX).toBeCloseTo(0.8);
-    expect(config.x).toBeCloseTo(-80);
-    expect(config.y).toBeCloseTo(60);
+    expect(config.scaleX).toBeCloseTo(FIELD.scale);
+    expect(config.x).toBeCloseTo(FIELD.x);
+    expect(config.y).toBeCloseTo(FIELD.y);
     expect(config.width).toBe(800);
     expect(config.height).toBe(600);
     expect(config.draggable).toBe(true);
     expect(view.isFitted.value).toBe(true);
   });
 
+  it('отступ вписывания задаётся снаружи: поле отдаёт его в единицах сетки', () => {
+    const { view } = makeView(SIZE, BOUNDS, 12);
+    const expected = fitOf(SIZE, BOUNDS, 12);
+
+    expect(configOf(view).scaleX).toBeCloseTo(expected.scale);
+    expect(configOf(view).x).toBeCloseTo(expected.x);
+    expect(configOf(view).y).toBeCloseTo(expected.y);
+  });
+
   it('пересчитывается при смене размера, пока вид не трогали', () => {
     const { size, view } = makeView();
     size.value = { width: 400, height: 300 };
 
-    expect(configOf(view).scaleX).toBeCloseTo(0.4);
+    expect(configOf(view).scaleX).toBeCloseTo(Math.min(400 / 1000, 300 / 500));
     expect(view.isFitted.value).toBe(true);
   });
 });
@@ -124,7 +154,7 @@ describe('useBoardView: масштаб', () => {
     const { view } = makeView();
     view.zoomIn(null);
 
-    expect(configOf(view).scaleX).toBeGreaterThan(0.8);
+    expect(configOf(view).scaleX).toBeGreaterThan(FIELD.scale);
     expect(view.isFitted.value).toBe(false);
   });
 });
@@ -169,8 +199,8 @@ describe('useBoardView: сдвиг поля', () => {
     view.reset();
 
     expect(view.isFitted.value).toBe(true);
-    expect(configOf(view).scaleX).toBeCloseTo(0.8);
-    expect(configOf(view).x).toBeCloseTo(-80);
+    expect(configOf(view).scaleX).toBeCloseTo(FIELD.scale);
+    expect(configOf(view).x).toBeCloseTo(FIELD.x);
   });
 
   it('смена размера после ручного вида только ограничивает сдвиг', () => {

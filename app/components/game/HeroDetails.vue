@@ -1,12 +1,10 @@
 <template>
   <article class="flex min-h-0 flex-col gap-16 lg:flex-row">
-    <!-- Левая колонка — герой лицом: большой арт (пока заглушка в цвете героя), имя, бойцы и предметы. -->
     <section class="flex w-full shrink-0 flex-col gap-12 lg:w-520">
       <div
         class="border-line rounded-6 relative flex min-h-240 flex-1 items-center justify-center overflow-hidden border-2"
         :style="{ '--hero-color': hero.color || 'var(--color-surface-2)' }"
       >
-        <!-- Портрет появится артом (`public/art/heroes/{id}/portrait.webp`): до него — знак героя. -->
         <span class="absolute inset-0 bg-[var(--hero-color)]/20" />
         <Icon
           :name="heroFace"
@@ -44,21 +42,25 @@
       </div>
 
       <div v-if="hero.items.length" class="flex flex-wrap gap-8">
-        <span
+        <ATooltip
           v-for="item in hero.items"
           :key="item.id"
-          class="border-line rounded-4 flex items-center gap-8 border-2 px-12 py-8"
-          :title="item.condition"
+          :text="TOOLTIPS.heroDetails.item({ condition: item.condition })"
         >
-          <Icon :name="item.icon || 'lucide:shield'" class="text-dim size-18" aria-hidden="true" />
-          <span class="text-16"
-            >{{ item.name }}<template v-if="item.count > 1"> ×{{ item.count }}</template></span
-          >
-        </span>
+          <span class="border-line rounded-4 flex items-center gap-8 border-2 px-12 py-8">
+            <Icon
+              :name="item.icon || 'lucide:shield'"
+              class="text-dim size-18"
+              aria-hidden="true"
+            />
+            <span class="text-16"
+              >{{ item.name }}<template v-if="item.count > 1"> ×{{ item.count }}</template></span
+            >
+          </span>
+        </ATooltip>
       </div>
     </section>
 
-    <!-- Правая колонка — подробности: умение, предметы словами и тексты карт в две колонки. -->
     <section class="flex min-h-0 flex-1 flex-col gap-16 lg:overflow-y-auto lg:pr-8">
       <section v-if="hero.skill" class="border-line rounded-6 flex flex-col gap-8 border-2 p-16">
         <h2 class="text-18 font-semibold">{{ hero.skill.title }}</h2>
@@ -85,7 +87,7 @@
           >
             <span class="flex items-baseline gap-8">
               <span class="text-18 font-medium">{{ card.name }}</span>
-              <span class="text-16 text-dim">{{ typeLabel(card.type) }}</span>
+              <span class="text-16 text-dim">{{ cardType(card.type).label }}</span>
               <span class="text-16 text-dim ml-auto lining-nums">
                 {{ card.value }}<template v-if="card.bonus"> ·+{{ card.bonus }}</template> · ×{{
                   card.quantity
@@ -105,6 +107,9 @@
 
 <script setup>
 import { terrainName } from '#shared/constants/terrain.js';
+import ATooltip from '~/components/atoms/ATooltip.vue';
+import { cardType } from '~/constants/cards.js';
+import { TOOLTIPS } from '~/constants/tooltips.js';
 
 const FACES = {
   'anubis': 'lucide:scale',
@@ -123,18 +128,7 @@ const FACES = {
 const fighterFace = fighter =>
   FACES[String(fighter?.group ?? fighter?.id ?? '')] ?? 'lucide:shield';
 
-/**
- * Содержимое карточки героя: герой лицом (большой арт, имя, бойцы, предметы) и подробности справа —
- * умение, предметы словами и тексты карт. Данные приходят пропом, запрос делает вызывающий: страница
- * `/heroes/{id}` берёт героя из маршрута, партия — из клика по карточке места, поэтому рисовать это
- * дважды незачем.
- *
- * Раскладка рассчитана на **модалку во весь экран** (`organisms/modals/HeroSheet.vue`): на десктопе
- * обе колонки видны целиком, без скролла; на узком экране колонки складываются, и прокручивается
- * только правая часть.
- */
 const props = defineProps({
-  /** Ответ `/api/content/heroes/{id}`: `name`, `color`, `skill`, `fighters`, `items`, `cards`. */
   hero: { type: Object, required: true },
 });
 
@@ -143,15 +137,9 @@ const healthLine = computed(() => {
   return heroFighter ? `${heroFighter.hp} hp` : 'герой без числа здоровья';
 });
 
-/**
- * Значок бойца — показ (портретов пока нет): словарь моков — `FACES` здесь же.
- * Значок предмета — **контент**: он объявлен в паке героя (`item.icon`) и берётся прямо из данных.
- */
 const heroFace = computed(() => fighterFace({ id: props.hero.id }));
 const faceOfFighter = fighter => fighterFace(fighter);
 
-const CARD_TYPES = { attack: 'атака', defense: 'защита', hybrid: 'атака/защита', effect: 'эффект' };
-const typeLabel = type => CARD_TYPES[type] ?? type;
 const terrainLabel = terrain => terrainName(terrain);
 const fighterName = id => props.hero.fighters.find(fighter => fighter.id === id)?.name ?? id;
 </script>

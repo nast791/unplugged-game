@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { resolveCallback, resolveValue } from '~/composables/useReactiveOptions.js';
+import { resolveCallback, resolveValue } from '~/composables/ui/useReactiveOptions.js';
 import { useDraggable } from './useDraggable.js';
 
 export const SORT_MODES = ['insert', 'swap'];

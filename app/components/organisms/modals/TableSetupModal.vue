@@ -1,229 +1,246 @@
 <template>
-  <AModal name="table" title="Общий стол" :error="errorMessage">
-    <p class="text-16 text-dim">
-      2–4 места: люди и компьютер в любом сочетании, каждый сам за себя. Поле собирает генератор по
-      сиду партии.
-    </p>
+  <AModal
+    name="table"
+    title="Одиночный режим"
+    :error="errorMessage"
+    :close-on-overlay="!busy"
+    :close-on-escape="!busy"
+  >
+    <div class="flex flex-col gap-20" :class="busy ? 'opacity-60' : ''">
+      <p class="text-16 text-dim">
+        2–4 места: люди и компьютер в любом сочетании, каждый сам за себя. Поле собирает генератор
+        по сиду партии.
+      </p>
 
-    <p id="setup-order-hint" class="text-16 text-dim">
-      Порядок мест — это порядок хода. Место переезжает за ручку
-      <Icon
-        name="lucide:grip-vertical"
-        class="inline size-16 align-text-bottom"
-        aria-hidden="true"
-      />
-      справа или стрелками рядом с ней; вместе с героем едет и управление. Плашка с именем героя
-      подсвечивается при наведении и ведёт на его страницу: умение, бойцы и карты.
-    </p>
-
-    <div class="flex flex-col gap-8">
-      <div
-        v-for="(slot, index) in slots"
-        :key="slot.id"
-        v-bind="targetProps(index)"
-        class="rounded-4 flex flex-col gap-12 border-2 px-12 py-8 transition-colors"
-        :class="rowClass(index)"
-      >
-        <div class="relative flex flex-wrap items-center gap-12">
-          <span class="text-16 text-dim w-90">{{
-            randomPlaces ? 'Место —' : `Место ${index + 1}`
-          }}</span>
-
-          <ARadioGroup v-model="slot.control" inline :options="CONTROLS" />
-
-          <AButton
-            v-if="canRemoveSlot"
-            icon
-            variant="ghost"
-            class="absolute top-[20%] -right-10 -translate-y-1/2 md:top-[60%] md:right-0"
-            aria-label="Убрать место"
-            @click="removeSlot(index)"
-          >
-            <Icon name="lucide:trash-2" class="size-16" aria-hidden="true" />
-          </AButton>
-        </div>
-
-        <div class="flex">
-          <ASelect
-            v-if="!randomHeroes"
-            v-model="slot.heroId"
-            class="min-w-200 flex-1"
-            :options="heroOptions(index)"
-            :aria-label="`Герой места ${index + 1}`"
+      <fieldset class="contents" :disabled="busy">
+        <p id="setup-order-hint" class="text-16 text-dim">
+          Порядок мест — это порядок хода. Место переезжает за ручку
+          <Icon
+            name="lucide:grip-vertical"
+            class="inline size-16 align-text-bottom"
+            aria-hidden="true"
           />
-          <span v-else class="text-16 text-dim min-w-200 flex-1">Случайный герой</span>
-        </div>
+          справа или стрелками рядом с ней; вместе с героем едет и управление. Плашка с именем героя
+          подсвечивается при наведении и ведёт на его страницу: умение, бойцы и карты.
+        </p>
 
-        <div class="flex flex-wrap items-center gap-12">
-          <a
-            v-if="!randomHeroes && currentHero(slot.heroId)"
-            :href="`/heroes/${slot.heroId}`"
-            target="_blank"
-            rel="noopener"
-            class="group relative block shrink-0"
-            :title="`Открыть страницу героя: ${currentHero(slot.heroId).name}`"
-            :aria-label="`Открыть страницу героя: ${currentHero(slot.heroId).name}`"
+        <div class="flex flex-col gap-8">
+          <div
+            v-for="(slot, index) in slots"
+            :key="slot.id"
+            v-bind="targetProps(index)"
+            class="rounded-4 flex flex-col gap-12 border-2 px-12 py-8 transition-colors"
+            :class="rowClass(index)"
           >
-            <AAvatar
-              :src="currentHero(slot.heroId).portrait || ''"
-              :alt="currentHero(slot.heroId).name"
-              :ui="HERO_PLATE"
-              :style="{
-                '--hero-color': currentHero(slot.heroId).color || 'var(--color-surface-2)',
-              }"
-            >
-              <template #fallback>
-                <span
-                  class="text-16 text-app group-hover:text-app/70 max-w-full truncate px-8 transition-colors"
-                  >{{ currentHero(slot.heroId).name }}</span
+            <div class="relative flex flex-wrap items-center gap-12">
+              <span class="text-16 text-dim w-90">{{
+                randomPlaces ? 'Место —' : `Место ${index + 1}`
+              }}</span>
+
+              <ARadioGroup v-model="slot.control" inline :options="CONTROLS" />
+
+              <AButton
+                v-if="canRemoveSlot"
+                icon
+                variant="ghost"
+                class="absolute top-[20%] -right-10 -translate-y-1/2 md:top-[60%] md:right-0"
+                aria-label="Убрать место"
+                @click="removeSlot(index)"
+              >
+                <Icon name="lucide:trash-2" class="size-16" aria-hidden="true" />
+              </AButton>
+            </div>
+
+            <div class="flex">
+              <ASelect
+                v-if="!randomHeroes"
+                v-model="slot.heroId"
+                class="min-w-200 flex-1"
+                :options="heroOptions(index)"
+                :aria-label="`Герой места ${index + 1}`"
+              />
+              <span v-else class="text-16 text-dim min-w-200 flex-1">Случайный герой</span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-12">
+              <ATooltip
+                v-if="!randomHeroes && currentHero(slot.heroId)"
+                :text="TOOLTIPS.tableSetup.heroPage({ name: currentHero(slot.heroId).name })"
+              >
+                <a
+                  :href="`/heroes/${slot.heroId}`"
+                  target="_blank"
+                  rel="noopener"
+                  class="group relative block shrink-0"
+                  :aria-label="`Открыть страницу героя: ${currentHero(slot.heroId).name}`"
                 >
-              </template>
-            </AAvatar>
-          </a>
+                  <AAvatar
+                    :src="currentHero(slot.heroId).portrait || ''"
+                    :alt="currentHero(slot.heroId).name"
+                    :ui="HERO_PLATE"
+                    :style="{
+                      '--hero-color': currentHero(slot.heroId).color || 'var(--color-surface-2)',
+                    }"
+                  >
+                    <template #fallback>
+                      <span
+                        class="text-16 text-app group-hover:text-app/70 max-w-full truncate px-8 transition-colors"
+                        >{{ currentHero(slot.heroId).name }}</span
+                      >
+                    </template>
+                  </AAvatar>
+                </a>
+              </ATooltip>
 
-          <div class="ml-auto flex items-center gap-4">
-            <AButton
-              icon
-              variant="ghost"
-              class="px-6"
-              :disabled="randomPlaces || index === 0"
-              :aria-label="`Поднять место ${index + 1} выше`"
-              aria-describedby="setup-order-hint"
-              @click="moveBy(index, -1)"
-            >
-              <Icon name="lucide:arrow-up" class="size-16" aria-hidden="true" />
-            </AButton>
+              <div class="ml-auto flex items-center gap-4">
+                <AButton
+                  icon
+                  variant="ghost"
+                  class="px-6"
+                  :disabled="randomPlaces || index === 0"
+                  :aria-label="`Поднять место ${index + 1} выше`"
+                  aria-describedby="setup-order-hint"
+                  @click="moveBy(index, -1)"
+                >
+                  <Icon name="lucide:arrow-up" class="size-16" aria-hidden="true" />
+                </AButton>
 
-            <AButton
-              icon
-              variant="ghost"
-              class="px-6"
-              :disabled="randomPlaces || index === slots.length - 1"
-              :aria-label="`Опустить место ${index + 1} ниже`"
-              aria-describedby="setup-order-hint"
-              @click="moveBy(index, 1)"
-            >
-              <Icon name="lucide:arrow-down" class="size-16" aria-hidden="true" />
-            </AButton>
+                <AButton
+                  icon
+                  variant="ghost"
+                  class="px-6"
+                  :disabled="randomPlaces || index === slots.length - 1"
+                  :aria-label="`Опустить место ${index + 1} ниже`"
+                  aria-describedby="setup-order-hint"
+                  @click="moveBy(index, 1)"
+                >
+                  <Icon name="lucide:arrow-down" class="size-16" aria-hidden="true" />
+                </AButton>
 
-            <AButton
-              v-bind="handleProps(index)"
-              data-sortable-handle
-              icon
-              variant="ghost"
-              tabindex="-1"
-              aria-hidden="true"
-              :title="randomPlaces ? 'Порядок задаёт сид' : 'Перетащить место'"
-              :class="
-                randomPlaces
-                  ? 'cursor-not-allowed opacity-40'
-                  : 'cursor-grab touch-none active:cursor-grabbing'
-              "
-            >
-              <Icon name="lucide:grip-vertical" class="size-16" />
-            </AButton>
+                <AButton
+                  v-bind="handleProps(index)"
+                  data-sortable-handle
+                  icon
+                  variant="ghost"
+                  tabindex="-1"
+                  aria-hidden="true"
+                  :class="
+                    randomPlaces
+                      ? 'cursor-not-allowed opacity-40'
+                      : 'cursor-grab touch-none active:cursor-grabbing'
+                  "
+                >
+                  <Icon name="lucide:grip-vertical" class="size-16" />
+                </AButton>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <AButton v-if="canAddSlot" variant="ghost" class="self-start" @click="addSlot">
-        <Icon name="lucide:plus" class="size-16" aria-hidden="true" />
-        Добавить место
-      </AButton>
-    </div>
-
-    <div class="border-line flex flex-col gap-20 border-t-2 pt-20">
-      <div class="flex items-start justify-between gap-16">
-        <div class="flex flex-col gap-4">
-          <span class="text-18">Случайные герои</span>
-          <span class="text-16 text-dim"
-            >Раздаются по сиду, выбирать не нужно — как в «Хаосе».</span
-          >
-        </div>
-        <ASwitch v-model="randomHeroes" aria-label="Случайные герои" />
-      </div>
-
-      <div class="flex items-start justify-between gap-16">
-        <div class="flex flex-col gap-4">
-          <span class="text-18">Случайные места</span>
-          <span class="text-16 text-dim">Порядок мест тоже определяет сид, а не эта разметка.</span>
-        </div>
-        <ASwitch v-model="randomPlaces" aria-label="Случайные места" />
-      </div>
-
-      <div class="flex items-start justify-between gap-16">
-        <div class="flex flex-col gap-4">
-          <span class="text-18">Лимит времени на расстановку</span>
-          <span class="text-16 text-dim"
-            >Один бюджет на всю первую фазу: пока бойцы не расставлены, партия не началась, и часы
-            партии ещё не идут.
-            <strong>Время вышло — кто не успел, выбывает из партии</strong> (автоматическая сдача).
-            За место компьютера не сдаём: за него играет клиент.</span
-          >
-        </div>
-        <ASelect
-          v-model="placementLimit"
-          class="w-220"
-          :options="TIME_LIMITS"
-          aria-label="Лимит времени на расстановку"
-        />
-      </div>
-
-      <div class="flex items-start justify-between gap-16">
-        <div class="flex flex-col gap-4">
-          <span class="text-18">Лимит времени на действие</span>
-          <span class="text-16 text-dim"
-            >Время на одно решение — объявление карты, шаг, выбор цели, ответ в бою. Ход состоит из
-            решений, поэтому лимит и считается на действие.
-            <strong>Время вышло — игрок выбывает из партии</strong> (автоматическая сдача).</span
-          >
-        </div>
-        <ASelect
-          v-model="actionLimit"
-          class="w-220"
-          :options="TIME_LIMITS"
-          aria-label="Лимит времени на действие"
-        />
-      </div>
-
-      <div class="flex items-start justify-between gap-16">
-        <div class="flex flex-col gap-4">
-          <span class="text-18">Размер поля</span>
-          <span class="text-16 text-dim"
-            >«Авто» — генератор выберет сам по сиду (28–38 клеток).</span
-          >
-        </div>
-        <ASelect v-model="cells" class="w-220" :options="CELLS_OPTIONS" aria-label="Размер поля" />
-      </div>
-
-      <AInput
-        v-model="seedText"
-        label="Сид партии"
-        numeric
-        :maxlength="10"
-        placeholder="Случайный"
-        hint="Одно и то же число даёт одно и то же поле: сид нужен, чтобы повторить стол или разобрать партию. Пусто — сид выберется сам."
-      >
-        <template #next="{ focus }">
-          <AButton
-            icon
-            variant="ghost"
-            aria-label="Случайный сид"
-            title="Случайный сид"
-            @click="rollSeed(focus)"
-          >
-            <Icon name="lucide:dices" class="size-16" aria-hidden="true" />
+          <AButton v-if="canAddSlot" variant="ghost" class="self-start" @click="addSlot">
+            <Icon name="lucide:plus" class="size-16" aria-hidden="true" />
+            Добавить место
           </AButton>
-        </template>
-      </AInput>
+        </div>
+
+        <div class="border-line flex flex-col gap-20 border-t-2 pt-20">
+          <div class="flex items-start justify-between gap-16">
+            <div class="flex flex-col gap-4">
+              <span class="text-18">Случайные герои</span>
+              <span class="text-16 text-dim"
+                >Раздаются по сиду, выбирать не нужно — как в «Хаосе».</span
+              >
+            </div>
+            <ASwitch v-model="randomHeroes" aria-label="Случайные герои" />
+          </div>
+
+          <div class="flex items-start justify-between gap-16">
+            <div class="flex flex-col gap-4">
+              <span class="text-18">Случайные места</span>
+              <span class="text-16 text-dim"
+                >Порядок мест тоже определяет сид, а не эта разметка.</span
+              >
+            </div>
+            <ASwitch v-model="randomPlaces" aria-label="Случайные места" />
+          </div>
+
+          <div class="flex items-start justify-between gap-16">
+            <div class="flex flex-col gap-4">
+              <span class="text-18">Лимит времени на расстановку</span>
+              <span class="text-16 text-dim"
+                >Один бюджет на всю первую фазу: пока бойцы не расставлены, партия не началась, и
+                часы партии ещё не идут.
+                <strong>Время вышло — кто не успел, выбывает из партии</strong> (автоматическая
+                сдача). За место компьютера не сдаём: за него играет клиент.</span
+              >
+            </div>
+            <ASelect
+              v-model="placementLimit"
+              class="w-220"
+              :options="TIME_LIMITS"
+              aria-label="Лимит времени на расстановку"
+            />
+          </div>
+
+          <div class="flex items-start justify-between gap-16">
+            <div class="flex flex-col gap-4">
+              <span class="text-18">Лимит времени на действие</span>
+              <span class="text-16 text-dim"
+                >Время на одно решение — объявление карты, шаг, выбор цели, ответ в битве. Ход
+                состоит из решений, поэтому лимит и считается на действие.
+                <strong>Время вышло — игрок выбывает из партии</strong> (автоматическая
+                сдача).</span
+              >
+            </div>
+            <ASelect
+              v-model="actionLimit"
+              class="w-220"
+              :options="TIME_LIMITS"
+              aria-label="Лимит времени на действие"
+            />
+          </div>
+
+          <div class="flex items-start justify-between gap-16">
+            <div class="flex flex-col gap-4">
+              <span class="text-18">Размер поля</span>
+              <span class="text-16 text-dim"
+                >«Авто» — генератор выберет сам по сиду (28–38 клеток).</span
+              >
+            </div>
+            <ASelect
+              v-model="cells"
+              class="w-220"
+              :options="CELLS_OPTIONS"
+              aria-label="Размер поля"
+            />
+          </div>
+
+          <AInput
+            v-model="seedText"
+            label="Сид партии"
+            numeric
+            :maxlength="10"
+            placeholder="Случайный"
+            hint="Одно и то же число даёт одно и то же поле: сид нужен, чтобы повторить стол или разобрать партию. Пусто — сид выберется сам."
+          >
+            <template #next="{ focus }">
+              <ATooltip :text="TOOLTIPS.tableSetup.rollSeed()">
+                <AButton icon variant="ghost" aria-label="Случайный сид" @click="rollSeed(focus)">
+                  <Icon name="lucide:dices" class="size-16" aria-hidden="true" />
+                </AButton>
+              </ATooltip>
+            </template>
+          </AInput>
+        </div>
+      </fieldset>
     </div>
 
     <VisuallyHidden aria-live="polite">{{ announcement }}</VisuallyHidden>
 
     <template #footer>
-      <AButton variant="secondary" @click="closeModal('table')">Отмена</AButton>
-      <AButton :disabled="!canStart" :loading="pending" @click="start">
-        {{ pending ? 'Создание…' : 'Начать' }}
+      <p v-if="busy" class="text-16 text-dim mr-auto" role="status">{{ statusText }}</p>
+      <AButton variant="secondary" @click="cancel">Отмена</AButton>
+      <AButton :disabled="busy || !canStart" :loading="busy" @click="start">
+        {{ startLabel }}
       </AButton>
     </template>
   </AModal>
@@ -240,15 +257,19 @@ import AModal from '~/components/atoms/AModal.vue';
 import ARadioGroup from '~/components/atoms/ARadioGroup.vue';
 import ASelect from '~/components/atoms/ASelect.vue';
 import ASwitch from '~/components/atoms/ASwitch.vue';
-import { useGameView } from '~/composables/useGameView';
-import { useSortable } from '~/composables/useSortable';
-import { closeModal } from '~/composables/ui/useModal';
+import ATooltip from '~/components/atoms/ATooltip.vue';
+import { TOOLTIPS } from '~/constants/tooltips.js';
+import { useGameView } from '~/composables/game/useGameView';
+import { useSortable } from '~/composables/ui/useSortable';
+import { closeModal, useIsModalOpen } from '~/composables/ui/useModal';
 
 const props = defineProps({
   content: { type: Object, default: () => null },
+
+  navigate: { type: Function, default: null },
 });
 
-const { seed } = useGameView();
+const { seed, seedView, discard } = useGameView();
 
 const heroes = computed(() => props.content?.heroes ?? []);
 
@@ -277,6 +298,7 @@ const CELLS_OPTIONS = [
 
 const slots = ref([]);
 const pending = ref(false);
+const navigating = ref(false);
 const error = ref('');
 const filled = ref(false);
 const announcement = ref('');
@@ -286,6 +308,34 @@ const actionLimit = ref('0');
 const placementLimit = ref('0');
 const cells = ref('auto');
 const seedText = ref('');
+
+const isOpen = useIsModalOpen('table');
+const busy = computed(() => pending.value || navigating.value);
+const startLabel = computed(() => {
+  if (navigating.value) return 'Начало партии…';
+  return pending.value ? 'Создание…' : 'Начать';
+});
+const statusText = computed(() => {
+  if (!busy.value) return '';
+  return navigating.value
+    ? 'Партия собрана, открываем экран игры.'
+    : 'Партия собирается — это займёт несколько секунд.';
+});
+
+watch(isOpen, open => {
+  if (open) {
+    pending.value = false;
+    navigating.value = false;
+  }
+});
+
+let attempt = 0;
+let controller = null;
+
+const closeTable = () => {
+  if (busy.value) return;
+  closeModal('table');
+};
 
 let slotSeq = 0;
 const makeSlot = (control = 'ai', heroId = '') => ({
@@ -417,7 +467,11 @@ const dealHeroes = (list, seedNumber) => {
 };
 
 const start = async () => {
-  if (!canStart.value || pending.value) return;
+  if (!canStart.value || busy.value) return;
+  const token = (attempt += 1);
+  const request = new AbortController();
+  controller = request;
+  const mine = () => attempt === token;
   pending.value = true;
   error.value = '';
   try {
@@ -442,13 +496,46 @@ const start = async () => {
       })),
       playerId: chosen.heroId,
     };
-    const res = await $fetch('/api/game/create', { method: 'POST', body });
+    const res = await $fetch('/api/game/create', {
+      method: 'POST',
+      body,
+      signal: request.signal,
+    });
+    if (!mine()) return;
+
     seed(res.host, body.playerId);
-    closeModal('table');
-    await navigateTo({ path: '/game', query: { gameId: res.id, playerId: body.playerId } });
+    seedView(res);
+    pending.value = false;
+    navigating.value = true;
+
+    const to = { path: '/game', query: { gameId: res.id, playerId: body.playerId } };
+    await (props.navigate ? props.navigate(to) : navigateTo(to));
   } catch (err) {
+    if (!mine()) return;
     error.value = err instanceof Error ? err.message : String(err);
     pending.value = false;
+    navigating.value = false;
   }
 };
+
+const cancel = () => {
+  if (!busy.value) {
+    closeTable();
+    return;
+  }
+  attempt += 1;
+  controller?.abort();
+  controller = null;
+  pending.value = false;
+  navigating.value = false;
+  announcement.value = 'Начало партии отменено, вы в лобби.';
+  discard();
+  closeModal('table');
+};
+
+onBeforeUnmount(() => {
+  attempt += 1;
+  controller?.abort();
+  controller = null;
+});
 </script>

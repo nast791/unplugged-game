@@ -1,5 +1,5 @@
 <template>
-  <AModal name="discard" title="Сброс" :ui="{ modal_content: 'w-[92dvw] max-w-[92dvw]' }">
+  <AModal name="discard" :title="title" :ui="{ modal_content: 'w-[92dvw] max-w-[92dvw]' }">
     <p v-if="!groups.length" class="text-16 text-dim">Сброс пуст</p>
 
     <section v-for="group in groups" :key="group.type" class="flex flex-col gap-12">
@@ -26,15 +26,27 @@
 <script setup>
 import AModal from '~/components/atoms/AModal.vue';
 import Card from '~/components/molecules/game/Card.vue';
-import { useGameSession } from '~/composables/useGameSession.js';
-import { CARD_TYPE_ORDER, cardType } from '~/composables/useGameHelpers.js';
+import { CARD_TYPE_ORDER, cardType } from '~/constants/cards.js';
+import { useGameSession } from '~/composables/game/useGameSession.js';
+import { useModalPayload } from '~/composables/ui/useModal.js';
 
-const { myDiscard } = useGameSession();
+const { you, players } = useGameSession();
+
+const payload = useModalPayload('discard');
+const targetId = computed(() => String(payload.value?.playerId ?? you.value ?? ''));
+const target = computed(
+  () => (players.value ?? []).find(player => String(player.id) === targetId.value) ?? null,
+);
+const cards = computed(() => target.value?.discard ?? []);
+const title = computed(() => {
+  const owner = target.value?.name || target.value?.heroId;
+  return owner ? `Сброс · ${owner}` : 'Сброс';
+});
 
 const byType = () => {
   const groups = new Map(CARD_TYPE_ORDER.map(type => [type, new Map()]));
 
-  for (const card of myDiscard.value) {
+  for (const card of cards.value) {
     const stacks = groups.get(String(card.type));
     if (!stacks) continue;
     const id = String(card.id);

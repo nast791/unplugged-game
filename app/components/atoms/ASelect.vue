@@ -35,9 +35,6 @@
 </template>
 
 <script setup>
-/**
- * Список всегда в общем скролле: длинные списки героев не растягивают окно.
- */
 import {
   SelectContent,
   SelectIcon,
@@ -54,7 +51,6 @@ import {
 import AScroll from '~/components/atoms/AScroll.vue';
 import { useUI } from '~/composables/ui/useUI';
 
-/** Селект: `options` — `{ value, label, disabled?, separator? }`, либо свой список в слоте. */
 const props = defineProps({
   options: { type: Array, default: () => [] },
   placeholder: { type: String, default: '' },

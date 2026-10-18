@@ -7,7 +7,8 @@ import { findPlayer } from '#shared/helpers/base.js';
 /**
  * SET_ACTIONS — изменить остаток действий хода.
  * params: { playerId, delta } — объявление действия: −1; карта или способность «+1 действие»: +1.
- * Объявление действия (−1) заодно снимает итоги прошлого действия (lastCombat / lastBonus).
+ * Объявление действия (−1) заодно снимает итоги прошлого действия (lastCombat / lastBonus) и отметку
+ * сработавшего умения (`lastSkill`): она живёт до первого объявленного действия своего хода.
  */
 export const SET_ACTIONS = (partyState, action = {}) => {
   const playerId = action.playerId ?? partyState.turn?.playerId;
@@ -29,6 +30,7 @@ export const SET_ACTIONS = (partyState, action = {}) => {
   if (delta < 0) {
     partyState.lastCombat = null;
     partyState.lastBonus = null;
+    partyState.lastSkill = null;
   }
 
   partyState.turn = {

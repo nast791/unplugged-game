@@ -28,7 +28,7 @@ vi.mock('~/composables/ui/useUI', async importOriginal => {
 });
 
 // Состояние партии полка читает из сессии: в тесте она своя, с двумя непоставленными бойцами.
-vi.mock('~/composables/useGameSession.js', async () => {
+vi.mock('~/composables/game/useGameSession.js', async () => {
   const { ref } = await import('vue');
   const session = {
     placementFighters: ref([]),
@@ -40,7 +40,21 @@ vi.mock('~/composables/useGameSession.js', async () => {
   return { useGameSession: () => session, session };
 });
 
-const { session } = await import('~/composables/useGameSession.js');
+// Тултип — своя обвязка reka-ui: в тесте от него нужен только текст подсказки на самой аватарке.
+vi.mock('~/components/atoms/ATooltip.vue', async () => {
+  const { defineComponent, h, mergeProps } = await import('vue');
+  return {
+    default: defineComponent({
+      name: 'ATooltip',
+      props: { text: { type: String, default: '' } },
+      setup(props, { slots, attrs }) {
+        return () => h('div', mergeProps(attrs, { 'data-tooltip': props.text }), slots.default?.());
+      },
+    }),
+  };
+});
+
+const { session } = await import('~/composables/game/useGameSession.js');
 const { default: PlacementTray } =
   await import('../../../app/components/molecules/game/PlacementTray.vue');
 
@@ -81,7 +95,9 @@ describe('PlacementTray: кого ещё ставить', () => {
     expect(avatars(wrapper)[0].classes().join(' ')).toContain('placement-blink');
     expect(avatars(wrapper)[0].classes().join(' ')).not.toContain('border-primary');
     expect(avatars(wrapper)[0].classes().join(' ')).not.toContain('border-accent');
-    expect(avatars(wrapper)[0].attributes('title')).toContain('Амат');
+    expect(
+      avatars(wrapper)[0].element.closest('[data-tooltip]').getAttribute('data-tooltip'),
+    ).toContain('Амат');
   });
 
   it('аватарки полки крупные — их видно без наведения', () => {

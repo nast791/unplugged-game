@@ -14,8 +14,18 @@ const validBody = {
 };
 
 describe('POST /api/game/create', () => {
-  it('createGame → state на сервере; view скрывает чужие позиции на gameStart', () => {
-    createGame(validBody, { testId: 'test_game', testSeed: 42 });
+  it('createGame → state на сервере; неподтверждённая расстановка чужих позиций не отдаёт', () => {
+    createGame(
+      {
+        ...validBody,
+        mode: 'hotseat',
+        heroes: [
+          { heroId: 'medusa', team: 'A', order: 1, control: 'human' },
+          { heroId: 'anubis', team: 'B', order: 2, control: 'human' },
+        ],
+      },
+      { testId: 'test_game', testSeed: 42 },
+    );
     const state = load('test_game');
     expect(state.settings.seed).toBe(42);
     expect(state.players[0].hand.cards).toHaveLength(5);
@@ -23,8 +33,9 @@ describe('POST /api/game/create', () => {
     const v = view(state, 'medusa');
     expect(v.id).toBe('test_game');
     expect(v.settings.seed).toBeUndefined();
+    // сосед ещё расставляется — его позиций не видно; свои видны всегда
     expect(
-      v.players.find(p => p.id === 'tesla').fighters.find(f => f.type === 'hero').currentPosition,
+      v.players.find(p => p.id === 'anubis').fighters.find(f => f.type === 'hero').currentPosition,
     ).toBeNull();
     expect(
       v.players.find(p => p.id === 'medusa').fighters.find(f => f.type === 'hero').currentPosition,
@@ -33,7 +44,12 @@ describe('POST /api/game/create', () => {
     expect(v.ui?.phase).toBe('place');
   });
 
-  it('флаг готовности чужого слота виден, а его позиции — нет: карточка обновляется, доска молчит', () => {
+  /**
+   * Правило игры: до конца расстановки чужую расстановку не видит никто — ни свои бойцы, ни готовность
+   * соперника её не открывают. Флаг готовности (`placementReady`) открыт: по нему карточка снимает
+   * плашку «Расстановка», а «не на поле» решает сама карточка (`PlayerCard`).
+   */
+  it('пока идёт расстановка, чужие позиции не отдаются — даже у подтвердившегося слота', () => {
     createGame(
       {
         mapId: 'generated',
@@ -47,13 +63,22 @@ describe('POST /api/game/create', () => {
     );
     const state = load('ready_flag');
     const anubis = state.players.find(p => p.id === 'anubis');
-    anubis.fighters = anubis.fighters.map(f => ({ ...f, currentPosition: 5 }));
-    anubis.placementReady = true;
+    const cells = anubis.fighters.map((fighter, index) => ({
+      ...fighter,
+      currentPosition: 5 + index,
+    }));
+    const patched = placementReady => ({
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'anubis' ? { ...p, fighters: cells, placementReady } : p,
+      ),
+    });
 
-    const v = view(state, 'medusa');
-    const shown = v.players.find(p => p.id === 'anubis');
-    expect(shown.placementReady).toBe(true);
-    expect(shown.fighters.every(f => f.currentPosition === null)).toBe(true);
+    for (const ready of [false, true]) {
+      const shown = view(patched(ready), 'medusa').players.find(p => p.id === 'anubis');
+      expect(shown.placementReady).toBe(ready);
+      expect(shown.fighters.every(f => f.currentPosition === null)).toBe(true);
+    }
   });
 
   it('mode по умолчанию — vs_ai', () => {
@@ -153,7 +178,7 @@ describe('POST /api/game/create', () => {
       {
         ...validBody,
         seed: 777,
-        cells: 30,
+        cells: 36,
         actionLimit: 60,
         placementLimit: 120,
         mode: 'table',
@@ -161,7 +186,7 @@ describe('POST /api/game/create', () => {
       { testId: 'lobby_settings' },
     );
     expect(state.settings.seed).toBe(777);
-    expect(state.settings.cells).toBe(30);
+    expect(state.settings.cells).toBe(36);
     expect(state.settings.actionLimit).toBe(60);
     expect(state.settings.placementLimit).toBe(120);
     // «Авто» — размер выбирает генератор по сиду, а лимитов нет: в настройках это null и два нуля.
@@ -186,8 +211,8 @@ describe('POST /api/game/create', () => {
   it('сломанные сид, размер поля и лимиты времени → ошибка', () => {
     expect(() => createGame({ ...validBody, seed: -1 })).toThrow(/seed/);
     expect(() => createGame({ ...validBody, seed: 1.5 })).toThrow(/seed/);
-    expect(() => createGame({ ...validBody, cells: 27 })).toThrow(/cells/);
-    expect(() => createGame({ ...validBody, cells: 39 })).toThrow(/cells/);
+    expect(() => createGame({ ...validBody, cells: 31 })).toThrow(/cells/);
+    expect(() => createGame({ ...validBody, cells: 43 })).toThrow(/cells/);
     expect(() => createGame({ ...validBody, actionLimit: -5 })).toThrow(/actionLimit/);
     expect(() => createGame({ ...validBody, placementLimit: -5 })).toThrow(/placementLimit/);
   });

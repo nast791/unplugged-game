@@ -2,7 +2,8 @@
   <section
     ref="wrapRef"
     data-board
-    class="border-primary/15 relative h-full min-h-96 w-full overflow-hidden border bg-[#eef1f4]"
+    :data-gap="fitPad"
+    class="relative h-full min-h-96 w-full overflow-hidden bg-white"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
@@ -91,9 +92,10 @@
 </template>
 
 <script setup>
-import { useBoardMap } from '~/composables/useBoardMap.js';
-import { useBoardView } from '~/composables/useBoardView.js';
-import { useGameSession } from '~/composables/useGameSession.js';
+import { useBoardMap } from '~/composables/ui/useBoardMap.js';
+import { useBoardView } from '~/composables/ui/useBoardView.js';
+import { useFitPad } from '~/composables/ui/useFitPad.js';
+import { useGameSession } from '~/composables/game/useGameSession.js';
 
 const props = defineProps({
   interactive: { type: Boolean, default: true },
@@ -109,7 +111,9 @@ const {
   selectedFighterId,
   highlightedCellIds,
   highlightedFighterIds,
+  pickedFighterIds,
   framedFighterIds,
+  battleRoles,
   placementCells,
 } = useGameSession();
 
@@ -155,11 +159,19 @@ const {
   selectedFighterId,
   highlightedCellIds,
   highlightedFighterIds,
+  pickedFighterIds,
   framedFighterIds,
+  battleRoles,
   placementCells,
 });
 
-const { stageConfig, zoomIn, zoomOut, onDragMove } = useBoardView({ size, bounds });
+const { pad: fitPad, measure: measureFitPad } = useFitPad(wrapRef);
+
+const { stageConfig, zoomIn, zoomOut, onDragMove } = useBoardView({
+  size,
+  bounds,
+  fitPad,
+});
 
 const containerPoint = event => {
   const rect = wrapRef.value?.getBoundingClientRect?.();
@@ -200,11 +212,18 @@ const onStageClick = event => {
   emit('select-node', pick.cellId);
 };
 
+const allowedDropCells = computed(() => {
+  const cells = new Set((highlightedCellIds.value || []).map(String));
+  for (const cell of placementCells.value || []) {
+    if (cell?.occupied !== true) cells.add(String(cell.id));
+  }
+  return cells;
+});
+
 const dropTargetOf = event => {
   const id = cellAtEvent(event);
   if (id == null) return null;
-  const allowed = (highlightedCellIds.value || []).map(String);
-  return allowed.includes(String(id)) ? id : null;
+  return allowedDropCells.value.has(String(id)) ? id : null;
 };
 
 const onDragOver = event => {
@@ -223,21 +242,6 @@ const clearDropCell = () => {
   setDropCell(null);
 };
 
-/**
- * Пульс клетки под курсором — **тонкое кольцо, которое только расходится**: рождается у границы клетки,
- * уходит наружу и гаснет, а новое начинается снова.
- *
- * Почему не синус: он гонял радиус туда-обратно, и это читалось как одна широкая рамка, которая то
- * надувается, то сдувается. Здесь волна идёт пилой (`(time % period) / period`), поэтому движение
- * одностороннее — **от клетки наружу**.
- *
- * Почему затухание по корню: с линейным (`1 - wave`) кольцо почти всё время стоит бледным у края и
- * светлеет только у самой клетки — глаз читает это как «пульс идёт от края к середине». Корень держит
- * кольцо ярким в начале волны, у клетки, и плавно гасит к концу, когда оно уже далеко.
- *
- * `Konva.Tween` не годится: в бандле нет `Konva.Easings`, конструктор падает молча. Кадры идут от
- * `placementPulse`, радиус и прозрачность ставим прямо в атрибуты узла.
- */
 const PULSE = { near: 8, far: 24, width: 10, peak: 0.3, periodMs: 1500 };
 
 const hoveredPulseNode = () => {
@@ -286,6 +290,7 @@ const updateSize = () => {
     width: Math.max(el.clientWidth, 360),
     height: Math.max(el.clientHeight, 360),
   };
+  measureFitPad();
 };
 
 let resizeObserver;

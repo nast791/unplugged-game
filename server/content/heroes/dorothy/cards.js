@@ -15,15 +15,16 @@ export default [
     bonus: 4,
     quantity: 3,
     fighter: 'dorothy',
-    text: 'ПОСЛЕ БИТВЫ: Поменяйте местами бойца оппонента, участвовавшего в битве, и Тото. Получите 1 дополнительное действие. Если Тото или участвовавшего в битве бойца оппонента уже нет на поле, то получите 2 дополнительных действия вместо 1.',
+    text: 'ПОСЛЕ БИТВЫ: Поменяйте местами бойца оппонента, участвовавшего в битве, и Тото. Получите 1 дополнительное действие. Если обмен не состоялся (Тото или участвовавшего в битве бойца оппонента нет на поле или они заморожены), получите 2 дополнительных действия вместо 1.',
     rules: [
       {
         moment: 'afterCombat',
         when: [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
-          // боец противника мог погибнуть в бою, а Тото — не стоять на поле: тогда меняться не с кем
-          { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1, var: 'foes' },
-          { fact: 'FIGHTERS', params: { group: 'toto' }, min: 1, var: 'toto' },
+          // боец противника мог погибнуть в бою, а Тото — не стоять на поле: тогда меняться не с кем;
+          // замороженному движок закрывает и обмен, и телепорт, поэтому таких бойцов сюда не пускаем
+          { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: false }, min: 1, var: 'foes' },
+          { fact: 'FIGHTERS', params: { group: 'toto', frozen: false }, min: 1, var: 'toto' },
         ],
         then: [{ action: 'SWAP_FIGHTERS', a: 'toto', b: '$foe' }],
       },
@@ -32,19 +33,25 @@ export default [
         moment: 'afterCombat',
         when: [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
-          { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1 },
-          { fact: 'FIGHTERS', params: { group: 'toto' }, min: 1 },
+          { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: false }, min: 1 },
+          { fact: 'FIGHTERS', params: { group: 'toto', frozen: false }, min: 1 },
         ],
         then: [{ action: 'SET_ACTIONS', delta: 1 }],
       },
       {
-        // обмен не сложился (нет Тото или бойца противника) — два действия вместо одного
+        // обмен не сложился (нет Тото или бойца противника, либо кто-то из них заморожен) —
+        // два действия вместо одного
         moment: 'afterCombat',
         any: [
           [{ fact: 'FIGHTERS', params: { group: 'toto' }, max: 0 }],
+          [{ fact: 'FIGHTERS', params: { group: 'toto', frozen: true }, min: 1 }],
           [
             { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
             { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, max: 0 },
+          ],
+          [
+            { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
+            { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: true }, min: 1 },
           ],
         ],
         then: [{ action: 'SET_ACTIONS', delta: 2 }],
@@ -229,7 +236,7 @@ export default [
     bonus: 2,
     quantity: 3,
     fighter: 'dorothy',
-    text: 'ПОСЛЕ БОЯ: Нанесите 2 урона бойцу противника, участвовавшему в бою. Если этот боец — помощник, нанесите также 1 урон герою этого противника.',
+    text: 'ПОСЛЕ БИТВЫ: Нанесите 2 урона бойцу противника, участвовавшему в битве. Если этот боец — помощник, нанесите также 1 урон герою этого противника.',
     rules: [
       {
         moment: 'afterCombat',

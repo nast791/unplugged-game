@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:bot": "node bot/tools/run.js",
+    "test:hotseat": "node bot/tools/hotseat.js",
     "test:matrix": "node bot/tools/matrix.js",
     "convert-to-webp": "node scripts/convert-to-webp.mjs",
     "contain:fix": "node scripts/apply-contain.mjs"

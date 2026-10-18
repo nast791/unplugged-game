@@ -413,6 +413,22 @@ describe('карты Анубиса: позиция и контроль', () => 
     expect(ids(hand(player(after, '0')))).toEqual([]);
   });
 
+  it('«Канопа»: пустая колода не раскрывается и не падает', () => {
+    const state = buildState({
+      cardInHand: 'anubis_08',
+      anubisCell: 2,
+      amatCell: 2,
+      foeCell: 1,
+      anubisHandExtra: [],
+    });
+    player(state, '0').deck = zone([]);
+
+    const after = passDefense(attackWith(state, 'anubis_08_1'));
+
+    expect(after.reveal ?? null).toBeNull();
+    expect(after.movement ?? null).toBeNull();
+  });
+
   it('«Канопа»: раскрытая колода двигает Анубиса и уходит под низ', () => {
     const state = buildState({
       cardInHand: 'anubis_08',
@@ -486,6 +502,16 @@ describe('карты Анубиса: эффекты', () => {
     expect(ids(hand(player(after, '0')))).toEqual(['deck_b', 'deck_a']);
   });
 
+  it('«Плач по Амат»: пока Амат жива, эффектом карта не предлагается — только топливом', () => {
+    const state = buildState({ cardInHand: 'anubis_10', withAmat: true });
+    const ui = runUi(state, '0');
+
+    // состояние не сошлось: действие карта не открывает, но сбросить её ради усиления можно
+    expect(ui.playableCardIds).toEqual([]);
+    expect(ui.disabledCardIds).toEqual(['anubis_10_1']);
+    expect(card('anubis_10').bonus).toBe(1);
+  });
+
   it('«Погребальная пелена»: кладёт предмет в состояние «цела»', () => {
     const state = buildState({ cardInHand: 'anubis_11', shroudState: 'inactive' });
 
@@ -494,21 +520,114 @@ describe('карты Анубиса: эффекты', () => {
     expect(player(after, '0').items[0].state).toBe('active');
   });
 
-  it('«Путь на закат»: Анубис проходит до 2 клеток', () => {
-    const state = buildState({ cardInHand: 'anubis_12', anubisCell: 1, foeCell: 4, amatCell: 3 });
+  /** Линия 1—2—3—4: песок на 1, 2 и 4, лёд на 3 — свободного песка на карте два. */
+  const sandMap = {
+    id: 'sand',
+    nodes: [
+      { id: 1, neighbors: [2], terrain: 'desert' },
+      { id: 2, neighbors: [1, 3], terrain: 'desert' },
+      { id: 3, neighbors: [2, 4], terrain: 'ice' },
+      { id: 4, neighbors: [3], terrain: 'desert' },
+    ],
+  };
+
+  const pickCell = (state, cellId, playerId = '0') =>
+    runAction(state, { type: 'PICK', kind: 'cell', id: cellId, playerId });
+
+  it('«Путь на закат»: описана правилами, перенос — без прохода', () => {
+    expect(card('anubis_12').rules.map(rule => rule.moment)).toEqual(['effect', 'picked']);
+    for (const rule of card('anubis_12').rules) expect(isMoment(rule.moment)).toBe(true);
+    expect(card('anubis_12')).toMatchObject({
+      type: 'effect',
+      value: null,
+      bonus: 1,
+      quantity: 2,
+      fighter: 'anubis',
+    });
+    expect(card('anubis_12').rules[0].when[1]).toMatchObject({
+      fact: 'CELLS',
+      params: { terrain: 'desert', free: true },
+      var: 'cells',
+    });
+    // постановку без прохода помечает `teleport`: иначе перенос считался бы движением
+    expect(card('anubis_12').rules[1].then[0]).toMatchObject({
+      action: 'SET_FIGHTER_CELL',
+      fighterId: 'anubis',
+      teleport: true,
+    });
+  });
+
+  it('«Путь на закат»: окно со свободными клетками пустыни', () => {
+    const state = buildState({ map: sandMap, cardInHand: 'anubis_12', anubisCell: 2, foeCell: 3 });
 
     const after = playEffect(state, 'anubis_12');
 
-    expect(after.movement).toMatchObject({ playerId: '0', budget: 2, fighters: ['anubis'] });
+    expect(after.targeting).toMatchObject({ playerId: '0', kind: 'cells', required: true });
+    // Анубис стоит на песке 2, Бета — на льду 3: свободны 1 и 4
+    expect(after.targeting.candidates.map(entry => entry.cellId).sort()).toEqual(['1', '4']);
+    expect(runUi(after, '0').highlightedCellIds.sort()).toEqual(['1', '4']);
+    // окно требует выбора: без клика перенос не случается
+    expect(String(fighterOf(after, '0', 'anubis').currentPosition)).toBe('2');
+  });
 
-    const moved = runAction(after, {
-      type: 'PICK',
-      kind: 'cell',
-      id: '2',
-      fighterId: 'anubis',
-      playerId: '0',
+  it('«Путь на закат»: перенос на выбранный песок не считается движением', () => {
+    const state = buildState({ map: sandMap, cardInHand: 'anubis_12', anubisCell: 2, foeCell: 3 });
+
+    const moved = pickCell(playEffect(state, 'anubis_12'), '4');
+    const anubis = fighterOf(moved, '0', 'anubis');
+
+    expect(String(anubis.currentPosition)).toBe('4');
+    // перенос — не шаг: покой хода цел, «Суд молчит» и «Погребальный звон» ещё работают
+    expect(anubis.movedThisTurn).toBeFalsy();
+    expect(moved.movement ?? null).toBeNull();
+    expect(moved.targeting ?? null).toBeNull();
+  });
+
+  it('«Путь на закат»: единственный свободный песок движок отмечает сам', () => {
+    // Амат не выставлена: на линии 1—2—3—4 свободен ровно один песок — 2
+    const state = buildState({
+      cardInHand: 'anubis_12',
+      anubisCell: 1,
+      foeCell: 4,
+      withAmat: false,
     });
-    expect(String(fighterOf(moved, '0', 'anubis').currentPosition)).toBe('2');
+
+    const after = playEffect(state, 'anubis_12');
+
+    expect(after.targeting ?? null).toBeNull();
+    expect(String(fighterOf(after, '0', 'anubis').currentPosition)).toBe('2');
+  });
+
+  it('«Путь на закат»: на не-песок так не попасть', () => {
+    const state = buildState({ map: sandMap, cardInHand: 'anubis_12', anubisCell: 2, foeCell: 3 });
+    const played = playEffect(state, 'anubis_12');
+
+    expect(() => pickCell(played, '3')).toThrow(/не среди кандидатов/);
+  });
+
+  it('«Путь на закат»: без свободного песка эффектом не предлагается — только топливом', () => {
+    // на ледяной карте пустыни нет вовсе
+    const state = buildState({ map: iceMap, cardInHand: 'anubis_12' });
+    const ui = runUi(state, '0');
+
+    expect(ui.playableCardIds).toEqual([]);
+    expect(ui.disabledCardIds).toEqual(['anubis_12_1']);
+    expect(card('anubis_12').bonus).toBe(1);
+  });
+
+  it('«Путь на закат»: замороженному перенос закрыт — карта не предлагается', () => {
+    const state = buildState({
+      cardInHand: 'anubis_12',
+      anubisCell: 1,
+      foeCell: 4,
+      withAmat: false,
+    });
+    fighterOf(state, '0', 'anubis').frozen = true;
+
+    const ui = runUi(state, '0');
+
+    expect(ui.playableCardIds).toEqual([]);
+    expect(ui.disabledCardIds).toEqual(['anubis_12_1']);
   });
 });
 

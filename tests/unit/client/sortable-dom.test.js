@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { useSortable } from '../../../app/composables/useSortable.js';
+import { useSortable } from '../../../app/composables/ui/useSortable.js';
 
 /**
  * Перестановка указателем на живом DOM: `pointerdown` на ручке → `pointermove` по чужой строке →

@@ -5,6 +5,9 @@ export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 5;
 export const WHEEL_STEP = 1.08;
 export const PAN_MARGIN = 96;
+/** Отступ карты от края поля в единицах сетки: столько же у панелей (`p-12`) и у самого поля */
+export const FIT_PAD_UNITS = 12;
+export const FIT_PAD = 24;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -24,6 +27,7 @@ const boxOf = bounds => {
 export const useBoardView = ({
   size,
   bounds,
+  fitPad = null,
   fitMax = FIT_MAX,
   minZoom = ZOOM_MIN,
   maxZoom = ZOOM_MAX,
@@ -40,18 +44,34 @@ export const useBoardView = ({
 
   const box = computed(() => boxOf(bounds?.value));
 
-  const fitScale = computed(() => {
+  const pad = computed(() => {
+    const raw = Number(fitPad?.value ?? fitPad);
+    return Number.isFinite(raw) && raw >= 0 ? raw : FIT_PAD;
+  });
+
+  const fitBox = computed(() => {
     const { width, height } = viewport.value;
-    return Math.min(width / box.value.width, height / box.value.height, fitMax);
+    const edge = pad.value;
+    return {
+      width: Math.max(width - edge * 2, 1),
+      height: Math.max(height - edge * 2, 1),
+      x: edge,
+      y: edge,
+    };
+  });
+
+  const fitScale = computed(() => {
+    const area = fitBox.value;
+    return Math.min(area.width / box.value.width, area.height / box.value.height, fitMax);
   });
 
   const fitView = computed(() => {
     const scale = fitScale.value;
-    const { width, height } = viewport.value;
+    const area = fitBox.value;
     return {
       scale,
-      x: (width - box.value.width * scale) / 2 - box.value.minX * scale,
-      y: (height - box.value.height * scale) / 2 - box.value.minY * scale,
+      x: area.x + (area.width - box.value.width * scale) / 2 - box.value.minX * scale,
+      y: area.y + (area.height - box.value.height * scale) / 2 - box.value.minY * scale,
     };
   });
 
@@ -134,7 +154,7 @@ export const useBoardView = ({
     touched.value = false;
   };
 
-  watch([viewport, box], () => {
+  watch([fitBox, box], () => {
     if (!view.value) return;
     view.value = limit(view.value);
   });
@@ -145,6 +165,7 @@ export const useBoardView = ({
     isFitted,
     stageConfig,
     fitScale,
+    fitBox,
     zoomAt,
     zoomIn,
     zoomOut,

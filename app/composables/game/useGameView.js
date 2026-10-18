@@ -1,6 +1,6 @@
 import { useState } from 'nuxt/app';
 import { runAction, runLifecycle } from '#shared/publicApi.js';
-import { clearClock, markClock } from '~/composables/useClock.js';
+import { clearClock, markClock } from '~/composables/ui/useClock.js';
 
 const zoneCards = zone => (Array.isArray(zone?.cards) ? zone.cards.map(card => ({ ...card })) : []);
 
@@ -17,10 +17,15 @@ export const adaptPartyView = raw => {
     currentPlayer: turnObj?.playerId ?? raw.currentPlayer ?? null,
     turn: turnObj?.index ?? (typeof raw.turn === 'number' ? raw.turn : 0),
     actionsLeft: turnObj?.actionsLeft ?? raw.actionsLeft ?? 0,
+    // счётчик карточки — числа движка: «осталось/всего» хода плюс выданный в этом ходу запас
+    actionsTotal: Number(turnObj?.actionsTotal ?? raw.actionsTotal) || 0,
+    actionsBonus: Number(turnObj?.bonus?.actions) || 0,
     winner: raw.winner ?? null,
+
     players: (raw.players ?? []).map(({ deck, discard, hand, ...p }) => ({
       ...p,
       hand: zoneCards(hand),
+      handCount: zoneCount(hand),
       discard: zoneCards(discard),
       deckCount: zoneCount(deck),
       discardCount: zoneCount(discard),
@@ -87,6 +92,11 @@ export const useGameView = () => {
     persistHost(hostState.value);
   };
 
+  const seedView = raw => {
+    view.value = adaptPartyView(raw);
+    return view.value;
+  };
+
   const bootstrap = async (id, asPlayerId) => {
     const gid = String(id);
     const pid = String(asPlayerId);
@@ -104,11 +114,20 @@ export const useGameView = () => {
     hostState.value = runLifecycle(hostState.value);
     persistHost(hostState.value);
 
+    if (view.value?.id === gid) return view.value;
+
     const raw = await $fetch('/api/party/view', {
       query: { gameId: gid, playerId: pid },
     });
     view.value = adaptPartyView(raw);
     return view.value;
+  };
+
+  const discard = () => {
+    persistHost(null);
+    clearClock('party:placement');
+    clearClock('party:play');
+    clear();
   };
 
   let requestChain = Promise.resolve();
@@ -178,9 +197,11 @@ export const useGameView = () => {
     steps,
     selectedFighterId,
     seed,
+    seedView,
     bootstrap,
     sendAction,
     refresh,
+    discard,
     clear,
   };
 };

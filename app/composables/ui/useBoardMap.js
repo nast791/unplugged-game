@@ -28,7 +28,7 @@ import {
   sectorDividers,
   sectorWedges,
   tileClipFunc,
-} from '~/composables/useBoardGeometry.js';
+} from '~/composables/ui/useBoardGeometry.js';
 
 const terrainsOf = node => {
   const raw = node?.terrain;
@@ -58,6 +58,17 @@ export const useBoardMap = source => {
   const framedFighters = computed(
     () => new Set((read(source.framedFighterIds) || []).map(id => String(id))),
   );
+  const pickedFighters = computed(
+    () => new Set((read(source.pickedFighterIds) || []).map(id => String(id))),
+  );
+
+  const battleMarks = computed(() => {
+    const roles = read(source.battleRoles) ?? {};
+    return {
+      attacker: roles.attackerFighterId == null ? null : String(roles.attackerFighterId),
+      defender: roles.defenderFighterId == null ? null : String(roles.defenderFighterId),
+    };
+  });
 
   const placementCells = computed(() => {
     const cells = new Map();
@@ -77,15 +88,6 @@ export const useBoardMap = source => {
   const isDropCell = node =>
     dropCellId.value != null && String(dropCellId.value) === String(node.id);
 
-  /**
-   * Пульсация свечения клетки под курсором (0…1). Считается **кадром браузера**
-   * (`requestAnimationFrame`): во время перетаскивания браузер душит `setInterval`, и пульс замирал.
-   * Кадры живут только пока тащат аватара — без `dropCellId` пересчёта нет вовсе.
-   *
-   * Наружу отдаётся ещё и `pulseTarget`: пересборка `:config` у кружка до Konva не доходит (узел
-   * остаётся с прежним `shadowBlur`), поэтому доска крутит атрибуты узла напрямую
-   * (`Board.vue: applyGlowPulse`).
-   */
   const placementPulse = ref(0);
   let pulseFrame = null;
 
@@ -112,7 +114,6 @@ export const useBoardMap = source => {
 
   if (getCurrentInstance()) onBoardUnmount(stopPulse);
 
-  /** Пульс задаётся снаружи — тестом: в бою его двигает интервал выше. */
   const setPulse = value => {
     placementPulse.value = Math.max(0, Math.min(1, Number(value) || 0));
   };
@@ -135,7 +136,6 @@ export const useBoardMap = source => {
 
   const nodeStroke = node => {
     if (inPlacement.value) {
-      // в расстановке граница клеток одна — родная: состояние ведёт свечение, а не вторая рамка
       return { color: STROKE.edgeColor, width: STROKE.cell };
     }
     if (isHighlighted(node)) {
@@ -168,24 +168,13 @@ export const useBoardMap = source => {
     };
   };
 
-  /**
-   * Уровень свечения клетки расстановки: 1 — вся область, 2 — активный боец, 3 — клетка под курсором,
-   * 0 — занята своим бойцом (не светится вовсе).
-   */
   const placementGlowLevel = node => {
     if (placementCells.value.get(String(node.id)) === true) return 0;
     return isDropCell(node) ? 3 : isHighlighted(node) ? 2 : 1;
   };
 
-  /** Пульс есть только у клетки под курсором: остальные светятся ровно. */
   const glowPulseOf = level => (level === 3 ? placementPulse.value : 0);
 
-  /**
-   * Свечение **наружу** клетки — тонкий голубой ободок сразу за границей (обводка 2, отступ 1) с мягкой
-   * полупрозрачной тенью. Прозрачность держим низкой (решение владельца): подсветка должна читаться
-   * как свет, а не как рамка. Пульс сюда не входит — под курсором клетка получает расходящееся кольцо
-   * (`placementPulseConfig`).
-   */
   const placementGlowConfig = node => {
     const level = placementGlowLevel(node);
     const spread = radius.value + PLACEMENT.stroke + 1;
@@ -202,7 +191,6 @@ export const useBoardMap = source => {
     };
   };
 
-  /** Кольцо пульса у клетки под курсором: до анимации стоит у самой границы и не видно. */
   const placementPulseConfig = node => ({
     radius: radius.value + PLACEMENT.stroke + 2,
     stroke: PLACEMENT.free,
@@ -295,12 +283,6 @@ export const useBoardMap = source => {
     const viewer = String(read(source.viewerId) ?? '');
     const list = [];
     for (const player of read(source.players) || []) {
-      /**
-       * Пока идёт расстановка, на поле видны только свои бойцы: стороны расставляются одновременно, и
-       * чужую расстановку до её конца не показываем никому (решение владельца) — включая слот, который
-       * уже подтвердился. Карточка героя при этом обновляется сразу (`placementReady` открыт проекцией).
-       * Позиции чужих бойцов проекция на это время и не отдаёт, так что подсмотреть нельзя в любом случае.
-       */
       const inPlacement = String(read(source.phase) ?? '') === 'gameStart';
       const own = String(player.id) === viewer;
       if (inPlacement && !own) continue;
@@ -338,16 +320,24 @@ export const useBoardMap = source => {
 
   const fighterHaloConfig = token => {
     const id = String(token.fighter.id);
-    const framed = framedFighters.value.has(id);
-    const highlighted = highlightedFighters.value.has(id);
-    const selected = String(read(source.selectedFighterId)) === id;
+    const attacker = battleMarks.value.attacker === id;
+    const defender = battleMarks.value.defender === id;
 
+    const framed = attacker || framedFighters.value.has(id);
+    const highlighted = !attacker && !defender && highlightedFighters.value.has(id);
+    const marked = Boolean(attacker || defender);
+    const selected = String(read(source.selectedFighterId)) === id;
+    const picked = pickedFighters.value.has(id);
+    const alive = framed || highlighted || marked || picked;
+
+    // отмеченная цель — та же рамка активности, что у выбранного бойца: без заливки, но толще подсветки
     return {
-      radius: radius.value * (framed || highlighted ? 0.92 : 0.82),
-      fill: selected && !framed && !highlighted ? token.color : 'transparent',
-      opacity: framed || highlighted ? 1 : 0.35,
-      stroke: framed ? '#dc2626' : highlighted ? '#0ea5e9' : 'transparent',
-      strokeWidth: framed || highlighted ? 5 : 0,
+      radius: radius.value * (alive ? 0.92 : 0.82),
+      fill:
+        selected && !framed && !highlighted && !marked && !picked ? token.color : 'transparent',
+      opacity: alive ? 1 : 0.35,
+      stroke: framed ? '#dc2626' : highlighted || defender || picked ? '#0ea5e9' : 'transparent',
+      strokeWidth: picked ? 7 : framed || highlighted || marked ? 5 : 0,
       listening: false,
     };
   };

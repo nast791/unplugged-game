@@ -1,5 +1,8 @@
 <template>
-  <header class="relative z-10 flex items-center justify-between gap-24 px-24 py-12">
+  <header
+    class="relative z-10 flex items-center justify-between gap-24 py-12"
+    :class="props.compact ? 'pr-12 pl-24' : 'px-24'"
+  >
     <div class="flex items-center gap-64">
       <NuxtLink to="/" class="inline-flex" aria-label="UnPlugged — на главную">
         <BrandLogo class="h-32 w-auto" />
@@ -15,13 +18,9 @@
           aria-hidden="true"
         />
         <span v-if="props.stage" class="text-16 text-dim lining-nums">{{ props.stage }}</span>
-        <span
-          v-if="props.elapsed"
-          class="text-16 text-dim lining-nums"
-          title="Время с начала партии"
-        >
-          {{ props.elapsed }}
-        </span>
+        <ATooltip v-if="props.elapsed" :text="TOOLTIPS.header.elapsed()">
+          <span class="text-16 text-dim lining-nums">{{ props.elapsed }}</span>
+        </ATooltip>
       </div>
     </div>
 
@@ -43,7 +42,9 @@
 
 <script setup>
 import AButton from '~/components/atoms/AButton.vue';
+import ATooltip from '~/components/atoms/ATooltip.vue';
 import ProfileBar from '~/components/organisms/layout/ProfileBar.vue';
+import { TOOLTIPS } from '~/constants/tooltips.js';
 import { openGameMenu } from '~/composables/ui/useGameMenu.js';
 import BrandLogo from '~/svg/brand/logo.svg';
 
@@ -52,6 +53,7 @@ const props = defineProps({
   stage: { type: String, default: '' },
   elapsed: { type: String, default: '' },
   menu: { type: Boolean, default: false },
+  compact: { type: Boolean, default: false },
 });
 
 const hasPartyInfo = computed(() => Boolean(props.mode || props.stage || props.elapsed));

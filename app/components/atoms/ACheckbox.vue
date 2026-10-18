@@ -20,7 +20,6 @@
 import { CheckboxIndicator, CheckboxRoot } from 'reka-ui';
 import { useUI } from '~/composables/ui/useUI';
 
-/** Чекбокс: одно значение (boolean). Группа — `ACheckboxGroup`. */
 const props = defineProps({
   label: { type: String, default: '' },
   name: { type: String, default: '' },

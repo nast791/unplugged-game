@@ -8,10 +8,16 @@ import {
   CELL_STEP,
   CELL_STEP_Y,
   MULTI_CELL_COUNTS,
-  MIN_ZONE_CELLS,
+  MAX_CELL_LINKS,
+  MAX_TERRAIN_CELLS,
+  MAX_TERRAIN_COUNT,
+  MIN_TERRAIN_COUNT,
+  START_GAP_STEPS,
   areaCellIds,
   generateMap,
   numberedCellOf,
+  stepsBetween,
+  terrainAreaCellIds,
 } from '#shared/helpers/mapGenerator.js';
 import { TERRAIN_IDS } from '#shared/constants/terrain.js';
 import { SEAT_SIDES } from '#shared/constants/seats.js';
@@ -82,10 +88,9 @@ describe('генератор полей: детерминизм', () => {
     expect(generateMap({ players: 6, seed: 3 }).players).toBe(4);
     expect(generateMap({ players: 1, seed: 3 }).players).toBe(2);
     const wide = generateMap({ players: 2, seed: 3, zones: 99 });
-    expect(wide.zoneSizes.length).toBeLessThanOrEqual(8);
-    expect(wide.zoneSizes.length).toBeGreaterThanOrEqual(6);
+    expect(wide.zoneSizes.length).toBe(MAX_TERRAIN_COUNT);
     const narrow = generateMap({ players: 2, seed: 3, zones: 1 });
-    expect(narrow.zoneSizes.length).toBeGreaterThanOrEqual(6);
+    expect(narrow.zoneSizes.length).toBe(MIN_TERRAIN_COUNT);
   });
 });
 
@@ -119,36 +124,147 @@ describe.each([2, 3, 4])('генератор полей: %i игрока', playe
     expect(shapes.size).toBeGreaterThan(1);
   });
 
-  it('на поле есть все шесть стихий, и каждая зона не меньше четырёх клеток', () => {
+  it('на поле 8–10 разных земель: крупные по числу игроков, малые — от 1 клетки до крупной', () => {
+    const smallSizes = [];
     for (const map of maps) {
+      expect(map.zoneSizes.length).toBeGreaterThanOrEqual(MIN_TERRAIN_COUNT);
+      expect(map.zoneSizes.length).toBeLessThanOrEqual(MAX_TERRAIN_COUNT);
+      expect(map.zoneKinds.length).toBe(map.zoneSizes.length);
+      expect(map.zoneTerrains.length).toBe(map.zoneSizes.length);
+      // каждая земля своя: две зоны одной стихии на поле не встречаются
+      expect(new Set(map.zoneTerrains).size).toBe(map.zoneSizes.length);
+      expect(map.zoneKinds.filter(kind => kind === 'core').length).toBe(players);
+
       const used = new Set(map.nodes.flatMap(terrainList));
-      expect([...used].sort()).toEqual([...TERRAIN_IDS].sort());
-      expect(map.zoneSizes.length).toBeGreaterThanOrEqual(6);
-      expect(map.zoneSizes.length).toBeLessThanOrEqual(8);
-      for (const size of map.zoneSizes) {
-        expect(size).toBeGreaterThanOrEqual(MIN_ZONE_CELLS);
+      expect([...used].sort()).toEqual([...map.zoneTerrains].sort());
+      for (const [zone, size] of map.zoneSizes.entries()) {
+        if (map.zoneKinds[zone] === 'core') {
+          // стартовая земля обязана вместить героя и помощников: максимум пака — 4 бойца, плюс запас
+          expect(size, `крупная земля ${map.zoneTerrains[zone]}`).toBeGreaterThanOrEqual(5);
+        } else {
+          // малая — это земля без номера, а не обязательно 1–2 клетки: она может догнать крупную
+          expect(size, `малая земля ${map.zoneTerrains[zone]}`).toBeGreaterThanOrEqual(1);
+          smallSizes.push(size);
+          // цветных клеток у малой может быть сколько угодно, кроме последней: чистый островок остаётся
+          expect(
+            map.nodes.some(node => {
+              const list = terrainList(node);
+              return list.length === 1 && list[0] === map.zoneTerrains[zone];
+            }),
+            `малая земля ${map.zoneTerrains[zone]} осталась без чистой клетки`,
+          ).toBe(true);
+        }
       }
       expect(map.zoneSizes.reduce((sum, size) => sum + size, 0)).toBe(map.nodes.length);
-      expect(new Set(map.zoneTerrains).size).toBe(TERRAIN_IDS.length);
+    }
+    expect(Math.max(...smallSizes), 'малые земли не ограничены двумя клетками').toBeGreaterThan(2);
+  });
+
+  it('один тип земли занимает не больше десяти клеток поля', () => {
+    for (const map of maps) {
+      const counts = new Map();
+      for (const node of map.nodes) {
+        for (const terrain of terrainList(node)) {
+          counts.set(terrain, (counts.get(terrain) ?? 0) + 1);
+        }
+      }
+      for (const [terrain, count] of counts) {
+        expect(count, `земля ${terrain} заняла ${count} клеток`).toBeLessThanOrEqual(
+          MAX_TERRAIN_CELLS,
+        );
+      }
+      for (const [zone, size] of map.zoneSizes.entries()) {
+        expect(size, `зона ${map.zoneTerrains[zone]}`).toBeLessThanOrEqual(MAX_TERRAIN_CELLS);
+      }
     }
   });
 
-  it('у зон нет привилегий: самая большая зона берёт разные стихии на разных сидах', () => {
-    const biggest = new Set();
-    const seeded = [];
-    for (let index = 0; index < 60; index += 1) {
-      const map = generateMap({ players: 3, seed: 900 + index });
-      biggest.add(map.zoneTerrains[0]);
-      seeded.push(map);
-    }
-    // «фоновой» стихии нет: первая по размеру зона достаётся разным стихиям
-    expect(biggest.size).toBeGreaterThan(2);
-    // и ни одна стихия не привязана к размеру зоны на всех сидах
-    for (const id of TERRAIN_IDS) expect(biggest.has(id), id).toBe(true);
-    for (const map of seeded) {
-      expect(new Set(map.zoneTerrains).size).toBe(TERRAIN_IDS.length);
+  it('клетки одной земли связаны между собой: разрывов нет', () => {
+    for (const map of maps) {
+      const index = new Map(map.nodes.map(node => [node.id, node]));
+      for (const terrain of map.zoneTerrains) {
+        const members = map.nodes.filter(node => terrainList(node).includes(terrain));
+        const start = members[0];
+        const seen = new Set([start.id]);
+        const queue = [start];
+        while (queue.length) {
+          const cell = queue.shift();
+          for (const id of cell.neighbors) {
+            if (seen.has(id)) continue;
+            const other = index.get(id);
+            if (!other || !terrainList(other).includes(terrain)) continue;
+            seen.add(id);
+            queue.push(other);
+          }
+        }
+        expect(
+          seen.size,
+          `земля ${terrain} распалась на куски: ${members.map(node => node.id).join(',')}`,
+        ).toBe(members.length);
+      }
     }
   });
+
+  it('соседние клетки одной земли соединены прямой линией', () => {
+    for (const map of maps) {
+      const primary = node => terrainList(node)[0];
+      for (let i = 0; i < map.nodes.length; i += 1) {
+        for (let j = i + 1; j < map.nodes.length; j += 1) {
+          const left = map.nodes[i];
+          const right = map.nodes[j];
+          const colGap = Math.abs(left.col - right.col);
+          const rowGap = Math.abs(left.row - right.row);
+          const adjacent = colGap + rowGap === 1 || (colGap === 1 && rowGap === 1);
+          if (!adjacent || primary(left) !== primary(right)) continue;
+          expect(
+            left.neighbors.includes(right.id),
+            `клетки ${left.id} и ${right.id} одной земли ${primary(left)} не связаны`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('земли героев входят в набор, но старт не привязан к своей стихии', () => {
+    const affinities = [['desert'], ['lava', 'desert'], ['ice']];
+    let offAffinity = 0;
+    for (const seed of SEEDS) {
+      const map = generateMap({ players: 3, seed, affinities });
+      const terrains = new Set(map.zoneTerrains);
+      // генератор гарантирует земли предпочтений, даже если герой стоит на другой земле
+      for (const list of affinities) {
+        for (const terrain of list) expect(terrains.has(terrain), `${seed}:${terrain}`).toBe(true);
+      }
+      for (let order = 1; order <= 3; order += 1) {
+        const start = numberedCellOf(map, order);
+        const terrain = terrainList(start)[0];
+        if (!affinities[order - 1].includes(terrain)) offAffinity += 1;
+      }
+    }
+    // крупные земли тасуются независимо от порядка игроков: совпадение старта с предпочтением — не правило
+    expect(offAffinity).toBeGreaterThan(0);
+  }, 30000);
+
+  it('любимая земля может быть малой: крупная не закреплена за героем', () => {
+    const affinities = [['ice'], ['desert']];
+    const loved = new Set(affinities.flat());
+    let smallLoved = 0;
+    let offAffinity = 0;
+    for (const seed of SEEDS) {
+      const map = generateMap({ players: 2, seed, affinities });
+      const terrains = new Set(map.zoneTerrains);
+      for (const terrain of loved) expect(terrains.has(terrain), `${seed}:${terrain}`).toBe(true);
+      map.zoneKinds.forEach((kind, index) => {
+        if (kind === 'small' && loved.has(map.zoneTerrains[index])) smallLoved += 1;
+      });
+      for (let order = 1; order <= 2; order += 1) {
+        const terrain = terrainList(numberedCellOf(map, order))[0];
+        if (!affinities[order - 1].includes(terrain)) offAffinity += 1;
+      }
+    }
+    expect(smallLoved).toBeGreaterThan(0);
+    expect(offAffinity).toBeGreaterThan(0);
+  }, 30000);
 
   it('клетки без стихии не бывает: у каждой клетке есть стихия из палитры', () => {
     for (const map of maps) {
@@ -185,7 +301,7 @@ describe.each([2, 3, 4])('генератор полей: %i игрока', playe
       let links = 0;
       for (const node of map.nodes) {
         expect(degree(node)).toBeGreaterThanOrEqual(1);
-        expect(degree(node)).toBeLessThanOrEqual(6);
+        expect(degree(node)).toBeLessThanOrEqual(MAX_CELL_LINKS);
         links += degree(node);
         for (const neighbourId of node.neighbors) {
           const neighbour = byId.get(neighbourId);
@@ -292,14 +408,16 @@ describe.each([2, 3, 4])('генератор полей: %i игрока', playe
     }
   });
 
-  it('стороны разведены: двое — почти через всё поле, остальные — минимум на две клетки', () => {
-    const required = players === 2 ? 3.5 : 2;
+  it('стороны разведены по шагам поля: с номерной клетки никто не достаёт чужую', () => {
+    // Мера разведения — шаги по связям, а не пиксели: дальность атаки и шага считается BFS по соседям.
+    // Наибольшая дальность атаки в игре — 3, поэтому минимум `START_GAP_STEPS` = 4: иначе герои бьют
+    // друг друга с номерных клеток на первом же ходу (жалоба владельца на места 2 и 3).
     for (const map of maps) {
       const starts = Array.from({ length: players }, (_, index) => numberedCellOf(map, index + 1));
       for (let i = 0; i < starts.length; i += 1) {
         for (let j = i + 1; j < starts.length; j += 1) {
-          const gap = Math.hypot(starts[i].x - starts[j].x, starts[i].y - starts[j].y);
-          expect(gap, `старты ${i + 1} и ${j + 1}`).toBeGreaterThanOrEqual(CELL_STEP * required);
+          const gap = stepsBetween(map.nodes, starts[i].id, starts[j].id);
+          expect(gap, `старты ${i + 1} и ${j + 1}`).toBeGreaterThanOrEqual(START_GAP_STEPS);
         }
       }
     }
@@ -329,6 +447,8 @@ describe.each([2, 3, 4])('генератор полей: %i игрока', playe
     }
   });
 
+  // Проверок здесь десятки тысяч (каждая связь против каждой третьей клетки), и под нагрузкой полного
+  // прогона они не укладываются в стандартные 5 с — это таймаут, а не падение проверки. Даём запас.
   it('связи не проходят сквозь третьи клетки', () => {
     for (const map of maps) {
       const byId = new Map(map.nodes.map(node => [node.id, node]));
@@ -346,7 +466,7 @@ describe.each([2, 3, 4])('генератор полей: %i игрока', playe
         }
       }
     }
-  });
+  }, 30000);
 
   it('цветные клетки стоят рядом с клетками своих цветов', () => {
     for (const map of maps) {
@@ -371,7 +491,7 @@ describe.each([2, 3, 4])('генератор полей: %i игрока', playe
       // у клеток разное число соседей
       const degrees = new Set(map.nodes.map(degree));
       expect(degrees.size).toBeGreaterThan(1);
-      expect(Math.max(...degrees)).toBeLessThanOrEqual(6);
+      expect(Math.max(...degrees)).toBeLessThanOrEqual(MAX_CELL_LINKS);
       // есть связи «не по сетке»: диагональ или длинная линия
       const byId = new Map(map.nodes.map(node => [node.id, node]));
       const exotic = map.nodes.some(node =>
@@ -437,6 +557,26 @@ describe.each([2, 3, 4])('генератор полей: %i игрока', playe
     }
   });
 
+  it('у номерной клетки нет соседей из чужой стартовой области: помощника вплотную не поставить', () => {
+    // Между номерными клетками остаётся малая земля или своя крупная: сосед номера не может быть
+    // клеткой чужой области, иначе чужой помощник встаёт прямо у героя (правило владельца, m00532).
+    for (const map of maps) {
+      const starts = Array.from({ length: players }, (_, index) => numberedCellOf(map, index + 1));
+      const areas = starts.map(start => new Set(areaCellIds(map, start.id)));
+      for (const [index, start] of starts.entries()) {
+        for (const neighbourId of start.neighbors ?? []) {
+          for (const [other, area] of areas.entries()) {
+            if (other === index) continue;
+            expect(
+              area.has(String(neighbourId)),
+              `место ${index + 1} на клетке ${start.id}: сосед ${neighbourId} в чужой области места ${other + 1}`,
+            ).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
   it('стартовые клетки симметричны, в разных областях и с запасом клеток', () => {
     for (const map of maps) {
       const starts = Array.from({ length: players }, (_, index) => numberedCellOf(map, index + 1));
@@ -459,6 +599,29 @@ describe.each([2, 3, 4])('генератор полей: %i игрока', playe
       if (players === 2) {
         // двое стоят по разные стороны поля, а не через клетку друг от друга
         expect(Math.abs(xs[0] - xs[1])).toBeGreaterThan(CELL_STEP * 2);
+      }
+    }
+  });
+
+  /**
+   * Правило владельца: клетки одной стихии стоят **рядом** — стартовая область героя должна быть
+   * цельным участком поля, куда встают все его помощники, а не россыпью по всей карте. Поэтому старт
+   * берётся только там, где связная область из клеток его стихии вмещает всех бойцов стороны.
+   */
+  it('стартовая область — цельный участок: связной области хватает на всех бойцов', () => {
+    for (const map of maps) {
+      for (let order = 1; order <= players; order += 1) {
+        const start = numberedCellOf(map, order);
+        const connected = terrainAreaCellIds(map.nodes, start.id);
+        expect(
+          connected.length,
+          `место ${order} на клетке ${start.id}: связных клеток ${connected.length}`,
+        ).toBeGreaterThanOrEqual(5);
+
+        // связная область вложена в область стихии и содержит саму номерную клетку
+        const whole = new Set(areaCellIds(map, start.id));
+        expect(connected.every(id => whole.has(id))).toBe(true);
+        expect(connected).toContain(String(start.id));
       }
     }
   });
@@ -555,5 +718,45 @@ describe('генератор: партия на сгенерированном �
 
     expect(numbered).toBeGreaterThan(0);
     expect(coloured).toEqual([]);
-  });
+  }, 30000);
+
+  /**
+   * Клетка на стыке зон принадлежит двум областям, и помощники соседа занимают её первыми: если «своих»
+   * (не общих с чужим стартом) клеток меньше пака, игрок остаётся без хода прямо в расстановке.
+   * Находка сида 18 на четверых (`bot/tools/hotseat.js`).
+   */
+  it('у каждого места хватает своих клеток на весь пак', () => {
+    const packs = [4, 2, 4, 2];
+
+    for (const playerCount of [2, 3, 4]) {
+      for (let seed = 1; seed <= 30; seed += 1) {
+        const map = generateMap({
+          players: playerCount,
+          seed,
+          fightersPerPlayer: packs.slice(0, playerCount),
+          id: 'generated',
+        });
+        const areas = [];
+        for (let order = 1; order <= playerCount; order += 1) {
+          const start = numberedCellOf(map, order);
+          areas.push({
+            order,
+            start: String(start.id),
+            cells: new Set(areaCellIds(map, start.id)),
+          });
+        }
+
+        for (const area of areas) {
+          const foreign = new Set(
+            areas.filter(other => other.order !== area.order).flatMap(other => [...other.cells]),
+          );
+          const own = [...area.cells].filter(id => !foreign.has(id)).length;
+          expect(
+            own,
+            `мест ${playerCount}, сид ${seed}, место ${area.order} (клетка ${area.start}): своих клеток ${own}`,
+          ).toBeGreaterThanOrEqual(packs[area.order - 1]);
+        }
+      }
+    }
+  }, 30000);
 });

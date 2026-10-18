@@ -12,7 +12,16 @@
           :side-offset="props.sideOffset"
         >
           <slot name="content">{{ props.text }}</slot>
-          <TooltipArrow :class="styles.tooltip_arrow" :width="props.arrowSize" />
+
+          <TooltipArrow
+            :class="styles.tooltip_arrow"
+            :style="ARROW_STYLE"
+            :viewBox="ARROW_VIEW_BOX"
+            preserveAspectRatio="none"
+          >
+            <path :d="ARROW_PATH" />
+            <path :d="ARROW_EDGE" :class="styles.tooltip_arrow_edge" />
+          </TooltipArrow>
         </TooltipContent>
       </TooltipPortal>
     </TooltipRoot>
@@ -28,15 +37,14 @@ import {
   TooltipRoot,
   TooltipTrigger,
 } from 'reka-ui';
+import { ARROW_EDGE, ARROW_PATH, ARROW_STYLE, ARROW_VIEW_BOX } from '~/ui/tooltip-arrow.js';
 import { useUI } from '~/composables/ui/useUI';
 
-/** Тултип: содержимое в слоте по умолчанию — это триггер, подсказка — проп `text` или слот `content`. */
 const props = defineProps({
   text: { type: String, default: '' },
   side: { type: String, default: 'top' },
   sideOffset: { type: Number, default: 6 },
   delayDuration: { type: Number, default: 200 },
-  arrowSize: { type: Number, default: 10 },
   preset: { type: String, default: 'tooltip' },
   disabled: { type: Boolean, default: false },
   ui: { type: Object, default: () => ({}) },

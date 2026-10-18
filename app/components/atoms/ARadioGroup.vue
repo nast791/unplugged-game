@@ -26,7 +26,6 @@ import ARadio from '~/components/atoms/ARadio.vue';
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 
-/** Группа радиокнопок: `options` — `{ value, label, disabled? }`, либо свои `ARadio` в слоте. */
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps({

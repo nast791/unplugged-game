@@ -17,7 +17,11 @@ export const runSkillMoment = (partyState, playerId, moment) => {
   return runRules(partyState, skill.rules, moment, {
     playerId,
     source: skill.id,
-    // окно без выбора закрываем сами: отмечаем кандидатов и разыгрываем момент picked
+    // отметка «умение сработало»: по ней карточка героя показывает плашку «Умение»
+    skill: skill.id,
+    // окно без выбора закрываем сами: отмечаем кандидатов и разыгрываем момент picked.
+    // `auto` срабатывает, только когда набор безальтернативный (`pickAutoCandidates`): у окна-
+    // переключателя с несколькими кандидатами окно остаётся игроку, и применяет его общая кнопка
     autoPick: (state, ownerId) => {
       const picked = pickAutoCandidates(state, ownerId);
       if (!picked) return state;

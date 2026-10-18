@@ -1,14 +1,16 @@
 import { computed, nextTick, ref, watch } from 'vue';
-import { useGameView } from '~/composables/useGameView.js';
+import { ANIMATION_DURATIONS } from '~/constants/animation.js';
+import { useGameView } from '~/composables/game/useGameView.js';
+import { useSettings } from '~/composables/ui/useSettings.js';
 
 export const AI_TIME_MS = 400;
-export const AI_PAUSE_MS = 300;
+export const AI_PAUSE_MS = ANIMATION_DURATIONS.aiPause;
 export const AI_MAX_STEPS = 200;
 
 let botPromise = null;
 
 export const loadBot = () => {
-  botPromise ??= import('../../bot/play/ai.js');
+  botPromise ??= import('../../../bot/play/ai.js');
   return botPromise;
 };
 
@@ -17,25 +19,16 @@ export const nextAiMove = async (state, { timeMs = AI_TIME_MS, overrides } = {})
   return aiStep(state, { timeMs, overrides });
 };
 
-/** Ход конкретного слота: им расставляет компьютер, когда очередь на расстановке ещё за человеком. */
 export const nextMoveFor = async (state, playerId, { timeMs = AI_TIME_MS, overrides } = {}) => {
   const { think } = await loadBot();
   return { playerId: String(playerId), ...think(state, playerId, { timeMs, overrides }) };
 };
 
-/** Компьютер, которому ещё есть кого ставить (решает движок: у слота остались бойцы без клетки). */
 export const pendingAiPlacer = async state => {
   const { pendingPlacementAi } = await loadBot();
   return pendingPlacementAi(state);
 };
 
-/**
- * Цикл ходов компьютера. **Сначала расстановка:** она у сторон одновременная, поэтому слот берётся
- * напрямую (`pendingAiPlacer`), а не через очередь (`aiStep`): очередь на расстановке отдаёт первого
- * неподтверждённого — человека, и компьютер ждал бы его «ОК» (это и была висящая плашка «Расстановка»).
- * Как только своих расставили все слоты компьютера, цикл идёт обычным путём и сам останавливается,
- * когда решения за человеком.
- */
 export const runAiCycle = async (state, apply, options = {}) => {
   const {
     timeMs = AI_TIME_MS,
@@ -73,6 +66,7 @@ export const runAiCycle = async (state, apply, options = {}) => {
 
 export const useGameAi = () => {
   const { hostState, view, sendAction } = useGameView();
+  const { duration } = useSettings();
 
   const aiThinking = ref(false);
   const aiIterations = ref(0);
@@ -101,7 +95,7 @@ export const useGameAi = () => {
         },
         {
           timeMs: AI_TIME_MS,
-          pauseMs: AI_PAUSE_MS,
+          pauseMs: duration('aiPause'),
           onMove: move => {
             aiThinking.value = true;
             aiIterations.value = move.iterations ?? 0;

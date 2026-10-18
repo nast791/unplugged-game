@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { runAction } from '#shared/publicApi.js';
-import { runAiCycle } from '../../../app/composables/useGameAi.js';
+import { runAiCycle } from '../../../app/composables/game/useGameAi.js';
 import { aiStep, isAiSeat } from '../../../bot/play/ai.js';
 import { actionsFor, actorOf, createDuel, pickWeighted } from '../../../bot/play/duel.js';
 
 /**
- * Клиентская обвязка компьютера (`app/composables/useGameAi.js`): цикл, который играет за слоты `ai`, пока ход
+ * Клиентская обвязка компьютера (`app/composables/game/useGameAi.js`): цикл, который играет за слоты `ai`, пока ход
  * не вернётся человеку. Проверяем то, что клиент делает на самом деле: ходы применяются по одному тем же
  * `runAction`, останавливается цикл на ходе человека, а не на середине хода компьютера.
  *

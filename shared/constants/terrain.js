@@ -1,5 +1,5 @@
 /**
- * Шесть стихий поля. У клетки основная стихия (`node.terrain`) задаёт цвет заливки; у клеток
+ * Десять стихий поля. У клетки основная стихия (`node.terrain`) задаёт цвет заливки; у клеток
  * на стыке зон стихий две-три (тогда рисуем сектора). Палитра и правила показа — `docs/terrain.md`.
  *
  * Цвета яркие и контрастные: на доске стихии должны различаться с первого взгляда, как на референсах.
@@ -23,6 +23,10 @@ export const TERRAIN = {
   },
   desert: { id: 'desert', name: 'Пустыня', color: '#F0DFA8', pattern: 'dunes' },
   water: { id: 'water', name: 'Вода', color: '#2E9FB8', pattern: 'waves' },
+  crystal: { id: 'crystal', name: 'Кристаллы', color: '#B9A6E8', pattern: 'shards' },
+  swamp: { id: 'swamp', name: 'Болото', color: '#8FA83E', pattern: 'moss' },
+  fungus: { id: 'fungus', name: 'Грибница', color: '#C77BA6', pattern: 'spores' },
+  steppe: { id: 'steppe', name: 'Степь', color: '#D9B45C', pattern: 'grasses' },
 };
 
 export const TERRAIN_IDS = Object.keys(TERRAIN);

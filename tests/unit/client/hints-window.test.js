@@ -1,21 +1,26 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { computed, defineComponent, h } from 'vue';
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 /**
  * Окно подсказок рисуется **только со словами**: пустого окна (рамка и свечение без строки) не бывает —
  * нет текста, нет и компонента. Проверяется здесь, а не на экране партии: правило принадлежит самому окну,
  * и вызывающий экран не обязан его помнить.
  *
- * Второе правило — **окно можно перетащить в любое место экрана, вплоть до шапки**: до захвата оно стоит
- * в разметке, после — в координатах экрана, за край не уезжает, а место держится до конца партии
- * (компонент живёт вместе с экраном, а не с очередной подсказкой).
+ * Второе правило — **окно висит абсолютом над полем и уезжает за курсором**: оно не занимает места в
+ * разметке экрана (иначе подсказка двигала бы выбор действия под собой), стоит сверху по центру, а после
+ * захвата живёт в координатах экрана, за край не уезжает и держит место до конца партии.
  *
- * `HintsWindow.vue` — SFC приложения: `computed` приходит автоимпортом Nuxt, в тесте кладём его
- * в `globalThis` до импорта компонента (так же, как `player-card.test.js`).
+ * `HintsWindow.vue` — SFC приложения: `computed`, `ref`, `watch`, `onMounted`, `onBeforeUnmount`, `nextTick`
+ * приходят автоимпортами Nuxt, в тесте кладём их в `globalThis` до импорта компонента.
  */
 globalThis.computed = computed;
+globalThis.ref = ref;
+globalThis.watch = watch;
+globalThis.onMounted = onMounted;
+globalThis.onBeforeUnmount = onBeforeUnmount;
+globalThis.nextTick = nextTick;
 
 // Настоящий `useUI` читает конфиг приложения (`app.config.js`), которого в тесте нет, — отдаём пресет окна.
 vi.mock('~/composables/ui/useUI', async () => {
@@ -123,11 +128,11 @@ describe('HintsWindow: окно можно перетащить', () => {
     return { left, top };
   };
 
-  it('до перетаскивания окно стоит в разметке, без координат экрана', () => {
+  it('до перетаскивания окно висит абсолютом сверху по центру, без координат экрана', () => {
     const wrapper = mountWindow({ text: 'Ваш ход' });
     const section = wrapper.find('section');
 
-    expect(section.classes()).toContain('relative');
+    expect(section.classes()).toContain('absolute');
     expect(section.classes()).not.toContain('fixed');
     expect(section.attributes('style')).toBeUndefined();
   });

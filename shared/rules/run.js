@@ -118,7 +118,12 @@ let rulesDepth = 0;
  * накопительному состоянию, друг за другом. В каждое действие движок добавляет playerId (чей ход /
  * чья карта) и source (id способности или карты). В конце — проверка победы.
  */
-export const runRules = (partyState, rules, moment, { playerId, source, card, autoPick } = {}) => {
+export const runRules = (
+  partyState,
+  rules,
+  moment,
+  { playerId, source, card, autoPick, skill } = {},
+) => {
   if (!isMoment(moment)) {
     throw new Error(`rules: неизвестный момент "${moment}"`);
   }
@@ -139,6 +144,16 @@ export const runRules = (partyState, rules, moment, { playerId, source, card, au
 
   let state = partyState;
   rulesDepth += 1;
+
+  // Умение, чьи правила сработали: `lastSkill` — отметка «умение только что отработало». По ней карточка
+  // героя показывает плашку «Умение» даже там, где окна выбора не было (умение применилось само).
+  if (skill != null && matched.length > 0) {
+    partyState.lastSkill = {
+      playerId: playerId == null ? null : String(playerId),
+      skillId: String(skill),
+      moment,
+    };
+  }
 
   try {
     for (const { rule, vars } of matched) {
@@ -205,7 +220,11 @@ setDeathRunner((partyState, player, fighter, info = {}) => {
   try {
     // порядок: сначала умение героя, потом карта-источник
     let state = hasSkill
-      ? runRules(partyState, skillRules, 'lost', { playerId: player.id, source: player.skill.id })
+      ? runRules(partyState, skillRules, 'lost', {
+          playerId: player.id,
+          source: player.skill.id,
+          skill: player.skill.id,
+        })
       : partyState;
 
     if (runCard) {

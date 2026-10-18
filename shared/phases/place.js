@@ -10,8 +10,10 @@ import {
   numberedCellId,
   placePhaseHighlightedCellIds,
   placementAreaCells,
+  placementConflictFighterId,
   placementRejection,
   playerFightersPlaced,
+  returnConflictedFighters,
 } from '#shared/helpers/placement.js';
 
 /**
@@ -28,6 +30,43 @@ const confirmIfNothingToPlace = (partyState, playerId) => {
 
   player.placementReady = true;
   return partyState;
+};
+
+/** Боец, чью клетку занял другой игрок: его и вернём на полку перед подтверждением. */
+const conflictFighterId = (partyState, playerId) =>
+  placementConflictFighterId(partyState, playerId);
+
+const conflictFighterName = (partyState, playerId) => {
+  const fighterId = conflictFighterId(partyState, playerId);
+  if (fighterId == null) return '';
+  const player = findPlayer(partyState, playerId);
+  const fighter = (player?.fighters ?? []).find(entry => String(entry.id) === fighterId);
+  return fighter?.name || fighterId;
+};
+
+/**
+ * Клетку одну на всех: стороны расставляются одновременно, и пока игрок думал, сосед мог занять ту же
+ * клетку. «Кто первый поставил, того и тапки» — занятую клетку не отбираем, а проигравший возвращает
+ * бойца на полку и ставит его заново (правило владельца). Возвращает id вернувшихся бойцов.
+ */
+const reclaimTakenCells = (partyState, playerId) => returnConflictedFighters(partyState, playerId);
+
+/**
+ * Кто уже подтвердил расстановку, а его клетку всё-таки заняли (соперник успел позже): подтверждение
+ * снимаем, бойца возвращаем на полку — иначе партия не началась бы никогда: `gameStart.body` ждёт
+ * готовности всех, а `allPlayersPlacementReady` видит двух бойцов на одной клетке.
+ */
+const reopenTakenPlacements = partyState => {
+  const reopened = [];
+  for (const player of partyState.players ?? []) {
+    if (player.placementReady !== true) continue;
+    if (!placementConflictFighterId(partyState, player.id)) continue;
+    const returned = returnConflictedFighters(partyState, player.id);
+    if (!returned.length) continue;
+    player.placementReady = false;
+    reopened.push(String(player.id));
+  }
+  return reopened;
 };
 
 export default {
@@ -47,6 +86,14 @@ export default {
         return Boolean(player && !player.placementReady);
       },
       text: HINTS.place.placeFighters,
+    },
+    cellTaken: {
+      active: (partyState, playerId) => {
+        const player = findPlayer(partyState, playerId);
+        return Boolean(player && !player.placementReady && conflictFighterId(partyState, playerId));
+      },
+      text: (partyState, playerId) =>
+        HINTS.place.cellTaken({ name: conflictFighterName(partyState, playerId) }),
     },
     waitingForAllPlayers: {
       active: (partyState, playerId) => {
@@ -90,7 +137,10 @@ export default {
    * готов (см. `confirmDoneAiPlacements`). Тело фазы зовётся после каждого действия, поэтому плашка
    * «Расстановка» уходит с карточки компьютера тем же шагом, каким он поставил последнего бойца.
    */
-  body: partyState => confirmDoneAiPlacements(partyState),
+  body: partyState => {
+    reopenTakenPlacements(partyState);
+    return confirmDoneAiPlacements(partyState);
+  },
 
   ui(partyState, playerId, clientContext = {}, phase) {
     const player = findPlayer(partyState, playerId);
@@ -119,6 +169,8 @@ export default {
     enabled: (partyState, playerId) => {
       const player = findPlayer(partyState, playerId);
       if (!player || player.placementReady) return false;
+      // «ОК» ждёт, пока расстановка действительна: занятую чужим бойцом клетку игрок переставит сам
+      if (conflictFighterId(partyState, playerId)) return false;
       return playerFightersPlaced(player);
     },
     onPress: (partyState, action) => {
@@ -126,9 +178,10 @@ export default {
       if (!player) {
         throw new Error('UI_OK: игрок не найден');
       }
-      if (!playerFightersPlaced(player)) {
-        throw new Error('UI_OK: расставьте всех бойцов');
-      }
+      // бойцы с занятых клеток уходят на полку: их видно в `placementCells` как свободные клетки
+      reclaimTakenCells(partyState, action.playerId);
+      if (!playerFightersPlaced(player)) return partyState;
+
       player.placementReady = true;
       return partyState;
     },

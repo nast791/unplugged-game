@@ -126,12 +126,16 @@ export const tileClipFunc = (start, end, radius) =>
   sectorClipFunc({ start, end, radius: radius - STROKE.cell / 2 });
 
 export const PATTERN_TILES = {
-  ice: { src: '/patterns/ice-snowflakes.webp', diameter: 1.05, pixels: 512 },
+  ice: { src: '/patterns/ice-snowflakes.webp', diameter: 1.05, pixels: 1024 },
   lava: { src: '/patterns/lava-veins.webp', diameter: 1.05, pixels: 512 },
   forest: { src: '/patterns/forest-canopy.webp', diameter: 1.05, pixels: 512 },
-  desert: { src: '/patterns/desert-sand.webp', diameter: 1.05, pixels: 512 },
-  mountains: { src: '/patterns/mountain-stones.webp', diameter: 1.05, pixels: 256 },
+  desert: { src: '/patterns/desert-sand.webp', diameter: 1.05, pixels: 1024 },
+  mountains: { src: '/patterns/mountain-stones.webp', diameter: 1.05, pixels: 512 },
   water: { src: '/patterns/water-marble.webp', diameter: 1.05, pixels: 512 },
+  crystal: { src: '/patterns/crystal-shards.webp', diameter: 1.05, pixels: 512 },
+  swamp: { src: '/patterns/swamp-moss.webp', diameter: 1.05, pixels: 512 },
+  fungus: { src: '/patterns/fungus-spores.webp', diameter: 1.05, pixels: 512 },
+  steppe: { src: '/patterns/steppe-grasses.webp', diameter: 1.05, pixels: 512 },
 };
 
 export const patternTileConfig = (radius, image, tile) => {

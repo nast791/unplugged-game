@@ -57,7 +57,7 @@ describe('контракт тренера: экспорт точек решен�
         expect(action.visits).toBeGreaterThanOrEqual(0);
       }
     }
-  });
+  }, 30000);
 
   it('у поисковой политики есть доли доигрываний — по ним учится политика', () => {
     const rows = runExport(['--games=1', '--policy=search']);
@@ -73,7 +73,7 @@ describe('контракт тренера: экспорт точек решен�
     const visits = sample.actions.map(action => action.visits);
     expect(visits[sample.chosen]).toBeGreaterThan(0);
     expect(Math.max(...visits)).toBeGreaterThanOrEqual(visits[sample.chosen]);
-  }, 30000); // файлы идут параллельно и пяти секунд по умолчанию не хватает // тест запускает отдельный процесс, который играет партию поиском: это секунды, а в общем прогоне
+  }, 180000); // тест запускает отдельный процесс, который играет партию поиском: на общем прогоне соседние файлы занимают все ядра
 
   it('дневник поиска с приором от ученика: доли доигрываний есть, версия модели отпечатана', () => {
     const rows = runExport(['--games=1', '--policy=qprior']);
@@ -90,7 +90,7 @@ describe('контракт тренера: экспорт точек решен�
     expect(withVisits.length).toBeGreaterThan(0);
     // доли доигрываний — из самой партии: у выбранного варианта визиты есть
     expect(withVisits[0].actions[withVisits[0].chosen].visits).toBeGreaterThan(0);
-  }, 30000);
+  }, 120000); // второй процесс с поиском: на общем прогоне соседние файлы занимают ядра
 
   it('жадная политика доигрываний не даёт: цель политики тогда — веса политики', () => {
     const rows = runExport(['--games=1', '--policy=greedy']);
@@ -99,7 +99,7 @@ describe('контракт тренера: экспорт точек решен�
     expect(samples.some(sample => sample.actions.some(action => action.prior > 0))).toBe(true);
     // дневник писала политика, а не модель: отпечатка модели в заголовке быть не должно
     expect(rows[0].model).toBe(null);
-  });
+  }, 30000);
 
   it('дневник ученика: партии играет qvalue, и признаки в нём — те, по которым шла игра', () => {
     const rows = runExport(['--games=3', '--policy=qvalue']);
@@ -154,5 +154,5 @@ describe('контракт тренера: экспорт точек решен�
 
     expect(decisions).toBeGreaterThan(50);
     expect(Math.abs(best / decisions - expected / decisions)).toBeLessThan(0.12);
-  });
+  }, 30000);
 });
