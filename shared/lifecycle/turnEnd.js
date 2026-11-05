@@ -1,5 +1,6 @@
 import { runSkillMoment } from '#shared/skills/run.js';
 import choose from '#shared/phases/choose.js';
+import { clearTemporaryTerrains } from '#shared/actions/terrain.js';
 import { hasMoment, isHandOverLimit } from '#shared/helpers/turn.js';
 
 export default {
@@ -35,10 +36,12 @@ export default {
     !hasMoment(partyState) && !isHandOverLimit(partyState, partyState.turn?.playerId),
 
   exit: partyState => {
-    const state = {
+    let state = {
       ...partyState,
       _enteredHooks: { ...(partyState._enteredHooks ?? {}), turnEnd: false },
     };
+    // временные стихии живут до конца хода: снимаем после его правил, перед передачей хода
+    state = clearTemporaryTerrains(state);
     for (const player of state.players ?? []) {
       if (player._activePhase) player._activePhase = null;
     }

@@ -50,6 +50,9 @@ vi.mock('~/composables/game/useGameSession.js', async () => {
     steps: ref(0),
     okControl: ref({ visible: false, enabled: false, label: null }),
     pending: ref(false),
+    isGameOver: ref(false),
+    choicePicked: ref([]),
+    choiceComplete: ref(false),
     onFinishAction: vi.fn(),
     isBattleParticipant: id => {
       const current = session.combat.value;
@@ -416,19 +419,21 @@ describe('окно битвы: кому оно открыто', () => {
 });
 
 describe('окно битвы: стороны и карты', () => {
-  it('защита слева, атака справа: слот защиты пунктиром и карта атакующего', async () => {
+  it('атака слева, защита справа: карта атакующего и пустой слот защиты', async () => {
     openBattle();
     const wrapper = mountWindow();
     await nextTick();
 
     const sides = wrapper.findAll('[data-battle-side]');
-    expect(sides.map(side => side.attributes('data-side'))).toEqual(['defender', 'attacker']);
-    // защитник ещё не выложил карту — видит пустой слот, а не карту
-    expect(sides[0].text()).toContain('Ждём карту защиты');
-    expect(sides[0].find('[data-card]').exists()).toBe(false);
+    expect(sides.map(side => side.attributes('data-side'))).toEqual(['attacker', 'defender']);
     // карта атакующего на месте, число живое
-    expect(sides[1].find('[data-card]').attributes('data-card')).toBe('Наотмашь');
-    expect(sides[1].find('[data-card]').attributes('data-value')).toBe('4');
+    const attacker = wrapper.find('[data-side="attacker"]');
+    expect(attacker.find('[data-card]').attributes('data-card')).toBe('Наотмашь');
+    expect(attacker.find('[data-card]').attributes('data-value')).toBe('4');
+    // защитник ещё не выложил карту — видит пустой слот, а не карту
+    const defender = wrapper.find('[data-side="defender"]');
+    expect(defender.text()).toContain('Ждём карту защиты');
+    expect(defender.find('[data-card]').exists()).toBe(false);
   });
 
   it('боец над картой: имя, здоровье и чей он игрок; у компьютера — «Компьютер»', async () => {
@@ -436,14 +441,15 @@ describe('окно битвы: стороны и карты', () => {
     const wrapper = mountWindow();
     await nextTick();
 
-    const [, attacker] = wrapper.findAll('[data-battle-side]');
+    const attacker = wrapper.find('[data-side="attacker"]');
     expect(attacker.text()).toContain('Амат');
     expect(attacker.text()).toContain('Элизиф');
     expect(attacker.text()).toContain('9/12');
 
-    const [defender] = wrapper.findAll('[data-battle-side]');
-    // у слота компьютера ника нет — пишем «Компьютер» (решение владельца)
-    expect(defender.text()).toContain('Компьютер');
+    const defender = wrapper.find('[data-side="defender"]');
+    // у места компьютера строки игрока нет вовсе (решение владельца): видно бойца и его здоровье
+    expect(defender.text()).toContain('Тото');
+    expect(defender.text()).not.toContain('Компьютер');
     expect(defender.text()).toContain('4/4');
   });
 
@@ -453,7 +459,7 @@ describe('окно битвы: стороны и карты', () => {
     const wrapper = mountWindow();
     await nextTick();
 
-    expect(wrapper.findAll('[data-battle-side]')[0].text()).toContain('Без защиты');
+    expect(wrapper.find('[data-side="defender"]').text()).toContain('Без защиты');
   });
 
   it('чужую карту до вскрытия проекция прячет — окно говорит «Карта закрыта»', async () => {
@@ -464,7 +470,7 @@ describe('окно битвы: стороны и карты', () => {
     const wrapper = mountWindow();
     await nextTick();
 
-    expect(wrapper.findAll('[data-battle-side]')[1].text()).toContain('Карта закрыта');
+    expect(wrapper.find('[data-side="attacker"]').text()).toContain('Карта закрыта');
     expect(wrapper.text()).not.toContain('урон');
   });
 
@@ -485,7 +491,7 @@ describe('окно битвы: стороны и карты', () => {
     const wrapper = mountWindow();
     await nextTick();
 
-    const [, attacker] = wrapper.findAll('[data-battle-side]');
+    const attacker = wrapper.find('[data-side="attacker"]');
     const card = attacker.find('[data-card]');
     expect(card.attributes('data-value')).toBe('5');
     expect(card.attributes('data-value-changed')).toBe('true');
@@ -523,10 +529,10 @@ describe('окно битвы: стороны и карты', () => {
     const wrapper = mountWindow();
     await nextTick();
 
-    const [, attacker] = wrapper.findAll('[data-battle-side]');
+    const attacker = wrapper.find('[data-side="attacker"]');
     expect(attacker.find('[data-battle-boost]').exists()).toBe(true);
     expect(attacker.find('[data-battle-boost]').text()).toContain('Тихий шаг');
-    expect(wrapper.findAll('[data-battle-side]')[0].find('[data-battle-boost]').exists()).toBe(
+    expect(wrapper.find('[data-side="defender"]').find('[data-battle-boost]').exists()).toBe(
       false,
     );
   });
@@ -602,9 +608,12 @@ describe('окно битвы: лента шагов с паузами', () => {
     };
     await nextTick();
 
-    const sides = wrapper.findAll('[data-battle-side]');
-    expect(sides[0].find('[data-card]').attributes('data-card')).toBe('Клёпка');
-    expect(sides[1].find('[data-card]').attributes('data-card')).toBe('Наотмашь');
+    expect(wrapper.find('[data-side="defender"] [data-card]').attributes('data-card')).toBe(
+      'Клёпка',
+    );
+    expect(wrapper.find('[data-side="attacker"] [data-card]').attributes('data-card')).toBe(
+      'Наотмашь',
+    );
     expect(wrapper.text()).not.toContain('Без защиты');
     expect(wrapper.text()).not.toContain('Карта закрыта');
   });
@@ -681,9 +690,14 @@ describe('окно битвы: лента шагов с паузами', () => {
     expect(wrapper.find('[data-battle-window]').exists()).toBe(false);
   });
 
-  it('итог убирает действие вне окна: клик мимо, а клик внутри — нет', async () => {
+  it('итог убирает действие вне окна: клик по кнопке действия, а клик мимо — нет', async () => {
     openBattle();
-    const wrapper = mountWindow();
+    const { default: FinishButton } =
+      await import('../../../app/components/molecules/game/FinishButton.vue');
+    const wrapper = mount(
+      defineComponent({ setup: () => () => h('div', [h(BattleWindow), h(FinishButton)]) }),
+      { global: { stubs: { NuxtIcon: IconStub } }, attachTo: document.body },
+    );
     await nextTick();
 
     await finishBattle();
@@ -693,10 +707,13 @@ describe('окно битвы: лента шагов с паузами', () => {
     await passTime(ANIMATION_DURATIONS.battleDamage);
     expect(wrapper.find('[data-battle-close]').exists()).toBe(true);
 
+    session.okControl.value = { visible: true, enabled: true, label: 'Закончить действие' };
+    await nextTick();
+
     await wrapper.find('header').trigger('pointerdown');
     expect(wrapper.find('[data-battle-window]').exists()).toBe(true);
 
-    document.body.dispatchEvent(pointerEvent('pointerdown'));
+    wrapper.find('[data-ok-control]').element.dispatchEvent(pointerEvent('pointerdown'));
     await nextTick();
     expect(wrapper.find('[data-battle-window]').exists()).toBe(false);
   });

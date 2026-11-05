@@ -200,4 +200,18 @@ describe('party.view: приватность хода', () => {
     expect(enemyView.players.find(entry => entry.id === '1').resigned).toBe(true);
     expect(enemyView.players.find(entry => entry.id === '0').resigned).toBeFalsy();
   });
+
+  it('павшие бойцы лежат в `lost` и видны противнику', () => {
+    const state = createState();
+    const owner = player(state, '0');
+    const dead = fighterOf(state, '0', 'alpha');
+    owner.fighters = owner.fighters.filter(fighter => fighter.id !== 'alpha');
+    owner.lost = [{ ...dead, currentHp: 0, currentPosition: null }];
+
+    const lost = view(state, '1').players.find(entry => entry.id === '0').lost;
+    expect(lost.map(entry => entry.id)).toEqual(['alpha']);
+    expect(lost[0].currentHp).toBe(0);
+    // наружу уходят копии: правка вида не трогает состояние партии
+    expect(lost[0]).not.toBe(owner.lost[0]);
+  });
 });

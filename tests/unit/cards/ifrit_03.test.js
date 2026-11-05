@@ -92,7 +92,7 @@ describe('карта ifrit_03 «Вечный огонь»', () => {
       type: 'attack',
       value: 3,
       bonus: 2,
-      quantity: 2,
+      quantity: 1,
       fighter: 'ifrit',
     });
     expect(card.rules[0].when[0]).toMatchObject({

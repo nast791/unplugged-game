@@ -66,6 +66,38 @@ export const noteDamageDealt = (partyState, action = {}) => {
 };
 
 /**
+ * Снимок здоровья бойцов партии: по нему видно, сколько снял один шаг очереди боя. Сравнивать
+ * состояния «до» и «после» нельзя — правила правят бойцов на месте, и в обоих объектах уже новые
+ * числа; поэтому запоминаем значения до прогона.
+ */
+export const healthSnapshot = partyState => {
+  const snapshot = new Map();
+  for (const player of partyState?.players ?? []) {
+    for (const fighter of [...(player.fighters ?? []), ...(player.lost ?? [])]) {
+      snapshot.set(String(fighter.id), Number(fighter.currentHp ?? 0));
+    }
+  }
+  return snapshot;
+};
+
+/**
+ * Сколько здоровья сняли с момента снимка: павшие считаются по нулю (`lost` их помнит), лечение
+ * вычитается — важно то, насколько бойцам стало хуже. Это урон свойств, а не карт: урон боя
+ * (`combatDamage`) считается отдельно.
+ */
+export const damagedSince = (partyState, snapshot) => {
+  const after = healthSnapshot(partyState);
+  let total = 0;
+
+  for (const [fighterId, hp] of snapshot) {
+    const now = after.has(fighterId) ? after.get(fighterId) : 0;
+    if (now < hp) total += hp - now;
+  }
+
+  return total;
+};
+
+/**
  * Снять отметку начала хода — у всех бойцов: «в этом ходу» значит ровно один ход.
  * Зовётся рядом со снятием `movedThisTurn` (`shared/lifecycle/turnStart.js`) и возвращает новое
  * состояние: кирпичи этого хода правят вложенные объекты на месте, а флаг живёт на бойце.

@@ -1,4 +1,4 @@
-import { cellTerrains, nodeTerrains, sharesArea } from '#shared/helpers/placement.js';
+import { cellTerrains, nodeAllTerrains, sharesArea } from '#shared/helpers/placement.js';
 import { findFighter } from '#shared/helpers/base.js';
 import { occupiedCellIds } from '#shared/helpers/turn.js';
 
@@ -37,7 +37,8 @@ export const CELLS = (ctx, params = {}) => {
   const cells = nodes
     .filter(node => node?.id != null)
     .filter(
-      node => terrain == null || nodeTerrains(node).some(value => terrain.includes(String(value))),
+      node =>
+        terrain == null || nodeAllTerrains(node).some(value => terrain.includes(String(value))),
     )
     .filter(node => pinnedCell == null || sharesArea(state, pinnedCell, node.id))
     .map(node => String(node.id))

@@ -97,33 +97,34 @@ const playableFor = (state, cardId) => runUi(state, '0').playableCardIds.include
 const isDisabled = (state, cardId) => runUi(state, '0').disabledCardIds.includes(`${cardId}_1`);
 
 describe('карта эффекта предлагается, только если розыгрыш что-то изменит', () => {
-  it('«Прыжок в лаву»: без свободной клетки лавы карта задизейблена, со свободной — играется', () => {
-    const withoutLava = buildState({
+  it('«Ожог»: без соседей карта задизейблена, с соседом — играется', () => {
+    const alone = buildState({
       cardId: 'ifrit_10',
       map: lineMap('desert'),
       mineFighters: [unit('ifrit', 1, 14)],
+      foeFighters: [unit('beta', 3, 13)],
     });
-    expect(playableFor(withoutLava, 'ifrit_10')).toBe(false);
-    expect(isDisabled(withoutLava, 'ifrit_10')).toBe(true);
+    expect(playableFor(alone, 'ifrit_10')).toBe(false);
+    expect(isDisabled(alone, 'ifrit_10')).toBe(true);
 
-    const withLava = buildState({
+    const near = buildState({
       cardId: 'ifrit_10',
       map: lineMap('lava'),
       mineFighters: [unit('ifrit', 1, 14)],
+      foeFighters: [unit('beta', 2, 13)],
     });
-    expect(playableFor(withLava, 'ifrit_10')).toBe(true);
+    expect(playableFor(near, 'ifrit_10')).toBe(true);
   });
 
-  it('«Прыжок в лаву»: все клетки лавы заняты — тоже задизейблена', () => {
+  it('«Ожог»: соседний свой боец — тоже настоящая цель', () => {
     const state = buildState({
       cardId: 'ifrit_10',
       map: lineMap('lava'),
-      mineFighters: [unit('ifrit', 1, 14)],
-      foeFighters: [unit('beta', 3, 13), unit('beta_pawn', 2, 5), unit('beta_pawn_2', 4, 5)],
+      mineFighters: [unit('ifrit', 1, 14), unit('ash_1', 2, 1, { type: 'assistant', group: 'ash' })],
+      foeFighters: [unit('beta', 4, 13)],
     });
 
-    // свободных клеток лавы нет (1 занята Ифритом, 2 и 3, 4 — чужими)
-    expect(playableFor(state, 'ifrit_10')).toBe(false);
+    expect(playableFor(state, 'ifrit_10')).toBe(true);
   });
 
   it('«Зелёные очки»: играется и при пустой колоде — добор отнимает здоровье', () => {

@@ -29,7 +29,7 @@ const sideMatches = (state, side, ownerId, player) => {
 /**
  * Бойцы на поле по фильтру.
  * params: { side, of, type, group, fighterIds, alive, placed, areaOf, terrain, reachableTo, adjacentTo,
- *           movedThisTurn, dealtDamageThisTurn, frozen }
+ *           withinOf, within, movedThisTurn, dealtDamageThisTurn, frozen }
  * side: 'any' — все, 'self' — свои, 'opponent' — бойцы ВСЕХ врагов (в команде — всех чужих команд),
  * 'teammate' — союзники без себя;
  * of — бойцы одного игрока (id), например противника в этой битве: `COMBAT { player: 'opponent' }` → `of: '$enemy'`;
@@ -39,6 +39,8 @@ const sideMatches = (state, side, ownerId, player) => {
  * terrain — бойцы, стоящие на клетке с этой стихией (двухцветная клетка считается в обеих);
  * reachableTo — кто дотягивается до него своей attackRange;
  * adjacentTo — кто стоит ровно на соседней с ним клетке (своя клетка не считается);
+ * withinOf — центр радиуса (боец), within — радиус в шагах поля: «все бойцы в радиусе 2 клеток
+ * от Ифрита» («Сжечь всех дотла»), своя клетка в радиус не входит;
  * movedThisTurn — двигался ли боец в этом ходу; dealtDamageThisTurn — наносил ли он урон в этом ходу;
  * frozen — стоит ли на нём статус «заморожен».
  */
@@ -71,6 +73,15 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
     const { fighter } = findFighter(state, params.adjacentTo);
     if (!fighter || fighter.currentPosition == null) return [];
     adjacentCell = fighter.currentPosition;
+  }
+
+  let withinCell = null;
+  let withinSteps = 0;
+  if (params.withinOf != null) {
+    const { fighter } = findFighter(state, params.withinOf);
+    if (!fighter || fighter.currentPosition == null) return [];
+    withinCell = fighter.currentPosition;
+    withinSteps = Number(params.within ?? 1);
   }
 
   const out = [];
@@ -135,6 +146,10 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
       if (adjacentCell != null) {
         const distance = bfsDistance(nodes, fighter.currentPosition, adjacentCell, 1);
         if (distance === 0 || distance > 1) continue;
+      }
+      if (withinCell != null) {
+        const distance = bfsDistance(nodes, fighter.currentPosition, withinCell, withinSteps);
+        if (distance === 0 || distance > withinSteps) continue;
       }
 
       out.push({

@@ -13,13 +13,22 @@ import { computed, defineComponent, h, nextTick, ref } from 'vue';
 globalThis.computed = computed;
 
 const hand = ref([]);
+const you = ref('0');
 
 vi.mock('~/composables/game/useGameSession.js', () => ({
-  useGameSession: () => ({ myHand: hand }),
+  useGameSession: () => ({ myHand: hand, you }),
 }));
 
-const { flightFrame, flightTarget, useCardFlights } =
-  await import('../../../app/composables/animations/useCardFlights.js');
+const {
+  drawPath,
+  deckStartScale,
+  flipFrame,
+  flightFrame,
+  flightTarget,
+  runCardFlight,
+  useCardFlights,
+} = await import('../../../app/composables/animations/useCardFlights.js');
+const { CARD_FLIGHT, scaledDuration } = await import('../../../app/constants/animation.js');
 
 const rect = (left, top, width = 115, height = 160) => ({
   left,
@@ -63,10 +72,13 @@ const mountFlights = () => {
 
 beforeEach(() => {
   hand.value = [];
+  you.value = '0';
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  document.body.innerHTML = '';
 });
 
 describe('Полёт карты: траектория', () => {
@@ -107,6 +119,149 @@ describe('Полёт карты: точка посадки', () => {
     expect(target.x).toBeCloseTo(700 + (115 - 200) / 2, 1);
     expect(target.y).toBeCloseTo(500 + (160 - 295) / 2, 1);
   });
+
+  it('целится не в саму ладонь, а в точку над ней: последний отрезок идёт сверху вниз', () => {
+    const from = { x: 0, y: 700, width: 115, height: 160 };
+    const to = rect(900, 700);
+    const { target, approach } = drawPath(from, to);
+
+    expect(target).toEqual(flightTarget(from, to));
+    expect(approach.x).toBe(target.x);
+    expect(approach.y).toBeCloseTo(target.y - CARD_FLIGHT.drop, 5);
+    expect(approach.y).toBeLessThan(target.y);
+  });
+
+  it('у верхнего края экрана не уводит карту за кадр', () => {
+    const { target, approach } = drawPath(
+      { x: 0, y: 0, width: 115, height: 160 },
+      {
+        ...rect(900, 10),
+        height: 295,
+      },
+    );
+
+    expect(approach.y).toBeGreaterThanOrEqual(0);
+    expect(approach.y).toBeLessThan(target.y);
+  });
+});
+
+describe('Переворот карты на колоде', () => {
+  it('первую половину видна рубашка, вторую — лицо', () => {
+    expect(flipFrame(0)).toMatchObject({ scaleX: 1, back: true, face: false, lift: 0 });
+    expect(flipFrame(0.25).back).toBe(true);
+    expect(flipFrame(0.25).scaleX).toBeCloseTo(Math.SQRT1_2, 5);
+    expect(flipFrame(0.5)).toMatchObject({ back: false, face: true });
+    expect(flipFrame(0.5).scaleX).toBeCloseTo(0, 6);
+    expect(flipFrame(0.5).lift).toBeCloseTo(CARD_FLIGHT.flipLift, 5);
+    expect(flipFrame(1)).toMatchObject({ back: false, face: true });
+    expect(flipFrame(1).scaleX).toBeCloseTo(1, 6);
+    expect(flipFrame(1).lift).toBeCloseTo(0, 6);
+  });
+
+  it('значения вне 0…1 прижимаются к краям', () => {
+    expect(flipFrame(-3)).toMatchObject({ back: true });
+    expect(flipFrame(-3).scaleX).toBeCloseTo(1, 6);
+    expect(flipFrame(4)).toMatchObject({ face: true });
+    expect(flipFrame(4).scaleX).toBeCloseTo(1, 6);
+    expect(flipFrame(4).lift).toBeCloseTo(0, 6);
+  });
+
+  it('добор идёт за переворот и полёт, а настройка скорости растягивает каждый отрезок', () => {
+    expect(CARD_FLIGHT.drop).toBeGreaterThan(0);
+    expect(scaledDuration('cardFlip', 'slow')).toBeGreaterThan(scaledDuration('cardFlip', 'fast'));
+    expect(scaledDuration('cardDrop', 'fast')).toBeLessThan(scaledDuration('cardDrop', 'medium'));
+  });
+
+  it('переворот начинается размером с колоду и заканчивается размером карты', () => {
+    const scale = deckStartScale({
+      from: { width: 115, height: 160 },
+      to: { width: 200, height: 295 },
+    });
+
+    expect(scale).toBeCloseTo(160 / 295, 5);
+  });
+});
+
+describe('Пролёт карты: кадры', () => {
+  const pilotOf = () => {
+    const pilot = document.createElement('div');
+    const face = document.createElement('div');
+    face.dataset.flightCard = '';
+    const back = document.createElement('div');
+    back.dataset.flightBack = '';
+    pilot.append(face, back);
+    document.body.append(pilot);
+    return pilot;
+  };
+
+  const flightOf = () => ({
+    flip: true,
+    from: { x: 100, y: 400, width: 115, height: 160 },
+    to: { x: 700, y: 500, width: 200, height: 295 },
+    markup: '<div>card</div>',
+  });
+
+  /** Кадры раздаём вручную: время — наша переменная, `requestAnimationFrame` — очередь. */
+  const frames = () => {
+    const queue = [];
+    const now = ref(0);
+    vi.stubGlobal('performance', { now: () => now.value });
+    vi.stubGlobal('requestAnimationFrame', fn => {
+      queue.push(fn);
+      return queue.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    return {
+      start: (onDone, timings = { flip: 100, travel: 200, drop: 100 }) => {
+        const pilot = pilotOf();
+        runCardFlight({ pilot, flight: flightOf(), timings, onDone });
+        return pilot;
+      },
+      at: moments => {
+        for (const moment of moments) {
+          now.value = moment;
+          queue.shift()?.(moment);
+        }
+      },
+    };
+  };
+
+  it('на колоде показывает рубашку, после переворота — лицо, в конце отпускает карту', () => {
+    const onDone = vi.fn();
+    const clock = frames();
+    const pilot = clock.start(onDone);
+    const back = pilot.querySelector('[data-flight-back]');
+    const face = pilot.querySelector('[data-flight-card]');
+
+    clock.at([0]);
+    expect(back.style.display).toBe('');
+    expect(face.style.display).toBe('none');
+
+    clock.at([40]);
+    expect(back.style.display).toBe('');
+    expect(back.style.transform).not.toBe('scaleX(1)');
+
+    clock.at([120, 320, 400]);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(back.style.display).toBe('none');
+    expect(face.style.display).toBe('');
+    expect(pilot.style.opacity).toBe('0.85');
+  });
+
+  it('без переворота (карта уходит в сброс) сразу показывает лицо', () => {
+    const clock = frames();
+    const pilot = pilotOf();
+    runCardFlight({
+      pilot,
+      flight: { ...flightOf(), flip: false },
+      timings: { flip: 100, travel: 200, drop: 100 },
+    });
+
+    clock.at([10]);
+
+    expect(pilot.querySelector('[data-flight-back]').style.display).toBe('none');
+    expect(pilot.querySelector('[data-flight-card]').style.display).toBe('');
+  });
 });
 
 describe('Перелёты: разница руки', () => {
@@ -134,6 +289,7 @@ describe('Перелёты: разница руки', () => {
 
     const toHand = api().flights.value.find(flight => flight.card.instanceId === 'c2');
     expect(toHand).toBeTruthy();
+    expect(toHand.flip).toBe(true);
     expect(toHand.from.x).toBe(0);
     expect(toHand.to.x).toBe(400);
     expect(toHand.markup).toContain('c2');
@@ -146,8 +302,19 @@ describe('Перелёты: разница руки', () => {
 
     const toDiscard = api().flights.value.find(flight => flight.card.instanceId === 'c2');
     expect(toDiscard).toBeTruthy();
+    expect(toDiscard.flip).toBe(false);
     expect(toDiscard.to.x).toBe(900);
     expect(toDiscard.from.x).toBe(900);
+
+    wrapper.unmount();
+  });
+
+  it('настройки полёта растянуты: переворот, полёт и падение — отдельные отрезки', async () => {
+    const { wrapper, api } = mountFlights();
+    const timings = api().flightTimings();
+
+    expect(Object.keys(timings).sort()).toEqual(['drop', 'flip', 'travel']);
+    expect(timings.travel).toBeGreaterThan(timings.flip);
 
     wrapper.unmount();
   });

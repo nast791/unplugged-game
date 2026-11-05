@@ -29,13 +29,17 @@ import { useGameSession } from '~/composables/game/useGameSession.js';
 
 const { choices, targetingChoices, choiceCount, choicePicked, onChoiceClick } = useGameSession();
 
-const options = computed(() =>
-  [...choices.value, ...targetingChoices.value].map(entry => ({
-    id: entry.optionId,
-    text: entry.title,
-    disabled: entry.disabled,
-  })),
-);
+const options = computed(() => {
+  const byId = new Map();
+
+  for (const entry of [...choices.value, ...targetingChoices.value]) {
+    const id = String(entry.optionId);
+    if (byId.has(id)) continue;
+    byId.set(id, { id, text: entry.title ?? id, disabled: entry.disabled === true });
+  }
+
+  return [...byId.values()];
+});
 const picked = choicePicked;
 const status = computed(() => {
   const count = choiceCount.value;

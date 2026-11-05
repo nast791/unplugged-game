@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runLifecycle, runUi } from '#shared/publicApi.js';
 import { runSkillMoment } from '#shared/skills/run.js';
 import anubis from '../../../server/content/heroes/anubis/index.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
@@ -58,15 +57,13 @@ const slot = (id, name, order, fighters, items = [], lost = []) => ({
 });
 
 /**
- * Ход Анубиса (игрок 0): `cell` — его клетка, `foeCell` — клетка врага, `shroudState` — пелена,
- * `dealtDamage` — наносил ли герой урон в этом ходу (условие суда), `amatLost` — убита ли Амат
- * (по ней рвётся пелена).
+ * Ход Анубиса (игрок 0): `shroudState` — пелена, `amatLost` — убита ли Амат
+ * (по ней в начале хода рвётся пелена), `skill` — подменённое умение.
  */
 const buildState = ({
   cell = 1,
   foeCell = 2,
-  shroudState = 'inactive',
-  dealtDamage = false,
+  shroudState = 'active',
   amatLost = false,
   skill = anubis.skill,
 } = {}) =>
@@ -81,7 +78,7 @@ const buildState = ({
           'Анубис',
           1,
           [
-            unit('anubis', cell, 15, { attackRange: 2, dealtDamageThisTurn: dealtDamage }),
+            unit('anubis', cell, 15, { attackRange: 2 }),
             ...(amatLost ? [] : [unit('amat', cell, 8, { type: 'assistant', group: 'amat' })]),
           ],
           [shroud(shroudState)],
@@ -95,156 +92,52 @@ const buildState = ({
     _enteredHooks: { gameStart: true, turn: true },
   });
 
-/** Ход закончился: здесь входит умение конца хода. */
-const endTurn = state => {
-  state.hook = PHASES.turnEnd;
-  return runLifecycle(state);
-};
-
 const itemState = (state, playerId = '0') => player(state, playerId).items[0]?.state ?? null;
 
-const hpOf = (state, playerId, fighterId) =>
-  player(state, playerId).fighters.find(entry => entry.id === fighterId)?.currentHp ?? 0;
-
-const clickFighter = (state, id) =>
-  runAction(state, { type: 'PICK', kind: 'fighter', id, playerId: '0' });
-
-const confirm = state => runAction(state, { type: 'UI_OK', playerId: '0' });
-
-describe('способность Анубиса (Взвешивание сердца)', () => {
+describe('способность Анубиса (Суд Осириса)', () => {
   it('контент использует только известные моменты', () => {
     for (const rule of anubis.skill.rules) {
       expect(isMoment(rule.moment)).toBe(true);
     }
   });
 
-  it('герой, помощник, предмет и поле стихии описаны по паспорту', () => {
+  it('герой, помощник, пелена и поле стихии описаны по паспорту', () => {
     expect(anubis.skill.type).toBe('skill');
     expect(anubis.skill.fighter).toBe('anubis');
-    expect(anubis.skill.title).toBe('Взвешивание сердца');
-    expect(anubis.skill.text).toContain('КОНЕЦ ХОДА');
-    expect(anubis.skill.text).toContain('не наносил урон');
-    expect(anubis.skill.text).toContain('выберите');
+    expect(anubis.skill.title).toBe('Суд Осириса');
+    expect(anubis.skill.text).toContain('пелена');
+    expect(anubis.skill.text).toContain('пометкой весов');
+    expect(anubis.skill.text).toContain('Помилование');
+    expect(anubis.skill.text).toContain('Наказание');
+    expect(anubis.skill.text).toContain('НАЧАЛО ХОДА');
+    expect(anubis.skill.rules).toHaveLength(1);
+    expect(anubis.skill.rules[0].moment).toBe('turnStart');
     expect(anubis.heroes[0]).toMatchObject({ hp: 15, move: 2, attackRange: 2 });
     expect(anubis.assistants[0]).toMatchObject({ id: 'amat', hp: 8, move: 2, attackRange: 1 });
-    // предмет — индикатор эффекта: в начале партии пелены нет, подписи и условие видит игрок в панели
-    expect(anubis.items[0]).toMatchObject({ id: 'shroud', state: 'inactive', count: 1 });
-    expect(anubis.items[0].states).toEqual({ active: 'цела', inactive: 'отсутствует' });
-    expect(anubis.items[0].condition).toContain('Погребальная пелена');
+    // пелена активна с начала партии: предмет — индикатор суда, подпись состояния даёт клиент
+    expect(anubis.items[0]).toMatchObject({ id: 'shroud', state: 'active', count: 1 });
+    expect(anubis.items[0].states).toBeUndefined();
     expect(anubis.items[0].condition).toContain('Амат');
+    expect(anubis.items[0].condition).toContain('навсегда');
+    expect(anubis.tags).toEqual(['scales']);
     expect(anubis.terrainAffinity).toEqual(['desert']);
   });
 
-  it('пелены нет: единственный враг в области — движок бьёт сам, окна нет', () => {
-    const state = endTurn(buildState({ shroudState: 'inactive' }));
-
-    expect(state.targeting ?? null).toBeNull();
-    expect(hpOf(state, '1', 'beta')).toBe(12);
-  });
-
-  it('пелена цела: единственный враг получает 2 урона сам', () => {
-    const state = endTurn(buildState({ shroudState: 'active' }));
-
-    expect(state.targeting ?? null).toBeNull();
-    expect(hpOf(state, '1', 'beta')).toBe(11);
-  });
-
-  it('Анубис наносил урон в этом ходу — суда нет, ход закрывается', () => {
-    const state = endTurn(buildState({ dealtDamage: true }));
-
-    expect(state.targeting ?? null).toBeNull();
-    expect(hpOf(state, '1', 'beta')).toBe(13);
-  });
-
-  it('герой двигался, но не бил — суд работает: шаг условие больше не снимает', () => {
-    const state = buildState({ shroudState: 'inactive' });
-    const hero = player(state, '0').fighters.find(entry => entry.id === 'anubis');
-    hero.movedThisTurn = true;
-
-    const after = endTurn(state);
-
-    expect(hpOf(after, '1', 'beta')).toBe(12);
-  });
-
-  it('враг в другой области — судить некого', () => {
-    const state = endTurn(buildState({ cell: 1, foeCell: 4 }));
-
-    expect(hpOf(state, '1', 'beta')).toBe(13);
-  });
-
-  it('врагов в области двое — окно-переключатель: клик только отмечает, повторный снимает', () => {
-    const state = buildState({ shroudState: 'inactive' });
-    player(state, '1').fighters.push(unit('beta2', 1, 9));
-
-    const opened = endTurn(state);
-
-    expect(opened.targeting).toMatchObject({
-      playerId: '0',
-      source: 'anubis_skill',
-      kind: 'fighters',
-      required: true,
-      auto: true,
-      toggle: true,
-    });
-    expect(opened.targeting.candidates.map(entry => entry.fighterId).sort()).toEqual([
-      'beta',
-      'beta2',
-    ]);
-    const ui = runUi(opened, '0');
-    expect(ui.hint).toContain(anubis.skill.text);
-    expect(ui.hint).not.toContain('пропускается');
-    expect(ui.controls.ok.visible).toBe(false);
-
-    const marked = clickFighter(opened, 'beta2');
-    expect(marked.targeting.picked).toBe('beta2');
-    expect(runUi(marked, '0').pickedFighterIds).toEqual(['beta2']);
-    expect(runUi(marked, '0').controls.ok.label).toBe('Завершить умение');
-    expect(hpOf(marked, '1', 'beta2')).toBe(9);
-
-    const cleared = clickFighter(marked, 'beta2');
-    expect(cleared.targeting.picked).toBeNull();
-    expect(runUi(cleared, '0').pickedFighterIds).toEqual([]);
-    expect(runUi(cleared, '0').controls.ok.visible).toBe(false);
-
-    const moved = clickFighter(cleared, 'beta');
-    expect(moved.targeting.picked).toBe('beta');
-
-    const after = confirm(moved);
-    expect(after.targeting).toBeNull();
-    expect(hpOf(after, '1', 'beta')).toBe(12);
-    expect(hpOf(after, '1', 'beta2')).toBe(9);
-  });
-
-  it('обязательное окно без отметки не закрывается', () => {
-    const state = buildState({ shroudState: 'inactive' });
-    player(state, '1').fighters.push(unit('beta2', 1, 9));
-
-    const opened = endTurn(state);
-
-    expect(() => confirm(opened)).toThrow('обязательное окно выбора цели');
-    expect(hpOf(opened, '1', 'beta')).toBe(13);
-    expect(hpOf(opened, '1', 'beta2')).toBe(9);
-  });
-
   it('Амат жива — начало хода пелену сохраняет', () => {
-    const state = runSkillMoment(buildState({ shroudState: 'active', cell: 1 }), '0', 'turnStart');
+    const state = runSkillMoment(buildState({ shroudState: 'active' }), '0', 'turnStart');
 
     expect(itemState(state)).toBe('active');
   });
 
-  it('Амат мертва — начало хода пелену рвёт', () => {
-    const state = runSkillMoment(
-      buildState({ shroudState: 'active', cell: 1, amatLost: true }),
-      '0',
-      'turnStart',
-    );
+  it('Амат мертва — начало хода пелену рвёт навсегда', () => {
+    const state = runSkillMoment(buildState({ shroudState: 'active', amatLost: true }), '0', 'turnStart');
 
     expect(itemState(state)).toBe('inactive');
   });
 
   it('пелена уже порвана — начало хода ничего не меняет', () => {
     const state = runSkillMoment(
-      buildState({ shroudState: 'inactive', cell: 3 }),
+      buildState({ shroudState: 'inactive', cell: 3, amatLost: true }),
       '0',
       'turnStart',
     );

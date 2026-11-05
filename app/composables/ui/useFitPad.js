@@ -5,7 +5,7 @@ import { FIT_PAD_UNITS } from '~/composables/ui/useBoardView.js';
  * Отступ карты от края поля: то же `p-12`, что у панелей, то есть `FIT_PAD_UNITS` единиц сетки.
  * Единица (`--spacing`) считается от ширины окна, поэтому её читаем у элемента поля, а не из константы.
  */
-export const useFitPad = element => {
+export const useFitPad = (element, units) => {
   const spacing = ref(null);
 
   const measure = () => {
@@ -18,7 +18,9 @@ export const useFitPad = element => {
 
   onMounted(measure);
 
-  const pad = computed(() => Math.round((spacing.value ?? 0) * FIT_PAD_UNITS) || undefined);
+  const padUnits = computed(() => Number(units?.()) || FIT_PAD_UNITS);
+
+  const pad = computed(() => Math.round((spacing.value ?? 0) * padUnits.value) || undefined);
 
   return { pad, measure };
 };

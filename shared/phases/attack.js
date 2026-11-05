@@ -1,11 +1,10 @@
 import { SET_COMBAT } from '#shared/actions/combat.js';
 import { HINTS } from '#shared/constants/hints.js';
-import { findPlayer } from '#shared/helpers/base.js';
+import { playerLabel } from '#shared/helpers/base.js';
 import { attackCandidates, attackTargets } from '#shared/helpers/combat.js';
 import { handCardIds, isMomentMine } from '#shared/helpers/turn.js';
 
-const playerName = (partyState, playerId) =>
-  findPlayer(partyState, playerId)?.name ?? String(playerId ?? '—');
+const playerName = (partyState, playerId) => playerLabel(partyState, playerId);
 
 /** Кого подсвечиваем (кликабельные кандидаты) и кого выделяем рамкой на текущей стадии боя. */
 const stageFighters = (partyState, playerId, combat) => {

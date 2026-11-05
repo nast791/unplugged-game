@@ -149,7 +149,7 @@ describe('ворота «состояние × действие»: маршру�
   it('ненулевые ворота зависят от позиции: то же действие — другая оценка', () => {
     const first = firstState(9);
     // сид другой чётности: у `playDuel` от сида зависят и поле, и порядок хода, поэтому позиции разные
-    const second = firstState(20);
+    const second = firstState(10);
     const entries = actionsFor(first.state, first.playerId, { policy: 'greedy' }).filter(
       entry => Number(entry.weight) > 0,
     );

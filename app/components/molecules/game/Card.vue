@@ -7,25 +7,34 @@
         </div>
 
         <div
-          class="rounded-b-6 absolute top-0 left-0 flex h-62 w-38 flex-col items-center justify-center gap-2 p-4"
+          class="rounded-b-6 absolute top-0 left-0 flex w-38 flex-col items-center gap-2 p-4"
           :class="type.plate"
+          data-card-plate
         >
-          <ATooltip :text="TOOLTIPS.card.type({ label: type.label })">
-            <Icon
-              v-if="type.icon"
-              :name="type.icon"
-              class="size-22! shrink-0 text-white"
-              aria-hidden="true"
-            /><span v-else data-icon-missing :data-card="JSON.stringify(card.type)"></span>
-          </ATooltip>
+          <div class="flex h-54 w-full shrink-0 flex-col items-center justify-center gap-2">
+            <ATooltip :text="TOOLTIPS.card.type({ label: type.label })">
+              <Icon
+                v-if="type.icon"
+                :name="type.icon"
+                class="size-22! shrink-0 text-white"
+                aria-hidden="true"
+              /><span v-else data-icon-missing :data-card="JSON.stringify(card.type)"></span>
+            </ATooltip>
 
-          <span
-            v-if="shownValue != null"
-            class="text-22 font-semibold lining-nums"
-            :class="valueChanged ? 'text-gold' : 'text-white'"
-          >
-            {{ shownValue }}
-          </span>
+            <span
+              v-if="shownValue != null"
+              class="text-22 font-semibold lining-nums"
+              :class="valueChanged ? 'text-gold' : 'text-white'"
+            >
+              {{ shownValue }}
+            </span>
+          </div>
+
+          <ATooltip v-if="hasScales" :text="TOOLTIPS.card.scales()">
+            <span class="text-white" data-card-scales aria-hidden="true">
+              <Icon name="lucide:scale" class="size-22!" />
+            </span>
+          </ATooltip>
         </div>
 
         <ATooltip v-if="card.bonus" :text="TOOLTIPS.card.bonus({ bonus: card.bonus })">
@@ -43,6 +52,12 @@
             <Icon name="lucide:lock" class="size-18!" />
           </span>
         </ATooltip>
+
+        <ATooltip v-else-if="props.boost" :text="TOOLTIPS.card.boost()">
+          <span class="absolute bottom-8 left-8 z-30 text-white/80" aria-hidden="true">
+            <component :is="MoveIcon" class="size-18!" />
+          </span>
+        </ATooltip>
       </div>
 
       <div class="flex h-[52%] min-h-0 flex-col gap-6 p-8">
@@ -56,16 +71,7 @@
         <div class="h-1 w-full shrink-0 bg-white/20" />
 
         <AScroll class="min-h-0 flex-1">
-          <p class="text-14 font-light text-white">
-            <span
-              v-for="part in textParts"
-              :key="part.key"
-              class="block"
-              :class="part.active && 'text-accent font-semibold'"
-            >
-              {{ part.text }}
-            </span>
-          </p>
+          <CardText :text="card.text" :highlight="props.highlight" />
 
           <CardOptions v-if="options.length" :options="options" class="mt-6" />
         </AScroll>
@@ -98,14 +104,16 @@ import APicture from '~/components/atoms/APicture.vue';
 import AScroll from '~/components/atoms/AScroll.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
 import CardOptions from '~/components/molecules/game/CardOptions.vue';
+import CardText from '~/components/molecules/game/CardText.vue';
+import MoveIcon from '~/svg/game/move.svg';
 import { cardType } from '~/constants/cards.js';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 import { useGameSession } from '~/composables/game/useGameSession.js';
-import { cardTextParts } from '~/composables/game/useGameHelpers.js';
 
 const props = defineProps({
   card: { type: Object, required: true },
   disabled: { type: Boolean, default: false },
+  boost: { type: Boolean, default: false },
 
   highlight: { type: Array, default: () => [] },
 
@@ -116,18 +124,14 @@ const props = defineProps({
 const { cardFighterLabel } = useGameSession();
 
 const type = computed(() => cardType(props.card.type));
+const hasScales = computed(() => (props.card.tags ?? []).includes('scales'));
 const titleInset = computed(() => (props.card.bonus ? 'pr-32' : null));
 
-const ownerLabel = computed(() => cardFighterLabel(props.card));
+const capitalize = text => (text ? text[0].toUpperCase() + text.slice(1) : text);
+
+const ownerLabel = computed(() => capitalize(cardFighterLabel(props.card)));
 const options = computed(() => props.card.options ?? []);
 const shownValue = computed(() =>
   props.value == null ? (props.card.value ?? null) : Number(props.value),
-);
-const textParts = computed(() =>
-  cardTextParts(props.card.text).map((part, index) => ({
-    ...part,
-    key: `${index}-${part.moment ?? 'text'}`,
-    active: part.moment != null && props.highlight.includes(part.moment),
-  })),
 );
 </script>

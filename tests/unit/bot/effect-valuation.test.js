@@ -23,6 +23,8 @@ const stateWith = cards => {
   owner.heroId = 'ifrit';
   owner.fighters[0].id = 'ifrit';
   owner.hand.cards = cards;
+  // сосед героя (9) пуст: свойства, которым нужен боец в шаге, не срабатывают
+  owner.fighters[1].currentPosition = 10;
   return state;
 };
 
@@ -41,7 +43,7 @@ describe('оценка эффекта: карта без свойств и ка�
   });
 
   it('карта с правилом и невыполненным условием: `known: true`, `fires: 0`, вес ноль', () => {
-    // «Прыжок в лаву» требует свободной клетки лавы: в фикстурной карте стихий нет вовсе —
+    // «Ожог» требует бойца в шаге от Ифрита: в фикстуре он один на поле —
     // условие не выполняется, и карта не играется
     const jump = ifritCards.find(card => card.id === 'ifrit_10');
     const state = stateWith([{ ...jump, instanceId: 'jump_0' }]);

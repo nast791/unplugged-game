@@ -5,7 +5,7 @@ import { computed, ref } from 'vue';
 /**
  * Клиентский фаззинг стола на четверых: партию ведёт настоящий `useGameSession` (со своей проекцией
  * `party.view` → `adaptPartyView`), а ходы делает кликами по тому, что игрок видит, — и рядом живут
- * настоящие панели (`PlayersPanel`, `CardsPanel`, `HintsWindow`, `ChoicePanel`, `BattleWindow`,
+ * настоящие панели (`HeroRail`, `HandFan`, `TopRail`, `HintsWindow`, `ChoicePanel`, `BattleWindow`,
  * `PlacementTray`), чтобы падение вида на живых данных тоже стало находкой.
  *
  * Короткая серия — в `pnpm test`; длинная — `$env:UI_SEEDS='40'; npx vitest run tests/scenarios/hotseat-ui.test.js`.
@@ -105,23 +105,6 @@ vi.mock('~/components/atoms/APicture.vue', async () => {
         return vue.h('img', { src: this.src, alt: this.alt });
       },
     },
-  };
-});
-
-vi.mock('~/composables/ui/useSwiper.js', async () => {
-  const vue = await import('vue');
-  return {
-    useSwiper: () => ({
-      containerRef: vue.ref(null),
-      slideNext: () => {},
-      slidePrev: () => {},
-      isFirstVisible: vue.ref(true),
-      isLastVisible: vue.ref(true),
-      update: () => {},
-      setEnabled: () => {},
-      reinit: () => {},
-      destroy: () => {},
-    }),
   };
 });
 

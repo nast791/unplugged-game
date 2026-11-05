@@ -596,8 +596,12 @@ const resolveCombat = partyState => {
   // Типы участников пишем в итог: бойца, погибшего в бою, из состояния уже не достать
   // (он уходит в `lost` вместе с клеткой), а свойствам «после битвы» тип нужен —
   // «Наотмашь» Дороти добивает помощника и задевает его героя.
-  const attackerType = findFighter(partyState, combat.attackerFighterId).fighter?.type ?? null;
+  const attackerFighter = findFighter(partyState, combat.attackerFighterId).fighter;
+  const attackerType = attackerFighter?.type ?? null;
   const targetType = findFighter(partyState, combat.targetFighterId).fighter?.type ?? null;
+  // дальность атакующего тоже пишем в итог: свойство «после битвы» может спрашивать,
+  // была ли атака ближней, а боец к этому времени уже мог уйти в `lost`
+  const attackerRange = Number(attackerFighter?.attackRange);
 
   partyState.lastCombat = {
     attackerPlayerId: String(combat.attackerPlayerId),
@@ -606,6 +610,7 @@ const resolveCombat = partyState => {
     targetFighterId: String(combat.targetFighterId),
     attackerType: attackerType == null ? null : String(attackerType),
     targetType: targetType == null ? null : String(targetType),
+    attackerRange: Number.isFinite(attackerRange) ? attackerRange : null,
     attackValue: outcome.attack,
     defenseValue: outcome.defense,
     combatDamage: outcome.combatDamage,

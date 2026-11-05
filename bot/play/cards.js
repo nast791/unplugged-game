@@ -282,6 +282,45 @@ const conditionsFor = (rule, state, playerId, { target = null, open = false } = 
 };
 
 /**
+ * Владелец бойца по id. Нужен там, где в списке цели смешаны свои и чужие: `FIGHTERS { withinOf }`
+ * отдаёт всех, кто стоит в радиусе, не спрашивая сторону.
+ */
+const ownerOf = (state, fighterId) =>
+  (state?.players ?? []).find(player =>
+    (player.fighters ?? []).some(fighter => String(fighter.id) === String(fighterId)),
+  );
+
+/**
+ * Урон или лечение списку бойцов. Сторона считается по владельцу каждого бойца, а не по тегу
+ * переменной целиком: «Сжечь всех дотла» бьёт и своих, и чужих, и цена своей части не должна
+ * прятаться за пользой чужой. Своему урон — цена, чужому — польза, лечение — наоборот.
+ */
+const listHealthWorth = (state, playerId, resolved) => {
+  const delta = num(resolved?.delta);
+  const ids = Array.isArray(resolved?.fighterIds) ? resolved.fighterIds : null;
+  if (!delta || !ids?.length) return null;
+
+  let value = 0;
+  let cost = 0;
+  for (const entry of ids) {
+    const id = entry != null && typeof entry === 'object' ? (entry.fighterId ?? entry.id) : entry;
+    if (id == null) continue;
+    const owner = ownerOf(state, id);
+    const mine = owner == null || String(owner.id) === String(playerId);
+    if (mine) {
+      if (delta > 0) value += delta;
+      else cost += Math.abs(delta);
+    } else if (delta < 0) {
+      value += 2 * Math.abs(delta);
+    } else {
+      cost += delta;
+    }
+  }
+
+  return { value, cost };
+};
+
+/**
  * Польза **эффектной** карты в этой позиции: сколько она сделает, если сыграть её сейчас.
  *
  * Ценность считается по правилам момента `effect` (сама карта, не бой): условия проверяет движок теми
@@ -314,7 +353,10 @@ export const effectWorth = (card, state, playerId, { target = null } = {}) => {
       } catch {
         continue; // переменная правила пришла не из условий — обещать нечего
       }
-      const worth = actionWorth(action, sides, resolved);
+      const worth =
+        action.action === 'SET_HEALTH'
+          ? (listHealthWorth(state, playerId, resolved) ?? actionWorth(action, sides, resolved))
+          : actionWorth(action, sides, resolved);
       value += worth.value ?? 0;
       cost += worth.cost ?? 0;
     }

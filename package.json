@@ -36,7 +36,6 @@
     "prettier": "3.9.5",
     "prettier-plugin-tailwindcss": "0.8.0",
     "reka-ui": "2.10.5",
-    "swiper": "^14.3.0",
     "tailwind-merge": "3.6.0",
     "vite-svg-loader": "5.1.1",
     "vue": "3.5.39",

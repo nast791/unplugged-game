@@ -1,5 +1,5 @@
 import { runAction, runUi } from '#shared/publicApi.js';
-import { playerFightersPlaced } from '#shared/helpers/placement.js';
+import { nodeAllTerrains, playerFightersPlaced } from '#shared/helpers/placement.js';
 import {
   windowComplete as targetingComplete,
   windowPicked as targetingPicked,
@@ -251,7 +251,7 @@ const sourceDefinition = (state, playerId, source) => {
 };
 
 /**
- * Свой боец, которого переносит окно клеток («Путь на закат», «Прыжок в лаву», карта-телепорт): карта пишет
+ * Свой боец, которого переносит окно клеток («Путь на закат», карта-телепорт): карта пишет
  * перенос в правиле `picked` (`SET_FIGHTER_CELL`, `cellId: '$picked'`), оттуда и берём бойца. Чужой перенос
  * не оцениваем: врага выгодно ставить под удар, а не выводить из-под него.
  */
@@ -382,14 +382,9 @@ const movementFighters = (state, playerId, movement) => {
   return own.filter(fighter => allowed.has(String(fighter.id))).map(fighter => fighter.id);
 };
 
-/** Стихии клетки: стихия — строка или массив областей (`sharesArea`), поэтому приводим к списку. */
-const terrainsOf = (state, cellId) => {
-  const terrain = (state.map?.nodes ?? []).find(
-    node => String(node.id) === String(cellId),
-  )?.terrain;
-  if (Array.isArray(terrain)) return terrain.map(String);
-  return terrain == null ? [] : [String(terrain)];
-};
+/** Стихии клетки: постоянные и временные (дополнительный кусок до конца хода) — одним списком. */
+const terrainsOf = (state, cellId) =>
+  nodeAllTerrains((state.map?.nodes ?? []).find(node => String(node.id) === String(cellId)));
 
 /** Стоит ли клетка на «своей» стихии героя: стихии из паспорта против стихий клетки. */
 const onAffinity = (state, cellId, affinity) => {

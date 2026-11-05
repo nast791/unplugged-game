@@ -9,7 +9,7 @@ import {
   zoneCards,
 } from '#shared/helpers/base.js';
 import { cardBonus, cardKey } from '#shared/helpers/cards.js';
-import { findNode } from '#shared/helpers/placement.js';
+import { findNode, sharesArea } from '#shared/helpers/placement.js';
 
 /** Активный игрок хода. */
 export const activePlayerId = partyState => partyState.turn?.playerId ?? null;
@@ -255,6 +255,18 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
   if (movementFighterRejection(partyState, movement, playerId, fighterId)) return [];
 
   const budget = movementBudget(fighter, movement);
+  const occupied = occupiedCellIds(partyState, fighterId);
+
+  // Постановка в текущую область (`areaOnly`): это не шаг, а перенос — радиус не считается,
+  // важна только стихия, в которой боец стоит сейчас. Так «Зал суда» ставит Анубиса или Амат.
+  if (movement.areaOnly === true) {
+    const areaCells = (partyState.map?.nodes ?? [])
+      .map(node => String(node.id))
+      .filter(cellId => cellId !== String(fighter.currentPosition) && !occupied.has(cellId))
+      .filter(cellId => sharesArea(partyState, fighter.currentPosition, cellId));
+    return [...new Set(areaCells)].sort(byCellId);
+  }
+
   if (budget <= 0) return [];
 
   const origin = movement.origins?.[String(fighterId)] ?? fighter.currentPosition;
@@ -264,7 +276,6 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
     budget,
     blockedCellsForStep(partyState, player, fighterId, movement),
   );
-  const occupied = occupiedCellIds(partyState, fighterId);
 
   const cells = [...reach]
     .map(String)
@@ -299,8 +310,11 @@ export const movementRejection = (partyState, playerId, fighterId, cellId) => {
     return `у бойца ${fighterId} нет доступных клеток`;
   }
   if (!destinations.includes(String(cellId))) {
-    return occupiedCellIds(partyState, fighterId).has(String(cellId))
-      ? `клетка ${cellId} занята`
+    if (occupiedCellIds(partyState, fighterId).has(String(cellId))) {
+      return `клетка ${cellId} занята`;
+    }
+    return movement.areaOnly === true
+      ? `клетка ${cellId} вне области бойца`
       : `клетка ${cellId} вне радиуса перемещения`;
   }
 

@@ -170,7 +170,7 @@ const projectPlayer = (player, state, you) => {
    * Позиции на расстановке прячем у всех, кроме смотрящего (правило игры): стороны расставляются
    * одновременно, и до конца расстановки никто не видит чужую. Флаг готовности (`placementReady`) при
    * этом открыт — по нему карточка снимает плашку «Расстановка», а «не на поле» решает не позиция,
-   * а намерение карточки (`PlayerCard`: вне расстановки признак не работает вовсе).
+   * а намерение места (`HeroRail`: вне расстановки признак не работает вовсе).
    */
   const hidePos = state.hook === 'gameStart' && rel !== 'self';
   const movementOwnerId = state.movement?.playerId == null ? null : String(state.movement.playerId);
@@ -204,6 +204,9 @@ const projectPlayer = (player, state, you) => {
         }
         return { ...fighter };
       });
+    } else if (key === 'lost') {
+      // Павшие — публичная память карточки: их место не на поле (`currentPosition: null`), копии как у бойцов.
+      out.lost = structuredClone(player.lost ?? []);
     } else if (key === 'items') {
       // Копии в «скрытых» состояниях наружу не отдаём: у Снежной королевы так спрятан пул осколков —
       // игрок и противник видят только собранные (`docs/heroes/snow-queen/passport.md` §5).

@@ -43,7 +43,7 @@ const lineMap = terrain => ({
   ],
 });
 
-/** Ифрит на 2 (стихия `terrain`), Бета на 3 вплотную. */
+/** Ифрит на 2 (стихия `terrain`), Бета на 3 вплотную с картой в руке. */
 const buildState = ({ terrain = 'ice' } = {}) =>
   createState({
     phase: PHASES.turn,
@@ -56,7 +56,9 @@ const buildState = ({ terrain = 'ice' } = {}) =>
         [unit('ifrit', 2, 14, { attackRange: 3 })],
         [{ ...card, instanceId: 'ifrit_02_1' }],
       ),
-      slot('1', 'Бета', 2, [unit('beta', 3, 13)]),
+      slot('1', 'Бета', 2, [unit('beta', 3, 13)], [
+        { id: 'ifbat', title: 'Карта Беты', type: 'attack', value: 2, bonus: 1 },
+      ]),
     ],
     turn: { index: 1, playerId: '0', actedRound: ['0'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -77,7 +79,7 @@ const fighterOf = (state, playerId, fighterId) =>
 
 describe('карта ifrit_02 «Жар из-под земли»', () => {
   it('описана правилами, моменты — из списка', () => {
-    expect(card.rules.map(rule => rule.moment)).toEqual(['duringCombat', 'duringCombat']);
+    expect(card.rules.map(rule => rule.moment)).toEqual(['afterCombat']);
     for (const rule of card.rules) expect(isMoment(rule.moment)).toBe(true);
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({
@@ -91,39 +93,44 @@ describe('карта ifrit_02 «Жар из-под земли»', () => {
       fact: 'FIGHTERS',
       params: { fighterIds: ['ifrit'], terrain: 'lava' },
     });
-    expect(card.rules[0].then[0]).toMatchObject({ action: 'SET_COMBAT', delta: 2 });
-    expect(card.rules[1].then[0]).toMatchObject({ action: 'SET_COMBAT', delta: 1 });
+    expect(card.rules[0].then[0]).toMatchObject({
+      action: 'SET_HEALTH',
+      fighterIds: '$foes',
+      delta: -2,
+    });
+    expect(card.rules[0].then[1]).toMatchObject({
+      action: 'SET_CARDS',
+      of: '$enemy',
+      op: 'discard',
+      random: true,
+      count: 1,
+    });
   });
 
-  it('Ифрит на лаве — +2, атака 6', () => {
+  it('Ифрит на лаве: после битвы 2 урона бойцу и сброс случайной карты', () => {
     const after = battle(buildState({ terrain: 'lava' }));
 
-    expect(after.lastCombat.attackValue).toBe(6);
-    expect(after.lastCombat.combatDamage).toBe(6);
+    expect(after.lastCombat.attackValue).toBe(4);
+    expect(after.lastCombat.combatDamage).toBe(4);
     expect(fighterOf(after, '1', 'beta').currentHp).toBe(7);
+    expect(player(after, '1').hand.cards).toEqual([]);
+    expect(player(after, '1').discard.cards.map(entry => entry.id)).toEqual(['ifbat']);
   });
 
-  it('Ифрит в пустыне — +1, атака 5', () => {
-    const after = battle(buildState({ terrain: 'desert' }));
-
-    expect(after.lastCombat.attackValue).toBe(5);
-    expect(after.lastCombat.combatDamage).toBe(5);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
-  });
-
-  it('вне лавы и пустыни свойство не срабатывает: атака 4', () => {
+  it('вне лавы свойство не срабатывает: только урон боем', () => {
     const after = battle(buildState({ terrain: 'ice' }));
 
     expect(after.lastCombat.attackValue).toBe(4);
     expect(after.lastCombat.combatDamage).toBe(4);
     expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
+    expect(player(after, '1').hand.cards.map(entry => entry.id)).toEqual(['ifbat']);
   });
 
-  it('двухцветная клетка лава+пустыня включает оба правила: 4 + 2 + 1 = 7', () => {
-    const after = battle(buildState({ terrain: ['lava', 'desert'] }));
+  it('пустыня больше не усиливает карту: значение и урон прежние', () => {
+    const after = battle(buildState({ terrain: 'desert' }));
 
-    expect(after.lastCombat.attackValue).toBe(7);
-    expect(after.lastCombat.combatDamage).toBe(7);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(6);
+    expect(after.lastCombat.attackValue).toBe(4);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
+    expect(player(after, '1').hand.cards.map(entry => entry.id)).toEqual(['ifbat']);
   });
 });

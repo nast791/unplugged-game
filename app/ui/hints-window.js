@@ -3,7 +3,7 @@ export default {
   hints_glow:
     'from-info/25 via-violet/20 to-pink/25 blur-32 pointer-events-none absolute -inset-20 rounded-full bg-gradient-to-br',
   hints_frame:
-    'rounded-6 from-info/40 to-pink/45 relative bg-gradient-to-br via-white/10 p-[2px] shadow-2xl',
+    'rounded-6 from-info/40 to-pink/45 relative bg-gradient-to-br via-white/10 p-2 shadow-2xl',
   hints_body: 'rounded-5 bg-surface/95 backdrop-blur-16 flex items-start gap-14 px-20 py-14',
 
   hints_icon: 'size-22 shrink-0',

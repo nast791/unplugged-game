@@ -29,27 +29,98 @@ export const flightTarget = (from, to) => ({
 const arcOf = (from, to) =>
   to.x >= from.x ? 0 : -Math.min(CARD_FLIGHT.arcMax, Math.abs(to.x - from.x) * CARD_FLIGHT.arc);
 
-export const runCardFlight = ({ pilot, flight, duration, onDone }) => {
+// Переворот карты на колоде: до половины видна рубашка, после — лицо; карта при этом приподнимается.
+export const flipFrame = (t = 0) => {
+  const progress = Math.min(1, Math.max(0, Number(t) || 0));
+  return {
+    scaleX: Math.abs(Math.cos(Math.PI * progress)),
+    back: progress < 0.5,
+    face: progress >= 0.5,
+    lift: Math.sin(Math.PI * progress) * CARD_FLIGHT.flipLift,
+  };
+};
+
+// Путь добора: карта летит не в ладонь, а к точке над ней, и последний отрезок падает сверху вниз.
+export const drawPath = (from, to) => {
+  const target = flightTarget(from, to);
+  const drop = Math.min(CARD_FLIGHT.drop, Math.max(0, target.y));
+  return { target, approach: { x: target.x, y: target.y - drop } };
+};
+
+const easeOut = value => 1 - (1 - value) ** 3;
+
+// Карта на колоде лежит её размером, а летит уже своим: переворот начинается с этого масштаба.
+export const deckStartScale = ({ from, to }) => {
+  const ratio = (deck, card) => (Number(card) > 0 ? Number(deck) / Number(card) : 1);
+  const scale = Math.min(ratio(from?.width, to?.width), ratio(from?.height, to?.height));
+  return Math.min(1, Math.max(0.3, scale));
+};
+
+export const runCardFlight = ({ pilot, flight, timings, onDone }) => {
   if (!pilot) return () => {};
 
-  const from = {
-    x: flight.from.x,
-    y: flight.from.y,
-    width: flight.from.width,
-    height: flight.from.height,
-  };
-  const target = flightTarget(from, flight.to);
+  const flipMs = flight.flip ? Math.max(0, Number(timings?.flip) || 0) : 0;
+  const travelMs = Math.max(0, Number(timings?.travel) || 0);
+  const dropMs = Math.max(0, Number(timings?.drop) || 0);
+  const total = flipMs + travelMs + dropMs;
+
+  const back = pilot.querySelector?.('[data-flight-back]') ?? null;
+  const face = pilot.querySelector?.('[data-flight-card]') ?? null;
+
+  const from = { x: flight.from.x, y: flight.from.y };
+  const { target, approach } = drawPath(from, flight.to);
+  const arc = arcOf(flight.from, flight.to);
   const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
   let frame = null;
 
-  const paint = progress => {
-    const point = flightFrame({ x: from.x, y: from.y }, { x: target.x, y: target.y }, progress, {
-      arc: arcOf(flight.from, flight.to),
-      lift: CARD_FLIGHT.lift,
-    });
-    const scale = 1 - CARD_FLIGHT.scale * progress;
+  const showSides = (backVisible, scaleX) => {
+    if (back) {
+      back.style.display = backVisible ? '' : 'none';
+      back.style.transform = `scaleX(${scaleX})`;
+    }
+    if (face) {
+      face.style.display = backVisible ? 'none' : '';
+      face.style.transform = `scaleX(${scaleX})`;
+    }
+  };
+
+  const place = (point, scale, opacity = 1) => {
     pilot.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) scale(${scale})`;
-    pilot.style.opacity = String(point.opacity);
+    pilot.style.opacity = String(opacity);
+  };
+
+  const progressScale = progress => 1 - CARD_FLIGHT.scale * Math.min(1, Math.max(0, progress));
+  const flipStart = deckStartScale(flight);
+
+  // На колоде карта ещё размером с колоду: за переворот она вырастает до своего настоящего размера.
+  const paintFlip = progress => {
+    const flip = flipFrame(progress);
+    showSides(flip.back, flip.scaleX);
+    const scale =
+      flipStart + (progressScale(total ? flipMs / total : 0) - flipStart) * easeOut(progress);
+    place({ x: from.x, y: from.y - flip.lift }, scale, 1);
+  };
+
+  const paintTravel = progress => {
+    const point = flightFrame(from, approach, progress, { arc, lift: CARD_FLIGHT.lift });
+    showSides(false, 1);
+    place(point, progressScale(total ? (flipMs + travelMs * progress) / total : 0), point.opacity);
+  };
+
+  const paintDrop = progress => {
+    const eased = easeOut(progress);
+    showSides(false, 1);
+    place(
+      { x: target.x, y: approach.y + (target.y - approach.y) * eased },
+      progressScale(total ? (flipMs + travelMs + dropMs * progress) / total : 0),
+      1 - 0.15 * progress,
+    );
+  };
+
+  const paint = elapsed => {
+    if (elapsed < flipMs) paintFlip(flipMs ? elapsed / flipMs : 1);
+    else if (elapsed < flipMs + travelMs) paintTravel(travelMs ? (elapsed - flipMs) / travelMs : 1);
+    else paintDrop(dropMs ? (elapsed - flipMs - travelMs) / dropMs : 1);
   };
 
   pilot.style.opacity = '1';
@@ -57,9 +128,9 @@ export const runCardFlight = ({ pilot, flight, duration, onDone }) => {
 
   const tick = now => {
     const elapsed = (typeof now === 'number' ? now : Date.now()) - started;
-    const progress = duration > 0 ? Math.min(1, elapsed / duration) : 1;
-    paint(progress);
-    if (progress < 1) {
+    const time = Math.min(total, Math.max(0, elapsed));
+    paint(time);
+    if (total > 0 && elapsed < total) {
       frame = requestAnimationFrame(tick);
       return;
     }
@@ -69,7 +140,7 @@ export const runCardFlight = ({ pilot, flight, duration, onDone }) => {
 
   if (typeof requestAnimationFrame === 'function') frame = requestAnimationFrame(tick);
   else {
-    paint(1);
+    paint(total);
     onDone?.();
   }
 
@@ -140,7 +211,7 @@ export const useCardFlights = () => {
     }
   };
 
-  const launch = (card, from, to, markup) => {
+  const launch = (card, from, to, markup, options = {}) => {
     if (!from || !to) return;
     flights.value = [
       ...flights.value,
@@ -148,6 +219,7 @@ export const useCardFlights = () => {
         id: (seq += 1),
         card,
         markup,
+        flip: options.flip === true,
         from: { x: from.left, y: from.top, width: from.width, height: from.height },
         to: { x: to.left, y: to.top, width: to.width, height: to.height },
       },
@@ -174,7 +246,7 @@ export const useCardFlights = () => {
     for (const [index, { key, entry }] of added.entries()) {
       if (index) await wait(index * CARD_FLIGHT.stagger);
       const to = rectOf(handSelector(key)) ?? after.deck;
-      launch(entry.card, after.deck, to, entry.markup);
+      launch(entry.card, after.deck, to, entry.markup, { flip: true });
     }
 
     for (const [index, { entry }] of removed.entries()) {
@@ -214,7 +286,11 @@ export const useCardFlights = () => {
   return {
     flights,
     finish,
-    flightDuration: () => duration('cardFlight'),
+    flightTimings: () => ({
+      flip: duration('cardFlip'),
+      travel: duration('cardFlight'),
+      drop: duration('cardDrop'),
+    }),
   };
 };
 

@@ -52,6 +52,7 @@ const props = defineProps({
   loading: { type: String, default: '' },
   modifiers: { type: Object, default: () => ({}) },
   preset: { type: String, default: 'picture' },
+  provider: { type: String, default: '' },
   ui: { type: Object, default: () => ({}) },
 });
 
@@ -76,12 +77,19 @@ const rootAttrs = computed(() => {
   return rest;
 });
 
-const url = (value, extra = {}) => img(value, { ...props.modifiers, ...extra });
+/** Провайдер картинки: по умолчанию общий (ipx), у адресов с готовым файлом — «none» (без пережатия). */
+const imageOptions = computed(() => (props.provider ? { provider: props.provider } : undefined));
+
+const url = (value, extra = {}) => img(value, { ...props.modifiers, ...extra }, imageOptions.value);
 
 const srcset = (value, extra = {}) => {
   const modifiers = { ...props.modifiers, ...extra };
   if (!value || !modifiers.width) return url(value, extra);
-  return img.getSizes(value, { modifiers, densities: props.densities.join(' ') }).srcset;
+  return img.getSizes(value, {
+    modifiers,
+    densities: props.densities.join(' '),
+    provider: props.provider || undefined,
+  }).srcset;
 };
 
 const sources = computed(() => {

@@ -199,6 +199,7 @@ describe('SET_MOVEMENT', () => {
       moves: [],
       source: null,
       playedCard: null,
+      terrainOnStep: null,
     });
     expect(() => SET_MOVEMENT(state, { op: 'open', playerId: '0' })).toThrow(/уже открыто/);
   });
@@ -495,6 +496,8 @@ describe('SET_COMBAT: защита и расчёт', () => {
       // типы участников пишутся в итог: погибшего бойца из состояния уже не достать
       attackerType: 'hero',
       targetType: 'hero',
+      // дальность атакующего — в итоге боя: свойство «после битвы» спросит её, когда боец уже мог погибнуть
+      attackerRange: 2,
       attackValue: 4,
       defenseValue: 3,
       combatDamage: 1,

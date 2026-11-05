@@ -113,6 +113,13 @@ describe('карта dorothy_08 «Наотмашь»', () => {
     expect(fighterOf(after, '1', 'beta').currentHp).toBe(12);
   });
 
+  it('у каждого свойства в ленте свой урон: 2 бойцу и 1 его герою', () => {
+    const after = battle(buildState({ assistant: true, assistantHp: 9 }));
+
+    // окно битвы показывает урон свойства рядом с самим свойством, а не только сумму
+    expect(after.lastCombat.effects.map(step => step.damage)).toEqual([2, 1]);
+  });
+
   it('помощник погиб уже в бою — тип берётся из записи боя, герой всё равно получает 1', () => {
     const after = battle(buildState({ assistant: true, assistantHp: 2 }));
 

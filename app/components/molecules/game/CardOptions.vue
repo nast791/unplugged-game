@@ -4,7 +4,7 @@
       <button
         v-if="interactive"
         type="button"
-        class="flex w-full items-start gap-6 text-left disabled:cursor-not-allowed"
+        class="flex w-full items-center gap-6 text-left disabled:cursor-not-allowed"
         :class="
           option.disabled
             ? 'text-dim'

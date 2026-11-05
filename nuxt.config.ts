@@ -27,7 +27,6 @@ export default defineNuxtConfig({
   features: {
     devLogs: false,
   },
-  /** `ui.screens` — из темы; пресеты компонентов добавляет `app/app.config.js` (Nuxt их домешивает). */
   appConfig: {
     ui: {
       screens: parseBreakpoints(stylesCss),
@@ -37,17 +36,16 @@ export default defineNuxtConfig({
   alias: {
     '#shared': fileURLToPath(new URL('./shared', import.meta.url)),
   },
-  /**
-   * **Автоимпорта компонентов нет** (решение владельца): `components: []` отключает обход каталогов, и
-   * каждый компонент импортируется там, где используется, — `import AButton from '~/components/atoms/AButton.vue'`.
-   * Так видно, откуда взялся тег, и не бывает двух имён у одного файла (префикс пути против имени файла).
-   *
-   * Ядро и модули этой настройки не касаются: `NuxtLink`, `ClientOnly`, `NuxtPage`, `NuxtLayout` приходят
-   * из Nuxt, `Icon` — из `@nuxt/icon` (у них свои `addComponent`, публичного импорта у них нет).
-   * `v-stage` и прочие компоненты konva ставит плагин `app/plugins/konva.client.js` (`vue-konva`).
-   */
   components: [],
-  /** Версия сборки в подвале лобби: `npm_package_version` есть только при запуске через pnpm-скрипты. */
+  /**
+   * Картинки паков героев отдаёт API-маршрут по адресу с версией в строке запроса (`?v=23`),
+   * а ipx такой адрес не берёт (он ждёт файл из `public/`). Провайдер `none` отдаёт адрес как есть.
+   */
+  image: {
+    providers: {
+      none: { provider: 'none' },
+    },
+  },
   runtimeConfig: {
     public: {
       appVersion: process.env.npm_package_version || '0.0.0-dev',
@@ -77,34 +75,14 @@ export default defineNuxtConfig({
   nitro: {
     compressPublicAssets: true,
     sourceMap: false,
-    // Хост-код партии (actions/events/helpers) — зона проекта, не engine.
     externals: {
       inline: [/[\\/]shared[\\/]/],
     },
     watch: ['shared'],
   },
-  /**
-   * Страница партии живёт на состоянии вкладки (hotseat: состояние партии лежит в клиенте), поэтому
-   * рендерить её на сервере нечем: серверный `useState` пуст, `bootstrap` падает, и сервер отдавал
-   * разметку «партии нет», а клиент после восстановления из sessionStorage — саму игру. Отсюда ошибка
-   * гидратации. Пусть страница рендерится только на клиенте.
-   */
   routeRules: {
     '/game': { ssr: false },
-    /**
-     * Страница героя — как партия: данные приходят запросом (`/api/content/heroes/{id}`), разметку
-     * собирает клиент.
-     *
-     * `ssr: false` тут не только по этой причине: в текущей конфигурации SSR находит **только** `/`,
-     * а любой другой маршрут отвечает `Page not found`, пока у него не выключен SSR. Проверено на чистом
-     * кэше сборки (`node_modules/.cache/nuxt` удалён) и на трёх пробных страницах — `/probe-flat.vue`,
-     * `probe-dir/index.vue` и `heroes/[id].vue`: сканер страниц их видит (`pages:extend` перечисляет
-     * маршруты), vue-router их матчит, а SSR-рендер падает в `pages/runtime/plugins/router.js:afterEach`
-     * с пустым `to.matched`. Отключение `payloadExtraction` и `@nuxt/test-utils/module` не помогло.
-     * Разбираться с этим отдельной задачей, пока — `ssr: false`, как у `/game`.
-     */
     '/heroes/**': { ssr: false },
-    /** Файлы шрифтов не хешируются сборкой: кэшируем папку, новая версия приезжает новым именем. */
     '/fonts/**': { headers: { 'cache-control': 'public, max-age=31536000, immutable' } },
   },
   app: {
@@ -125,7 +103,6 @@ export default defineNuxtConfig({
         { rel: 'alternate icon', type: 'image/x-icon', href: '/favicon.ico' },
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/favicon-180.png' },
         { rel: 'manifest', href: '/manifest.json' },
-        /** Греем кириллицу и латиницу: интерфейс русский, цифры и латинские имена — в латинице. */
         {
           rel: 'preload',
           as: 'font',
@@ -171,14 +148,6 @@ export default defineNuxtConfig({
     typedPages: true,
   },
   icon: {
-    /**
-     * Иконки — SVG из локальных коллекций (`@iconify-json/lucide`, `@iconify-json/game-icons`,
-     * `@iconify-json/arcticons`, `@iconify-json/material-symbols`): без сети и без растровых картинок
-     * (`docs/ui-plan.md` §2.6). `clientBundle.scan` берёт имена из шаблонов, а значки из контента
-     * (предметы, тип карты) приходят строками — их отдаёт серверная сборка коллекции.
-     * Стрелки листалки руки — из `material-symbols` (решение владельца), поэтому коллекция стоит и в
-     * серверной сборке, и в клиентской: SVG рисует клиент.
-     */
     serverBundle: { collections: ['lucide', 'game-icons', 'material-symbols'] },
     clientBundle: {
       scan: true,

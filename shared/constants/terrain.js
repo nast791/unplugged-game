@@ -1,5 +1,5 @@
 /**
- * Десять стихий поля. У клетки основная стихия (`node.terrain`) задаёт цвет заливки; у клеток
+ * Стихии поля. У клетки основная стихия (`node.terrain`) задаёт цвет заливки; у клеток
  * на стыке зон стихий две-три (тогда рисуем сектора). Палитра и правила показа — `docs/terrain.md`.
  *
  * Цвета яркие и контрастные: на доске стихии должны различаться с первого взгляда, как на референсах.
@@ -26,10 +26,20 @@ export const TERRAIN = {
   crystal: { id: 'crystal', name: 'Кристаллы', color: '#B9A6E8', pattern: 'shards' },
   swamp: { id: 'swamp', name: 'Болото', color: '#8FA83E', pattern: 'moss' },
   fungus: { id: 'fungus', name: 'Грибница', color: '#C77BA6', pattern: 'spores' },
-  steppe: { id: 'steppe', name: 'Степь', color: '#D9B45C', pattern: 'grasses' },
+  poppy: { id: 'poppy', name: 'Маковые поля', color: '#6E9A4E', pattern: 'petals', patternColor: '#C0392B' },
+  dead: { id: 'dead', name: 'Мёртвые земли', color: '#8C8478', pattern: 'ash', patternColor: '#4A443C' },
 };
 
 export const TERRAIN_IDS = Object.keys(TERRAIN);
+
+/**
+ * Земли, которые генератор кладёт на поле. Тип, выключенный здесь, остаётся в палитре и в текстурах
+ * (правила, разметка, доска его знают), но на новых картах не появляется — решение владельца.
+ * Маковые поля убраны из генерации, пока не готов вид поля.
+ */
+export const MAP_TERRAIN_EXCLUDED = ['poppy'];
+
+export const MAP_TERRAIN_IDS = TERRAIN_IDS.filter(id => !MAP_TERRAIN_EXCLUDED.includes(id));
 
 export const isTerrainId = id => Object.prototype.hasOwnProperty.call(TERRAIN, String(id ?? ''));
 

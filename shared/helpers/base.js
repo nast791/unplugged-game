@@ -11,6 +11,20 @@ export const seatIndex = (partyState, playerId) => {
 export const findPlayer = (partyState, playerId) =>
   partyState.players?.find(entry => String(entry.id) === String(playerId)) ?? null;
 
+/**
+ * Как называть игрока в текстах для игрока: имя места из настройки стола, а без него — имя героя
+ * (у места компьютера своего имени нет, и герой — единственное, чем оно себя называет).
+ */
+export const playerLabel = (partyState, playerId) => {
+  const player = findPlayer(partyState, playerId);
+  if (!player) return String(playerId ?? '—');
+  const own = String(player.name ?? '').trim();
+  if (own) return own;
+  const fighters = player.fighters ?? [];
+  const hero = fighters.find(fighter => fighter.type === 'hero') ?? fighters[0];
+  return String(hero?.name ?? player.id ?? playerId);
+};
+
 /** Карты зоны — и массив, и { visibility, cards }. */
 export const zoneCards = zone => {
   if (Array.isArray(zone)) return zone;

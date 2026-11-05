@@ -1,4 +1,5 @@
 import { cardFighterId, cardTags, fighterMatchesBinding } from '#shared/helpers/cards.js';
+import { nodeAllTerrains } from '#shared/helpers/placement.js';
 import { cardPromise } from './cards.js';
 import { cardIdOf } from './metrics.js';
 import { cardById, resourceTags, terrainAffinity } from './pool.js';
@@ -228,9 +229,7 @@ export const actionFeatures = (state, playerId, option, { priorScale = 1 } = {})
 
   if (kind === 'cell') {
     const node = (state.map?.nodes ?? []).find(cell => String(cell.id) === String(action.id));
-    const terrains = Array.isArray(node?.terrain)
-      ? node.terrain.map(String)
-      : [String(node?.terrain)];
+    const terrains = nodeAllTerrains(node);
     if (terrains.some(terrain => affinity.has(terrain))) vector[17] = 1;
 
     // Позиция клетки: куда ведёт шаг. Дистанции берутся одним обходом, «нет никого» — это 6 (далеко),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction } from '#shared/publicApi.js';
+import { runAction, runUi } from '#shared/publicApi.js';
+import { fighterClickIntent } from '#shared/helpers/ui.js';
 import { movableFighterIds, movementDestinations } from '#shared/helpers/turn.js';
 import dorothyCards from '../../../server/content/heroes/dorothy/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
@@ -125,6 +126,20 @@ describe('карта dorothy_11 «Золотая шапка»', () => {
     expect(fighterOf(finished, '0', 'dorothy').currentPosition).toBe(2);
     expect(fighterOf(finished, '0', 'toto').currentPosition).toBe(5);
     expect(player(finished, '0').discard.cards.map(entry => entry.id)).toEqual(['dorothy_11']);
+  });
+
+  it('клетки пары рамкой не метятся: бойца выбирают кликом по фишке, клетки — после выбора', () => {
+    const played = play(buildState());
+
+    // у окна эффекта своих бойцов в подсветке нет: фигуры Дороти и Тото остаются без рамки
+    expect(runUi(played, '0').highlightedFighterIds).toEqual([]);
+    // клик по фишке — это выбор, а не ответ движку; клетки появляются у выбранного бойца
+    expect(fighterClickIntent(runUi(played, '0'), 'dorothy', ['dorothy', 'toto'])).toBe('select');
+    expect(runUi(played, '0', { selectedFighterId: 'toto' }).highlightedCellIds).toEqual([
+      '2',
+      '4',
+      '5',
+    ]);
   });
 
   it('Тото убит — шапка несёт одну Дороти', () => {

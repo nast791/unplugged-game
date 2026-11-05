@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { occupiedCellIds } from '#shared/helpers/turn.js';
 import { startAreaCellIds } from '#shared/helpers/placement.js';
-import { runAction } from '#shared/publicApi.js';
+import { runAction, runLifecycle } from '#shared/publicApi.js';
 import { createGame } from '../../../server/create.js';
 import { load, view as partyView } from '../../../server/party.js';
-import { handoverTarget, placementActor } from '../../../app/composables/game/useGameSession.js';
-import { player } from '../../fixtures/state.js';
+import { adaptPartyView } from '../../../app/composables/game/useGameView.js';
+import {
+  actingPlayerOf,
+  handoverTarget,
+  placementActor,
+} from '../../../app/composables/game/useGameSession.js';
+import { createState, player } from '../../fixtures/state.js';
 
 /**
  * Экран за одним столом ведёт тот, чьё решение сейчас. В ходу это действующий игрок (`actingPlayerId`),
@@ -146,6 +151,104 @@ const placeAll = (state, playerId) => {
   }
   return run;
 };
+
+describe('actingPlayerOf', () => {
+  const ended = {
+    phase: 'turnEnd',
+    currentPlayer: 'dorothy',
+    targeting: { playerId: 'dorothy', source: 'skill', required: false },
+  };
+
+  it('окно конца хода действует за хозяином хода, а не за смотрящим', () => {
+    expect(actingPlayerOf(ended)).toBe('dorothy');
+  });
+
+  it('окно боя важнее текущего игрока: защита и карта боя', () => {
+    expect(
+      actingPlayerOf({
+        phase: 'turn',
+        currentPlayer: 'dorothy',
+        combat: { stage: 'defense', defenderPlayerId: 'ifrit' },
+      }),
+    ).toBe('ifrit');
+    expect(
+      actingPlayerOf({
+        phase: 'turn',
+        currentPlayer: 'dorothy',
+        combat: { choice: { playerId: 'ifrit' } },
+      }),
+    ).toBe('ifrit');
+  });
+
+  it('в обычном ходу действует его игрок, а в законченной партии — никто', () => {
+    expect(actingPlayerOf({ phase: 'turn', currentPlayer: 'dorothy' })).toBe('dorothy');
+    expect(actingPlayerOf({ phase: 'gameEnd', currentPlayer: 'dorothy' })).toBeNull();
+    expect(actingPlayerOf(null)).toBeNull();
+  });
+});
+
+/** Способность конца хода Дороти: окно по паре открыто, но хода в партии уже нет. */
+const pairSkill = {
+  id: 'skill',
+  type: 'skill',
+  fighter: 'alpha',
+  title: 'Серебряные башмачки',
+  text: 'Т',
+  rules: [
+    {
+      moment: 'turnEnd',
+      then: [
+        {
+          action: 'SET_TARGETING',
+          op: 'open',
+          candidates: ['alpha', 'pawn'],
+          count: 1,
+          required: false,
+        },
+      ],
+    },
+  ],
+};
+
+describe('окно способности конца хода не запирает экран', () => {
+  const ended = () => {
+    const state = createState({ actionsLeft: 0 });
+    player(state, '0').skill = structuredClone(pairSkill);
+    return runLifecycle(state);
+  };
+
+  it('защитнику, которым смотрели, кликать нечего — окно ждёт хозяина хода', () => {
+    const state = ended();
+    expect(state.hook).toBe('turnEnd');
+
+    const defender = partyView(state, '1');
+    expect(defender.ui.phase).toBeNull();
+    expect(defender.ui.controls).toBeUndefined();
+  });
+
+  it('экран уходит хозяину хода, и он может закончить умение', () => {
+    const state = ended();
+    const view = adaptPartyView(partyView(state, '1'));
+
+    expect(actingPlayerOf(view)).toBe('0');
+    expect(
+      handoverTarget({
+        seating: 'local',
+        players: view.players,
+        actingId: actingPlayerOf(view),
+        viewerId: '1',
+      }),
+    ).toBe('0');
+    expect(partyView(state, '0').ui.controls.ok.label).toBe('Завершить умение');
+  });
+
+  it('после отказа окно закрывается и экран уходит следующему игроку', () => {
+    const closed = runAction(ended(), { type: 'UI_OK', playerId: '0' });
+
+    expect(closed.hook).toBe('turn');
+    expect(actingPlayerOf(adaptPartyView(partyView(closed, '0')))).toBe('1');
+  });
+});
 
 describe('расстановка двух людей за одним экраном', () => {
   it('после «ОК» первого экран уходит второму, а его «ОК» закрывает расстановку', () => {

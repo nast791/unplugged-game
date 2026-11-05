@@ -295,6 +295,19 @@ describe('польза эффекта: карта впустую не играе
     expect(effectWorth(card, state, '0').fires).toBe(0);
   });
 
+  it('Ифрит: «Сжечь всех дотла» считает урон по владельцу каждого бойца в радиусе', () => {
+    const state = stateOf();
+    const card = cardById('ifrit_14');
+    // фикстура: свой боец на 9, чужой на 10, герой-Ифрит на 8 — оба в двух шагах
+    const worth = effectWorth(card, state, '0');
+
+    expect(worth.fires).toBeGreaterThan(0);
+    // чужому 2 урона — по 2 за здоровье, своему 2 — цена по 1: польза и цена порознь,
+    // поэтому своя часть не прячется за чужой
+    expect(worth.value).toBe(4);
+    expect(worth.cost).toBe(2);
+  });
+
   it('карта без правил не наказывается: `known: false` — оценка не выдумывается', () => {
     const state = stateOf();
     expect(effectWorth({ id: 'unknown', type: 'effect' }, state, '0')).toEqual({

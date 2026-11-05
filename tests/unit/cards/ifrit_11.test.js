@@ -100,14 +100,14 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
       quantity: 2,
       fighter: 'ifrit',
     });
-    // четыре тира по числу живых духов: бюджет 4 / 3 / 2 / 1 — «духов + 1»
+    // четыре тира по числу живых духов: бюджет 5 / 4 / 3 / 2 — «духов + 2»
     expect(card.rules.map(rule => rule.when[0].params)).toEqual([
       { side: 'self', group: 'ash', min: 3, max: 3 },
       { side: 'self', group: 'ash', min: 2, max: 2 },
       { side: 'self', group: 'ash', min: 1, max: 1 },
       { side: 'self', group: 'ash', min: 0, max: 0 },
     ]);
-    expect(card.rules.map(rule => rule.then[0].budget)).toEqual([4, 3, 2, 1]);
+    expect(card.rules.map(rule => rule.then[0].budget)).toEqual([5, 4, 3, 2]);
     for (const rule of card.rules) {
       expect(rule.then[0]).toMatchObject({
         action: 'SET_MOVEMENT',
@@ -122,13 +122,13 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
     }
   });
 
-  it('три духа — бюджет перемещения 4', () => {
+  it('три духа — бюджет перемещения 5', () => {
     const played = play(buildState({ spirits: [1, 2, 3] }));
 
     expect(played.turn.actionsLeft).toBe(1);
     expect(played.movement).toMatchObject({
       playerId: '0',
-      budget: 4,
+      budget: 5,
       throughEnemies: true,
       damageOnPass: 1,
       healOnPass: 1,
@@ -151,34 +151,30 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
     expect(movementRejection(noPass, '0', 'ifrit', '3')).toMatch(/нет доступных клеток/);
   });
 
-  it('два духа — бюджет 3', () => {
+  it('два духа — бюджет 4', () => {
     const played = play(buildState({ spirits: [1, 2] }));
 
+    expect(played.movement.budget).toBe(4);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
+  });
+
+  it('один дух — бюджет 3: окно открывается, за спину врага встать можно', () => {
+    const played = play(buildState({ spirits: [1] }));
+
+    // клетка 2 занята врагом: она проходима, а встать можно на 3 — свойство не гаснет
     expect(played.movement.budget).toBe(3);
     expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
   });
 
-  it('один дух — бюджет 2: окно открывается, за спину врага встать можно', () => {
-    const played = play(buildState({ spirits: [1] }));
-
-    // клетка 2 занята врагом: она проходима, а встать можно на 3 — свойство не гаснет
-    expect(played.movement.budget).toBe(2);
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
-  });
-
-  it('духов нет — бюджет 1: встать некуда, окно не открывается и эффект идёт впустую', () => {
+  it('духов нет — бюджет 2: за спину врага встать всё равно можно', () => {
     const state = buildState({ spirits: [] });
     player(state, '0').lost = [1, 2, 3].map(deadSpirit);
 
     const played = play(state);
 
-    // клетка 2 занята врагом: на бюджет 1 доступна только она, а встать на занятую нельзя,
-    // поэтому пустое окно не открывается (иначе обязательный эффект встал бы намертво)
-    expect(played.movement ?? null).toBeNull();
-    expect(played.effect ?? null).toBeNull();
-    expect(String(fighterOf(played, '0', 'ifrit').currentPosition)).toBe('1');
-    expect(movementRejection(played, '0', 'ifrit', '2')).toMatch(/перемещение не открыто/);
-    // действие потрачено, карта в сбросе
+    // «духов + 2» = две клетки: клетка 2 проходима, встать можно на 3
+    expect(played.movement.movementBudget ?? played.movement.budget).toBe(2);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
     expect(played.turn.actionsLeft).toBe(1);
     expect(discard(player(played, '0')).map(entry => entry.id)).toEqual(['ifrit_11']);
   });

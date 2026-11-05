@@ -19,7 +19,7 @@ import { invariantViolation, signature } from './duel.js';
 
 const HERO_IDS = Object.keys(HEROES);
 
-/** Четыре места: свой герой, своя команда, порядок 1–4 (`TableSetupModal` собирает стол так же). */
+/** Четыре места: свой герой, своя команда, порядок 1–4, одно имя на все человеческие места (`TableSetupModal` собирает так же). */
 export const hotseatSlots = (players, seed) => {
   const start = Math.abs(Number(seed) || 1) % HERO_IDS.length;
   return Array.from({ length: players }, (_, index) => ({
@@ -27,6 +27,7 @@ export const hotseatSlots = (players, seed) => {
     team: String.fromCharCode(65 + index),
     order: index + 1,
     control: 'human',
+    name: 'Игрок',
   }));
 };
 

@@ -6,7 +6,7 @@
     />
 
     <div
-      class="rounded-6 from-info/25 to-pink/25 relative bg-gradient-to-br via-white/10 p-[2px] shadow-2xl"
+      class="rounded-6 from-info/25 to-pink/25 relative bg-gradient-to-br via-white/10 p-2 shadow-2xl"
     >
       <div class="bg-app/55 rounded-5 backdrop-blur-16 flex w-380 flex-col gap-6 p-6">
         <nav

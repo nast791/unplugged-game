@@ -1,5 +1,6 @@
 import { CELLS_LIMIT } from '#shared/helpers/mapGenerator.js';
 import { modes } from '#shared/constants/modes.js';
+import { SEAT_NAME_LIMIT } from '#shared/constants/seats.js';
 
 const CONTROLS = new Set(['human', 'ai']);
 /** Сид — 32-битное число (тот же диапазон, что у генератора карт). */
@@ -115,6 +116,7 @@ export const validateCreate = (body, { heroes: HEROES, maps: MAPS }) => {
     const team = raw?.team != null ? String(raw.team).trim() : '';
     const order = Number(raw?.order);
     const control = raw?.control != null ? String(raw.control).trim().toLowerCase() : '';
+    const name = raw?.name != null ? String(raw.name).trim() : '';
 
     if (!heroId) errors.push(`heroes[${i}]: heroId обязателен`);
     else if (!HEROES[heroId]) {
@@ -138,6 +140,11 @@ export const validateCreate = (body, { heroes: HEROES, maps: MAPS }) => {
       errors.push(`heroes[${i}]: control — human или ai`);
     } else if (control === 'human') {
       humans += 1;
+    }
+    // Имя — настройка стола и необязательно: без него игрока называют именем героя (у компьютера
+    // имени нет вовсе), поэтому пустое имя не ошибка.
+    if (name.length > SEAT_NAME_LIMIT) {
+      errors.push(`heroes[${i}]: name — не длиннее ${SEAT_NAME_LIMIT} знаков`);
     }
   }
 

@@ -12,4 +12,7 @@ export const SEAT_SIDES = { 1: 'left', 2: 'right', 3: 'top', 4: 'bottom' };
 /** Сторона места: `position` из номерной клетки (1–4). Неизвестное место стороны не имеет. */
 export const seatSide = position => SEAT_SIDES[Number(position)] ?? null;
 
+/** Имя игрока за местом — настройка стола, поэтому предел один на клиент и сервер. */
+export const SEAT_NAME_LIMIT = 24;
+
 export default SEAT_SIDES;

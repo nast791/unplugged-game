@@ -1,5 +1,10 @@
 import { seatSide } from '#shared/constants/seats.js';
-import { isTerrainId, terrainColor, terrainLabelColor } from '#shared/constants/terrain.js';
+import {
+  colorLuminance,
+  isTerrainId,
+  terrainColor,
+  terrainLabelColor,
+} from '#shared/constants/terrain.js';
 
 export const MIN_RADIUS = 24;
 export const MAX_RADIUS = 64;
@@ -41,6 +46,40 @@ export const PLACEMENT = {
   stroke: 3,
   glow: 14,
 };
+
+/**
+ * Фишка бойца: радиус — доля радиуса клетки, поле портрета — доля радиуса фишки.
+ * Портрет — наклейка: его круг вписан в поле портрета (`avatar`), а всё, что торчит
+ * за круг в самом арте (уши, волосы), выходит на серое кольцо — клип держит его по радиусу фишки.
+ */
+export const TOKEN = {
+  radius: 0.72,
+  face: 0.8,
+  avatar: 1,
+};
+
+export const tokenRadius = cellRadius => Math.max(8, cellRadius * TOKEN.radius);
+
+export const tokenFaceRadius = cellRadius => tokenRadius(cellRadius) * TOKEN.face;
+
+const colorChannels = color => {
+  const hex = String(color ?? '').replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return null;
+  return [0, 2, 4].map(index => parseInt(hex.slice(index, index + 2), 16));
+};
+
+/** Оттенок цвета героя: `amount > 0` светлее, `amount < 0` темнее — из него собирается объём фишки. */
+export const shadeColor = (color, amount) => {
+  const channels = colorChannels(color);
+  if (!channels) return color;
+  const share = Math.max(-1, Math.min(1, Number(amount) || 0));
+  const target = share >= 0 ? 255 : 0;
+  const mixed = channels.map(channel => Math.round(channel + (target - channel) * Math.abs(share)));
+  return `#${mixed.map(value => value.toString(16).padStart(2, '0')).join('')}`;
+};
+
+/** Цвет буквы-заглушки на поле фишки: у светлого цвета героя тёмная, у тёмного — белая. */
+export const tokenInk = color => (colorLuminance(color) > 0.42 ? '#111827' : '#FFFFFF');
 
 export const trimSegment = (from, to, radius) => {
   const dx = to.x - from.x;
@@ -135,7 +174,8 @@ export const PATTERN_TILES = {
   crystal: { src: '/patterns/crystal-shards.webp', diameter: 1.05, pixels: 512 },
   swamp: { src: '/patterns/swamp-moss.webp', diameter: 1.05, pixels: 512 },
   fungus: { src: '/patterns/fungus-spores.webp', diameter: 1.05, pixels: 512 },
-  steppe: { src: '/patterns/steppe-grasses.webp', diameter: 1.05, pixels: 512 },
+  poppy: { src: '/patterns/poppy-field.webp', diameter: 1.05, pixels: 512 },
+  dead: { src: '/patterns/dead-ground.webp', diameter: 1.05, pixels: 512 },
 };
 
 export const patternTileConfig = (radius, image, tile) => {

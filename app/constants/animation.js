@@ -2,7 +2,9 @@ export const ANIMATION_DURATIONS = {
   battleReveal: 1200,
   battleStep: 1600,
   battleDamage: 2600,
-  cardFlight: 520,
+  cardFlip: 420,
+  cardFlight: 780,
+  cardDrop: 240,
   damageFloat: 1200,
   aiPause: 1000,
 };
@@ -13,6 +15,8 @@ export const CARD_FLIGHT = {
   arcMax: 90,
   lift: 40,
   scale: 0.06,
+  drop: 96,
+  flipLift: 18,
 };
 
 export const ANIMATION_SPEEDS = [

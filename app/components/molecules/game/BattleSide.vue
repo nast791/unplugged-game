@@ -4,20 +4,27 @@
       <AAvatar
         :alt="side.fighterName"
         :style="side.color ? { '--hero-color': side.color } : null"
-        :ui="{ avatar_root: 'size-44 border-3 border-[var(--hero-color)]' }"
+        :ui="{
+          avatar_root: 'size-44 border-3 border-[var(--hero-color)]',
+          avatar_image: side.dead ? 'grayscale' : '',
+          avatar_fallback: side.dead ? 'grayscale' : '',
+        }"
       />
 
       <div class="flex min-w-0 flex-col">
         <span class="text-15 min-w-0 truncate font-semibold">{{ side.fighterName }}</span>
-        <span class="text-13 text-dim min-w-0 truncate">{{ side.playerName }}</span>
+        <span v-if="side.playerName" class="text-13 text-dim min-w-0 truncate">{{
+          side.playerName
+        }}</span>
       </div>
 
       <span
-        v-if="side.hpLabel"
+        v-if="hpText"
         class="text-15 ml-auto shrink-0 font-semibold lining-nums"
-        :style="{ color: side.hpColor }"
+        :class="side.dead && 'text-dim'"
+        :style="hpStyle"
       >
-        {{ side.hpLabel }}
+        {{ hpText }}
       </span>
     </div>
 
@@ -86,6 +93,8 @@ const props = defineProps({
 const boostFront = ref(false);
 const damageAmount = computed(() => Number(props.damage) || 0);
 const waiting = computed(() => props.side.cardState === 'waiting');
+const hpText = computed(() => (props.side.dead ? props.side.deadLabel : props.side.hpLabel));
+const hpStyle = computed(() => (props.side.dead ? null : { color: props.side.hpColor }));
 
 const SLOTS = {
   waiting: 'Ждём карту защиты',

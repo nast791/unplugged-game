@@ -27,6 +27,8 @@ export const adaptPartyView = raw => {
       hand: zoneCards(hand),
       handCount: zoneCount(hand),
       discard: zoneCards(discard),
+      deck: zoneCards(deck),
+      deckVisible: Array.isArray(deck?.cards) && deck.cards.length > 0,
       deckCount: zoneCount(deck),
       discardCount: zoneCount(discard),
     })),

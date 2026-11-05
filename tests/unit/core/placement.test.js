@@ -232,3 +232,76 @@ describe('runUi: placement highlights', () => {
     expect(runUi(state, '0').placementCells).toEqual([]);
   });
 });
+
+/**
+ * Выставленного бойца можно поднять и переставить, пока не нажата «ОК»: клик по фишке делает его
+ * выбранным (`selectFighters`), клик по клетке — тот же `PICK` клетки, что и при расстановке с полки.
+ * Раньше клик по фишке в расстановке ничего не выбирал, и боец оставался там, куда его поставили первым.
+ */
+describe('расстановка: выставленного бойца переставляют до «ОК»', () => {
+  const twoCellsMap = {
+    id: 'arena',
+    nodes: [
+      { id: 1, neighbors: [6, 7], terrain: 'ice' },
+      { id: 7, neighbors: [1], terrain: 'ice' },
+      { id: 6, neighbors: [1], terrain: 'ice', heroStart: true, position: 1 },
+      // второй игрок держит расстановку открытой: без него «ОК» первого сразу начнёт партию
+      { id: 5, neighbors: [], terrain: 'lava', heroStart: true, position: 2 },
+    ],
+  };
+
+  const twoCellsState = () =>
+    runLifecycle(
+      createState({
+        phase: PHASES.gameStart,
+        players: [singleHeroPlayer('0'), singleHeroPlayer('1')],
+        map: twoCellsMap,
+      }),
+    );
+
+  it('фаза объявляет выбор бойца кликом: selectFighters', () => {
+    const state = twoCellsState();
+    const placed = runAction(state, pickCell('0', '0-pawn', 1));
+    const ready = runAction(placed, { type: 'UI_OK', playerId: '0' });
+
+    expect(state.players[0].placementReady).toBe(false);
+    expect(runUi(state, '0').selectFighters).toBe(true);
+    // своя расстановка подтверждена — выбирать больше нечего, пока расставляет второй
+    expect(ready.players[0].placementReady).toBe(true);
+    expect(runUi(ready, '0').selectFighters).toBe(false);
+  });
+
+  it('клик по выставленному бойцу зажигает свободные клетки, кроме его собственной', () => {
+    const state = twoCellsState();
+    const ui = runUi(state, '0', { selectedFighterId: '0-pawn' });
+
+    expect(ui.highlightedCellIds).toEqual(expect.arrayContaining(['1', '7']));
+  });
+
+  it('повторный PICK переставляет бойца, а не ставит второго', () => {
+    let state = twoCellsState();
+    state = runAction(state, pickCell('0', '0-pawn', 1));
+    const placed = () => state.players[0].fighters.find(f => f.id === '0-pawn');
+    expect(String(placed().currentPosition)).toBe('1');
+
+    state = runAction(state, pickCell('0', '0-pawn', 7));
+
+    expect(String(placed().currentPosition)).toBe('7');
+    expect(state.players[0].fighters.filter(f => f.currentPosition != null)).toHaveLength(2);
+    // своя прежняя клетка снова свободна, «ОК» по-прежнему доступна
+    expect(runUi(state, '0').placementCells).toEqual([
+      { id: '1', occupied: false },
+      { id: '7', occupied: true },
+      { id: '6', occupied: true },
+    ]);
+    expect(runUi(state, '0').controls.ok.enabled).toBe(true);
+  });
+
+  it('главного героя на номерной клетке выбор и перестановка не берут', () => {
+    let state = twoCellsState();
+    const hero = state.players[0].fighters.find(f => f.type === 'hero');
+
+    expect(runUi(state, '0', { selectedFighterId: hero.id }).highlightedCellIds).toEqual([]);
+    expect(() => runAction(state, pickCell('0', hero.id, 1))).toThrow(/номерной клетке/);
+  });
+});

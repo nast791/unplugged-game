@@ -140,7 +140,8 @@ describe('карта medusa_06 «Ускорение»', () => {
     // участвовала Медуза; Гарпия в бою не была, поэтому её двигать нельзя
     expect(paused.movement.fighters).toEqual(['medusa']);
     expect(movableFighterIds(paused, '0')).toEqual(['medusa']);
-    expect(runUi(paused, '0').highlightedFighterIds).toEqual(['medusa']);
+    // своего бойца выбирают кликом по фишке — рамки на клетке нет
+    expect(runUi(paused, '0').highlightedFighterIds).toEqual([]);
     expect(movementDestinations(paused, '0', 'harpies_1')).toEqual([]);
 
     // из клетки 1 Медуза идёт до трёх шагов: 2 и 3 (4 занята Бетой, дальше неё пути нет)

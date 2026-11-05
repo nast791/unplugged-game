@@ -51,8 +51,9 @@ describe('словарь подсказок интерфейса', () => {
     const inline = [];
     for (const [url, text] of source) {
       const name = url.pathname.split('/app/')[1];
-      // Атрибут `text` со строкой или шаблоном рядом — признак текста, который живёт в компоненте
-      for (const match of text.matchAll(/(?<!:)\btext="([^"]*)"/g)) {
+      // Атрибут `text` со строкой или шаблоном рядом — признак текста, который живёт в компоненте.
+      // Атрибуты с дефисом (`hint-text`, `limit-text`) и привязки (`:text`) — не текст подсказки.
+      for (const match of text.matchAll(/(?<![:\w-])text="([^"]*)"/g)) {
         inline.push(`${name}: ${match[0]}`);
       }
     }
@@ -62,28 +63,23 @@ describe('словарь подсказок интерфейса', () => {
 
   it('каждая подсказка — непустая строка, подстановки заполнены', () => {
     const sample = {
-      'playerCard.fighter': { name: 'Амат', hp: '8/8' },
-      'playerCard.fighterStats': { move: 2, attackRange: 2 },
-      'playerCard.heroSkill': { title: 'Взгляд Медузы', text: 'НАЧАЛО ХОДА: …' },
-      'playerCard.player': { name: 'Элизиф' },
-      'playerCard.actions': { left: 2, total: 3, bonus: 1 },
       'playerCard.health': { hp: '15/16' },
-      'playerCard.item': { name: 'Пелена', state: 'активна' },
-      'playerCard.squad': { name: 'Амат', hp: '8/8' },
       'playerCard.handCount': { count: 5 },
-      'playerCard.deckCount': { count: 24 },
+      'playerCard.handEmpty': {},
+      'playerCard.deckCount': { count: 25 },
+      'playerCard.deckEmpty': {},
       'playerCard.discardCount': { count: 3 },
       'card.type': { label: 'Атака' },
       'card.bonus': { bonus: 2 },
       'card.fighter': { name: 'Гарпия' },
       'card.copies': { count: 3 },
-      'deck.count': { count: 12 },
-      'discard.count': { count: 3 },
-      'discard.bonusCard': { bonus: 2 },
       'profile.currency': { label: '12 500' },
       'heroDetails.item': { condition: 'Пока Амат жива' },
       'tableSetup.heroPage': { name: 'Медуза' },
       'placementTray.moveFighter': { name: 'Амат' },
+      'rail.ok': { label: 'Завершить действие' },
+      'rail.heroHex': { name: 'Медуза', hp: '15/16' },
+      'rail.heroActions': { action: 2, total: 3 },
     };
 
     const broken = [];
@@ -100,17 +96,11 @@ describe('словарь подсказок интерфейса', () => {
     expect(broken).toEqual([]);
   });
 
-  it('подсказки карточки с ветками не оставляют пустого хвоста', () => {
-    // добавленные действия меняют фразу, а не дописывают пустые скобки
-    expect(TOOLTIPS.playerCard.actions({ left: 2, total: 2, bonus: 0 })).toBe(
-      'Осталось действий: 2 из 2',
-    );
-    expect(TOOLTIPS.playerCard.actions({ left: 2, total: 3, bonus: 1 })).toContain(
-      '(+1 в этом ходу)',
-    );
-    // у умения без названия фраза не начинается с двоеточия
-    expect(TOOLTIPS.playerCard.heroSkill({ title: '', text: 'НАЧАЛО ХОДА' })).toBe('НАЧАЛО ХОДА');
-    // у предмета без состояния остаётся только имя
-    expect(TOOLTIPS.playerCard.item({ name: 'Пелена', state: '' })).toBe('Пелена');
+  it('подсказки с ветками не оставляют пустого хвоста', () => {
+    // пустой сброс говорит об этом словами, а не нулём
+    expect(TOOLTIPS.playerCard.discardCount({ count: 0 })).toBe('Сброс пуст');
+    expect(TOOLTIPS.playerCard.discardCount({ count: 3 })).toContain('Клик — открыть сброс');
+    // у кнопки без подписи остаётся действие по умолчанию
+    expect(TOOLTIPS.rail.ok({ label: null })).toBe('Завершить действие');
   });
 });

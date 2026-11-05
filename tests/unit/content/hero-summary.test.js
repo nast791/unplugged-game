@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { heroes } from '../../../server/content/index.js';
 import { buildHeroSummary } from '../../../server/builders.js';
+import { heroImageUrl } from '../../../server/utils.js';
 
 /**
  * Карточка героя для страницы `/heroes/{id}`: страница живёт контентом, поэтому проверяем не один пак,
@@ -35,6 +36,14 @@ describe('buildHeroSummary', () => {
     expect(anubis.skill?.title).toBeTruthy();
     expect(anubis.skill?.text).toBeTruthy();
     expect(anubis.terrainAffinity).toContain('desert');
+  });
+
+  it('рубашка колоды отдаётся адресом, когда объявлена в паке', () => {
+    const dorothy = buildHeroSummary(heroes.dorothy);
+    expect(dorothy.cardBack).toBe(heroImageUrl('dorothy', 'card-back.webp'));
+
+    const anubis = buildHeroSummary(heroes.anubis);
+    expect(anubis.cardBack).toBe(null);
   });
 
   it('неизвестный пак — null, а не пустая карточка', () => {

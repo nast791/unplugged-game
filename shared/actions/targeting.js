@@ -30,7 +30,7 @@ const normalizeCandidates = (candidates, kind = 'fighters') => {
         return {
           ...(typeof entry === 'object' ? entry : {}),
           optionId: String(optionId),
-          title: (typeof entry === 'object' && entry.title) || null,
+          title: (typeof entry === 'object' && (entry.title ?? entry.text)) || null,
           // вариант, который сейчас нельзя выбрать: клиент рисует его неактивным
           disabled: typeof entry === 'object' && entry.disabled === true,
         };

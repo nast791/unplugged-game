@@ -59,8 +59,25 @@ describe('adaptPartyView: проекция сервера → view клиент�
     expect(after.discard).toHaveLength(1);
     expect(after.discardCount).toBe(1);
 
-    // карты колоды не едут никому, даже владельцу: у клиента от колоды только число
-    expect(mine).not.toHaveProperty('deck');
+    // карты колоды не едут никому, пока правило их не раскрыло: у клиента от колоды только число
+    expect(mine.deck).toEqual([]);
+    expect(mine.deckVisible).toBe(false);
+
+    // раскрытая колода (умение «посмотреть верхние карты») приезжает картами и будит кнопку
+    const peeked = adaptPartyView({
+      ...raw,
+      players: raw.players.map(player =>
+        String(player.id) === String(first.id)
+          ? {
+              ...player,
+              deck: { visibility: [], count: 3, cards: [{ id: 'top', title: 'Верхняя карта' }] },
+            }
+          : player,
+      ),
+    });
+    const peeker = peeked.players.find(p => String(p.id) === String(first.id));
+    expect(peeker.deck).toHaveLength(1);
+    expect(peeker.deckVisible).toBe(true);
   });
 
   it('пустой ответ — null: клиент не падает на несостоявшемся запросе', () => {

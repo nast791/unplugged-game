@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { fighterClickIntent, fighterPickExpected } from '#shared/helpers/ui.js';
+import {
+  fighterClickIntent,
+  fighterPickExpected,
+  fighterSelectExpected,
+} from '#shared/helpers/ui.js';
+
+/**
+ * Где клик по своей фишке просто выбирает бойца (`selectFighters`): перемещение и расстановка.
+ * Флаг ставит фаза, поэтому клиент больше не угадывает фазу по имени — из-за такой догадки в
+ * расстановке выставленного бойца нельзя было переставить (клик по фишке ничего не выбирал).
+ */
+describe('fighterSelectExpected: где клик по фишке выбирает бойца', () => {
+  it('перемещение и расстановка просят выбор — да', () => {
+    expect(fighterSelectExpected({ phase: 'movement', selectFighters: true })).toBe(true);
+    expect(fighterSelectExpected({ phase: 'place', selectFighters: true })).toBe(true);
+  });
+
+  it('атака, защита и окно цели выбор не просят — нет', () => {
+    expect(fighterSelectExpected({ phase: 'attack', pickFighters: true })).toBe(false);
+    expect(fighterSelectExpected({ phase: 'place', selectFighters: false })).toBe(false);
+    expect(fighterSelectExpected({ phase: 'movement' })).toBe(false);
+  });
+
+  it('нет ui — нет', () => {
+    expect(fighterSelectExpected(null)).toBe(false);
+    expect(fighterSelectExpected({})).toBe(false);
+  });
+});
 
 /**
  * Клик по бойцу уходит в движок только там, где движок его ждёт: объявление атаки и окно цели.

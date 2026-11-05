@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { playerLabel } from '#shared/helpers/base.js';
 import { load, view } from '../../../server/party.js';
 import { createGame } from '../../../server/create.js';
 import { sortPlayersByTeam } from '../../../server/builders.js';
@@ -46,8 +47,8 @@ describe('POST /api/game/create', () => {
 
   /**
    * Правило игры: до конца расстановки чужую расстановку не видит никто — ни свои бойцы, ни готовность
-   * соперника её не открывают. Флаг готовности (`placementReady`) открыт: по нему карточка снимает
-   * плашку «Расстановка», а «не на поле» решает сама карточка (`PlayerCard`).
+   * соперника её не открывают. Флаг готовности (`placementReady`) открыт: по нему плашка лимита
+   * снимается, а «не на поле» решает панель места (`HeroRail`).
    */
   it('пока идёт расстановка, чужие позиции не отдаются — даже у подтвердившегося слота', () => {
     createGame(
@@ -215,6 +216,45 @@ describe('POST /api/game/create', () => {
     expect(() => createGame({ ...validBody, cells: 43 })).toThrow(/cells/);
     expect(() => createGame({ ...validBody, actionLimit: -5 })).toThrow(/actionLimit/);
     expect(() => createGame({ ...validBody, placementLimit: -5 })).toThrow(/placementLimit/);
+  });
+
+  /**
+   * Имя игрока — настройка стола, а не имя героя (жалоба владельца: на карточке выходило
+   * «Анубис / Анубис»). У места компьютера своего имени нет вовсе, даже если лобби его прислало.
+   */
+  it('имена мест из лобби попадают в партию, а имя героя игроком не становится', () => {
+    const state = createGame(
+      {
+        mapId: 'generated',
+        mode: 'vs_ai',
+        heroes: [
+          { heroId: 'medusa', team: 'A', order: 1, control: 'human', name: '  Элизиф  ' },
+          { heroId: 'anubis', team: 'B', order: 2, control: 'ai', name: 'Компьютер' },
+        ],
+      },
+      { testId: 'seat_names', testSeed: 11 },
+    );
+    const medusa = state.players.find(player => player.id === 'medusa');
+    const anubis = state.players.find(player => player.id === 'anubis');
+
+    expect(medusa.name).toBe('Элизиф');
+    expect(anubis.name).toBe('');
+    expect(view(state, 'medusa').players.map(player => player.name)).toEqual(['Элизиф', '']);
+    // Текстам для игрока место без имени называет себя героем
+    expect(playerLabel(state, 'anubis')).toBe('Анубис');
+    expect(playerLabel(state, 'medusa')).toBe('Элизиф');
+  });
+
+  it('слишком длинное имя места → ошибка', () => {
+    expect(() =>
+      createGame({
+        ...validBody,
+        heroes: [
+          { heroId: 'medusa', team: 'A', order: 1, control: 'human', name: 'я'.repeat(25) },
+          { heroId: 'tesla', team: 'B', order: 2, control: 'ai' },
+        ],
+      }),
+    ).toThrow(/name/);
   });
 
   it('sortPlayersByTeam: A,A,B,B → A,B,A,B', () => {

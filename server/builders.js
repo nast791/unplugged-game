@@ -1,6 +1,6 @@
 import { rules } from '#shared/constants/rules.js';
 import { stacks } from '#shared/constants/deck.js';
-import { shuffle } from './utils.js';
+import { heroImageUrl, shuffle } from './utils.js';
 
 export const buildConnections = nodes =>
   (nodes ?? []).reduce(
@@ -28,7 +28,7 @@ export const buildDeck = (cards = []) =>
     })),
   );
 
-const buildFighter = (fighter, index = 0) => {
+const buildFighter = (fighter, index = 0, heroId = null) => {
   const { count, hp, ...rest } = fighter;
   const copies = count ?? 1;
   const id = copies > 1 ? `${fighter.id}_${index + 1}` : fighter.id;
@@ -38,7 +38,7 @@ const buildFighter = (fighter, index = 0) => {
     id,
     group: fighter.type === 'assistant' ? fighter.id : null,
     copies: fighter.type === 'assistant' ? copies : 1,
-    image: fighter.image ?? null,
+    image: heroImageUrl(heroId, fighter.image),
     attackRange: fighter.attackRange ?? 1,
     size: fighter.size ?? 1,
     move: fighter.move ?? 0,
@@ -54,11 +54,12 @@ const buildFighter = (fighter, index = 0) => {
 export const buildFighters = (pack, mapState, seatIndex) => {
   void mapState;
   void seatIndex;
+  const heroId = pack.id ?? null;
   const heroList = pack.heroes ?? [];
-  const heroUnits = heroList.map(hero => buildFighter(hero, 0));
+  const heroUnits = heroList.map(hero => buildFighter(hero, 0, heroId));
   const assistants = (pack.assistants ?? []).flatMap(assistant => {
     const count = assistant.count || 1;
-    return Array.from({ length: count }, (_, index) => buildFighter(assistant, index));
+    return Array.from({ length: count }, (_, index) => buildFighter(assistant, index, heroId));
   });
   return [...heroUnits, ...assistants];
 };
@@ -73,7 +74,7 @@ export const buildPlayer = (slot, pack, seatIndex, mapState, rng) => {
     heroId: slot.heroId,
     order: slot.order,
     control: slot.control,
-    name: pack.name,
+    name: String(slot.name ?? '').trim(),
     team: slot.team,
     color: pack.color ?? null,
     skill: pack.skill ?? null,
@@ -135,7 +136,7 @@ export const sortPlayersByTeam = players => {
 };
 
 /** Боец для страницы героя: числа, которые игрок видит на карточке, без служебных полей пака. */
-const summaryFighter = (fighter, type) => ({
+const summaryFighter = (fighter, type, heroId) => ({
   id: fighter.id,
   name: fighter.name ?? fighter.id,
   type,
@@ -143,6 +144,7 @@ const summaryFighter = (fighter, type) => ({
   move: Number(fighter.move) || 0,
   attackRange: Number(fighter.attackRange) || 1,
   count: type === 'assistant' ? Number(fighter.count) || 1 : 1,
+  image: heroImageUrl(heroId, fighter.image),
 });
 
 /**
@@ -167,14 +169,16 @@ export const buildHeroSummary = pack => {
     id: pack.id,
     name: pack.name ?? pack.id,
     color: pack.color ?? null,
-    // Портрет появится вместе с артом (`public/art/heroes/{id}/portrait.webp`, docs/ui-plan.md §10);
-    // пока его нет, страница и модалка показывают аватар-заглушку в цвете героя.
-    portrait: null,
+    // Арт объявлен в паке (`images`), файлы лежат рядом с контентом; нет арта — страница и модалка
+    // показывают аватар-заглушку в цвете героя.
+    portrait: heroImageUrl(pack.id, pack.images?.hero),
+    promo: heroImageUrl(pack.id, pack.images?.promo),
+    cardBack: heroImageUrl(pack.id, pack.images?.back),
     terrainAffinity: pack.terrainAffinity ?? [],
     skill: pack.skill ? { title: pack.skill.title ?? 'Умение', text: pack.skill.text ?? '' } : null,
     fighters: [
-      ...(pack.heroes ?? []).map(fighter => summaryFighter(fighter, 'hero')),
-      ...(pack.assistants ?? []).map(fighter => summaryFighter(fighter, 'assistant')),
+      ...(pack.heroes ?? []).map(fighter => summaryFighter(fighter, 'hero', pack.id)),
+      ...(pack.assistants ?? []).map(fighter => summaryFighter(fighter, 'assistant', pack.id)),
     ],
     items: (pack.items ?? []).map(item => ({
       id: item.id,

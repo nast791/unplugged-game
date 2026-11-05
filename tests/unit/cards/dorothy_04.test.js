@@ -154,11 +154,11 @@ describe('карта dorothy_04 «Смена караула»', () => {
       required: false,
       picked: null,
     });
-    // кандидаты несут только id и доступность: подписи вариант берёт из `card.options` в ui.choices
+    // кандидаты несут id, подпись с карты и доступность: окно рисует текст и вне боя, где нет ui.choices
     expect(paused.targeting.candidates).toEqual([
-      { optionId: 'heal', title: null, disabled: false },
-      { optionId: 'draw', title: null, disabled: false },
-      { optionId: 'push', title: null, disabled: false },
+      { optionId: 'heal', title: 'Восстановите Дороти 2 здоровья.', disabled: false },
+      { optionId: 'draw', title: 'Возьмите 1 карту.', disabled: false },
+      { optionId: 'push', title: 'Сдвиньте атакующего бойца на 1 клетку.', disabled: false },
     ]);
     // шаг очереди ждёт решения игрока, бой ещё не закрыт
     expect(paused.combat.stage).toBe('close');
@@ -224,6 +224,8 @@ describe('карта dorothy_04 «Смена караула»', () => {
     });
     // Дороти стоит на 2, значит Бету можно сдвинуть только на 4
     expect(movementDestinations(pushed, '0', 'beta')).toEqual(['4']);
+    // чужого бойца рамкой метим: иначе непонятно, кого вести
+    expect(runUi(pushed, '0').highlightedFighterIds).toEqual(['beta']);
 
     const moved = step(pushed, 'beta', '4');
     expect(fighterOf(moved, '1', 'beta').currentPosition).toBe('4');

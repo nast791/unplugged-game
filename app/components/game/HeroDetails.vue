@@ -6,7 +6,17 @@
         :style="{ '--hero-color': hero.color || 'var(--color-surface-2)' }"
       >
         <span class="absolute inset-0 bg-[var(--hero-color)]/20" />
+        <APicture
+          v-if="hero.portrait"
+          :src="hero.portrait"
+          :alt="hero.name"
+          :ui="{
+            picture_root: 'relative block size-full rounded-0 bg-transparent',
+            picture_img: 'size-full object-contain',
+          }"
+        />
         <Icon
+          v-else
           :name="heroFace"
           class="size-160 text-[var(--hero-color)] opacity-90"
           aria-hidden="true"
@@ -29,7 +39,12 @@
           :key="`${fighter.type}-${fighter.id}`"
           class="border-line rounded-4 flex items-center gap-8 border-2 px-12 py-8"
         >
-          <Icon :name="faceOfFighter(fighter)" class="text-dim size-18" aria-hidden="true" />
+          <AAvatar
+            :src="fighter.image || ''"
+            :alt="fighter.name"
+            :icon="fighter.image ? '' : faceOfFighter(fighter)"
+            :ui="{ avatar_root: 'size-18 border-0', avatar_icon: 'size-18' }"
+          />
           <span class="flex flex-col gap-2">
             <span class="text-16">
               {{ fighter.name }}<template v-if="fighter.count > 1"> ×{{ fighter.count }}</template>
@@ -94,7 +109,7 @@
                 }}
               </span>
             </span>
-            <span class="text-16 text-dim leading-[1.4]">{{ card.text }}</span>
+            <CardText :text="card.text" tone="page" />
             <span v-if="card.fighter" class="text-16 text-dim">{{
               fighterName(card.fighter)
             }}</span>
@@ -107,7 +122,10 @@
 
 <script setup>
 import { terrainName } from '#shared/constants/terrain.js';
+import AAvatar from '~/components/atoms/AAvatar.vue';
+import APicture from '~/components/atoms/APicture.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
+import CardText from '~/components/molecules/game/CardText.vue';
 import { cardType } from '~/constants/cards.js';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 

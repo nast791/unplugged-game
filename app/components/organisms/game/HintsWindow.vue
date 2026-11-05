@@ -1,18 +1,9 @@
 <template>
-  <section
-    v-if="hasText"
-    ref="root"
-    :class="rootClass"
-    :style="placeStyle"
-    role="status"
-    aria-live="polite"
-    aria-atomic="true"
-    @pointerdown="beginDrag"
-  >
+  <section v-if="hasText" :class="rootClass" role="status" aria-live="polite" aria-atomic="true">
     <div :class="styles.hints_glow" aria-hidden="true" />
 
     <div :class="styles.hints_frame">
-      <div ref="body" :class="styles.hints_body">
+      <div :class="styles.hints_body">
         <Icon :name="icon" :class="[styles.hints_icon, iconToneClass]" aria-hidden="true" />
 
         <AScroll :ui="{ scroll_viewport: styles.hints_scroll }">
@@ -25,7 +16,6 @@
 
 <script setup>
 import AScroll from '~/components/atoms/AScroll.vue';
-import { useDraggable } from '~/composables/ui/useDraggable.js';
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 
@@ -54,64 +44,7 @@ const textToneClass = computed(() => styles.value[`hints_text_${tone.value}`]);
 
 const hasText = computed(() => String(props.text ?? '').trim() !== '');
 
-const root = ref(null);
-const body = ref(null);
-const place = ref(null);
-const size = ref({ width: 0, height: 0 });
-
-const measure = () => {
-  const rect = body.value?.getBoundingClientRect?.();
-  if (!rect) return;
-  size.value = { width: rect.width, height: rect.height };
-};
-const clampToScreen = next => {
-  const maxX = Math.max(0, window.innerWidth - size.value.width);
-  const maxY = Math.max(0, window.innerHeight - size.value.height);
-  return {
-    x: Math.min(Math.max(next.x, 0), maxX),
-    y: Math.min(Math.max(next.y, 0), maxY),
-  };
-};
-
-const { isDragging, handlers } = useDraggable(place, { clamp: clampToScreen });
-
-const beginDrag = event => {
-  const rect = root.value?.getBoundingClientRect?.();
-  measure();
-  if (rect) place.value = { x: rect.left, y: rect.top };
-  handlers.onPointerdown(event);
-};
-
 const rootClass = computed(() =>
-  cn(
-    styles.value.hints_root,
-    'pointer-events-auto select-none',
-    place.value ? 'fixed z-30' : 'absolute top-12 left-1/2 -translate-x-1/2',
-    isDragging.value ? 'cursor-grabbing' : 'cursor-grab',
-  ),
+  cn(styles.value.hints_root, 'pointer-events-auto absolute top-12 left-1/2 -translate-x-1/2'),
 );
-
-const placeStyle = computed(() => {
-  if (!place.value) return null;
-  return { left: `${place.value.x}px`, top: `${place.value.y}px` };
-});
-
-let observer;
-
-onMounted(() => {
-  measure();
-  if (typeof ResizeObserver === 'undefined' || !body.value) return;
-  observer = new ResizeObserver(measure);
-  observer.observe(body.value);
-});
-
-watch(
-  () => props.text,
-  async () => {
-    await nextTick();
-    measure();
-  },
-);
-
-onBeforeUnmount(() => observer?.disconnect());
 </script>

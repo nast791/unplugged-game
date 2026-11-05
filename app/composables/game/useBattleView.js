@@ -2,7 +2,14 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { cardBonus, cardKey, cardValue } from '#shared/helpers/cards.js';
 import { combatOutcome } from '#shared/helpers/combat.js';
 import { cardType } from '~/constants/cards.js';
-import { healthTone, hpLabel, hpPercent, momentsOfStage } from './useGameHelpers.js';
+import {
+  cardPropertyText,
+  healthTone,
+  hpLabel,
+  hpPercent,
+  momentsOfStage,
+  playerLabel,
+} from './useGameHelpers.js';
 import { useGameSession } from './useGameSession.js';
 import { useSettings } from '../ui/useSettings.js';
 
@@ -27,7 +34,7 @@ export const BATTLE_STEP_STATUSES = {
   pending: { label: 'ждёт очереди', icon: 'lucide:hourglass', tone: 'text-dim' },
   waiting: { label: 'пауза: решает игрок', icon: 'lucide:pause', tone: 'text-info' },
   applied: { label: 'сработало', icon: 'lucide:check', tone: 'text-success' },
-  skipped: { label: 'нельзя применить', icon: 'lucide:slash', tone: 'text-dim' },
+  skipped: { label: 'не сработало', icon: 'lucide:x', tone: 'text-dim' },
   declined: { label: 'отказ', icon: 'lucide:undo-2', tone: 'text-dim' },
   cancelled: { label: 'отменено', icon: 'lucide:ban', tone: 'text-danger' },
 };
@@ -43,7 +50,10 @@ export const battleStepStatus = status =>
 export const battleFighter = (players = [], fighterId) => {
   if (fighterId == null) return null;
   for (const player of players ?? []) {
-    const fighter = (player?.fighters ?? []).find(entry => String(entry.id) === String(fighterId));
+    // Павшие лежат в `lost`: убитый защитник остаётся в окне битвы тем, кем был, а не пустым местом.
+    const fighter = [...(player?.fighters ?? []), ...(player?.lost ?? [])].find(
+      entry => String(entry.id) === String(fighterId),
+    );
     if (fighter) return { player, fighter };
   }
   return null;
@@ -62,18 +72,27 @@ export const battleSide = ({ combat, players = [], side } = {}) => {
   const printed = card ? cardValue(card) : null;
   const isAi = String(holder?.player?.control ?? '').toLowerCase() === 'ai';
   const decided = ['reveal', 'resolve', 'close'].includes(String(combat?.stage ?? ''));
+  const dead = holder ? Number(holder.fighter.currentHp ?? 0) <= 0 : false;
+  const fighterName = holder?.fighter?.name ?? (isAttacker ? 'Боец не выбран' : 'Цель не выбрана');
+  // Строка игрока под бойцом: у места компьютера её нет вовсе, а у места без своего имени она
+  // не повторяет имя бойца («Дороти / Дороти» — уже не подпись).
+  const holderLabel = playerLabel(holder?.player);
+  const playerName =
+    isAi || holderLabel === String(fighterName)
+      ? ''
+      : holderLabel || (playerId == null ? 'Противник не выбран' : String(playerId));
 
   return {
     side,
     title: isAttacker ? 'Атака' : 'Защита',
 
-    playerName: isAi
-      ? 'Компьютер'
-      : (holder?.player?.name ?? (playerId == null ? 'противник не выбран' : String(playerId))),
+    playerName,
     isAi,
+    dead,
+    deadLabel: dead ? (isAttacker ? 'Боец убит' : 'Цель убита') : '',
     color: holder?.player?.color ?? null,
     fighterId: holder?.fighter?.id == null ? null : String(holder.fighter.id),
-    fighterName: holder?.fighter?.name ?? (isAttacker ? 'боец не выбран' : 'цель не выбрана'),
+    fighterName,
     hpLabel: holder ? hpLabel(holder.fighter) : '',
     hpPercent: holder ? hpPercent(holder.fighter) : null,
     hpColor: holder ? healthTone(holder.fighter).color : null,
@@ -95,25 +114,34 @@ export const battleSides = (combat, players = []) =>
       ]
     : [];
 
-export const battleSteps = combat =>
-  (combat?.effects ?? []).map((step, index) => {
+export const battleSteps = combat => {
+  const groups = new Map();
+
+  return (combat?.effects ?? []).map((step, index) => {
     const side = step.side === 'defender' ? 'defender' : 'attacker';
     const status = battleStepStatus(step.status);
     const card = side === 'attacker' ? combat?.attackCard : combat?.defenseCard;
     const cardTitle = card?.title ?? 'карта закрыта';
     const sideLabel = side === 'attacker' ? 'атака' : 'защита';
+    const group = `${side}|${step.moment}`;
+    const propertyIndex = groups.get(group) ?? 0;
+    groups.set(group, propertyIndex + 1);
 
     return {
       key: `${step.order ?? index + 1}-${side}-${step.moment}-${step.cardId}`,
       side,
       moment: step.moment ?? null,
       status: String(step.status ?? ''),
+      cardTitle,
+      property: card ? cardPropertyText(card.text, step.moment, propertyIndex) : null,
       line: `${battleMomentLabel(step.moment)} · ${sideLabel} · «${cardTitle}»`,
+      damage: Number(step.damage) || 0,
       statusLabel: status.label,
       statusIcon: status.icon,
       statusTone: status.tone,
     };
   });
+};
 
 export const battleOutcome = combat => {
   if (combat?.attackValue == null || combat?.defenseValue == null) return null;
@@ -230,7 +258,7 @@ export const useBattleView = () => {
     };
   };
 
-  // Итог битвы остаётся на экране: окно убирает игрок (кнопкой «Закрыть» или действием вне окна)
+  // Итог битвы остаётся на экране: его убирают кнопка «Закрыть» и круглая кнопка действия
   const persist = record => {
     clearTimer();
     replay.value = null;
@@ -333,6 +361,9 @@ export const useBattleView = () => {
 
   const outcome = computed(() => battleOutcome(model.value?.combat ?? null));
 
+  // урон свойств — отдельное слагаемое рядом с уроном карт: «урон 0 + 2» значит «карты 0, свойства 2»
+  const effectDamage = computed(() => steps.value.reduce((total, step) => total + step.damage, 0));
+
   const numbers = computed(() => {
     const current = model.value?.combat ?? null;
     if (current?.attackValue == null || current?.defenseValue == null) return null;
@@ -340,6 +371,7 @@ export const useBattleView = () => {
       attack: Number(current.attackValue),
       defense: Number(current.defenseValue),
       damage: outcome.value?.combatDamage ?? 0,
+      effectDamage: effectDamage.value,
     };
   });
 

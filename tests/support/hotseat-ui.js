@@ -20,16 +20,17 @@ import { hotseatSlots } from '../../bot/play/hotseat.js';
  * - `crash` — исключение в клиенте (клик, рендер, проекция);
  * - `stuck` — двадцать кликов подряд не меняют состояние.
  *
- * Моки (`useGameView` без сети, `useProfile`, пак героев, Swiper) объявляет вызывающий тест: сюда
- * приходят уже подменённые модули, как и в остальных клиентских тестах.
+ * Моки (`useGameView` без сети, `useProfile`, пак героев) объявляет вызывающий тест: сюда приходят уже
+ * подменённые модули, как и в остальных клиентских тестах.
  */
 const PANELS = [
   ['HintsWindow', '../../app/components/organisms/game/HintsWindow.vue'],
   ['ChoicePanel', '../../app/components/organisms/game/ChoicePanel.vue'],
   ['BattleWindow', '../../app/components/organisms/game/BattleWindow.vue'],
   ['PlacementTray', '../../app/components/molecules/game/PlacementTray.vue'],
-  ['PlayersPanel', '../../app/components/organisms/game/PlayersPanel.vue'],
-  ['CardsPanel', '../../app/components/organisms/game/CardsPanel.vue'],
+  ['HeroRail', '../../app/components/organisms/game/HeroRail.vue'],
+  ['HandFan', '../../app/components/organisms/game/HandFan.vue'],
+  ['TopRail', '../../app/components/organisms/game/TopRail.vue'],
 ];
 
 const messageOf = error => (error instanceof Error ? error.message : String(error));
@@ -118,8 +119,23 @@ const visibleClick = (session, skip) => {
     }
   }
 
-  if (session.ui.value?.pickFighters === true) {
-    for (const fighterId of session.highlightedFighterIds.value ?? []) {
+  const movementPhase = String(session.ui.value?.phase ?? '') === 'movement';
+  const clickableFighters =
+    session.ui.value?.pickFighters === true
+      ? (session.highlightedFighterIds.value ?? [])
+      : movementPhase
+        ? [
+            ...new Set([
+              ...(session.highlightedFighterIds.value ?? []),
+              ...(session.myFighters.value ?? [])
+                .filter(fighter => fighter.currentPosition != null)
+                .map(fighter => fighter.id),
+            ]),
+          ]
+        : [];
+
+  if (clickableFighters.length > 0) {
+    for (const fighterId of clickableFighters) {
       candidates.push({
         kind: 'fighter',
         action: { kind: 'fighter', id: fighterId },
@@ -335,6 +351,7 @@ export const runUiGame = async ({
       }
 
       const before = signature(state);
+      const pickedBefore = session.selectedFighterId.value;
       try {
         await click.run();
       } catch (error) {
@@ -346,9 +363,11 @@ export const runUiGame = async ({
 
       const after = signature(view.hostState.value);
       const message = session.error.value;
-      if (after === before) {
-        // клиент отказал словами — это не молчание, но этот путь больше не пробуем
-        if (message) skip.add(keyOf(click.action));
+      // выбор бойца состояние движка не меняет: он виден по активированной фишке
+      const visible = after !== before || session.selectedFighterId.value !== pickedBefore;
+      if (!visible) {
+        // клиент отказал словами или боец уже был выбран — этот путь больше не пробуем
+        if (message || click.kind === 'fighter') skip.add(keyOf(click.action));
         else {
           return report('silent', `${silentDetail(state, engineActor, click, session)}`, steps);
         }

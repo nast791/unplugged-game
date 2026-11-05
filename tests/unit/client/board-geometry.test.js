@@ -8,6 +8,7 @@ import {
   SHADOW,
   STROKE,
   PATTERN_TILES,
+  TOKEN,
   bendFor,
   bendOf,
   cellAtPoint,
@@ -29,8 +30,12 @@ import {
   sectorClipFunc,
   sectorDividers,
   sectorWedges,
+  shadeColor,
   startMarkers,
   tileClipFunc,
+  tokenFaceRadius,
+  tokenInk,
+  tokenRadius,
   trimSegment,
 } from '../../../app/composables/ui/useBoardGeometry.js';
 import {
@@ -652,5 +657,36 @@ describe('геометрия доски: тени', () => {
       expect(shadow.shadowBlur).toBeGreaterThan(0);
       expect(Math.abs(shadow.shadowOffsetY)).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('геометрия доски: фишка бойца', () => {
+  it('фишка занимает большую часть клетки, поле портрета — внутри кромки', () => {
+    const cell = 56;
+    expect(tokenRadius(cell)).toBeCloseTo(cell * TOKEN.radius, 6);
+    expect(tokenFaceRadius(cell)).toBeLessThan(tokenRadius(cell));
+    expect(tokenFaceRadius(cell)).toBeCloseTo(tokenRadius(cell) * TOKEN.face, 6);
+    expect(tokenRadius(cell)).toBeLessThan(cell);
+    expect(tokenRadius(0)).toBe(8);
+  });
+
+  it('оттенки цвета героя: светлее к белому, темнее к чёрному', () => {
+    expect(shadeColor('#EA580C', 0)).toBe('#ea580c');
+    expect(shadeColor('#EA580C', 1)).toBe('#ffffff');
+    expect(shadeColor('#EA580C', -1)).toBe('#000000');
+    const light = shadeColor('#3B82F6', 0.42);
+    const deep = shadeColor('#3B82F6', -0.32);
+    expect(light).toMatch(/^#[0-9a-f]{6}$/);
+    expect(deep).toMatch(/^#[0-9a-f]{6}$/);
+    expect(colorLuminance(light)).toBeGreaterThan(colorLuminance('#3B82F6'));
+    expect(colorLuminance(deep)).toBeLessThan(colorLuminance('#3B82F6'));
+    expect(shadeColor('не цвет', 0.3)).toBe('не цвет');
+    expect(shadeColor(undefined, 0.3)).toBe(undefined);
+  });
+
+  it('буква-заглушка контрастна цвету фишки', () => {
+    expect(tokenInk('#EDC9AF')).toBe('#111827');
+    expect(tokenInk('#059669')).toBe('#FFFFFF');
+    expect(tokenInk('#111827')).toBe('#FFFFFF');
   });
 });

@@ -1,19 +1,17 @@
 import { HINTS } from '#shared/constants/hints.js';
-import { findFighter, findPlayer } from '#shared/helpers/base.js';
+import { findFighter, playerLabel } from '#shared/helpers/base.js';
 import { isCombatParticipant } from '#shared/helpers/combat.js';
 
-const playerName = (partyState, playerId) =>
-  findPlayer(partyState, playerId)?.name ?? String(playerId ?? '—');
+const playerName = (partyState, playerId) => playerLabel(partyState, playerId);
 
 /** Боец с именем его игрока: «Амат (Элизиф)». В сводке боя так называют обе стороны. */
 const fighterLabel = (partyState, fighterId) => {
   if (fighterId == null) return null;
   const { player, fighter } = findFighter(partyState, fighterId);
   if (!fighter) return String(fighterId);
-  const owner = player?.name ?? player?.id;
-  return owner == null
-    ? String(fighter.name ?? fighter.id)
-    : `${fighter.name ?? fighter.id} (${owner})`;
+  const name = String(fighter.name ?? fighter.id);
+  const owner = String(player?.name ?? '').trim();
+  return owner && owner !== name ? `${name} (${owner})` : name;
 };
 
 /**

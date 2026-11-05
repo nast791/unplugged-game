@@ -21,8 +21,8 @@ const body = {
 const total = cards => cards.reduce((sum, card) => sum + (card.quantity ?? 1), 0);
 
 describe('партия с Ифритом', () => {
-  it('колода героя сходится в 30 карт и 13 уникальных', () => {
-    expect(ifritCards).toHaveLength(13);
+  it('колода героя сходится в 30 карт и 14 уникальных', () => {
+    expect(ifritCards).toHaveLength(14);
     expect(total(ifritCards)).toBe(30);
     // карта без свойств ровно одна — «Столб огня»
     expect(ifritCards.filter(card => (card.rules ?? []).length === 0).map(card => card.id)).toEqual(

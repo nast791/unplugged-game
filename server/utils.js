@@ -17,3 +17,14 @@ export const shuffle = (items, rng) => {
   }
   return out;
 };
+
+/** Версия артов в адресе: браузер кэширует картинку по URL, и без смены версии новый файл не виден. */
+const HERO_ART_VERSION = 27;
+
+/**
+ * Адрес арта героя: в паке лежит только имя файла (`images: { hero: 'hero.webp' }`, `image` бойца),
+ * а наружу уходит маршрут `/api/content/heroes/{id}/images/{файл}`. Одна точка правды: когда картинки
+ * начнёт отдавать бэкенд, здесь меняется только сборка пути.
+ */
+export const heroImageUrl = (heroId, file) =>
+  heroId && file ? `/api/content/heroes/${heroId}/images/${file}?v=${HERO_ART_VERSION}` : null;

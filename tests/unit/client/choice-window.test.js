@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, h } from 'vue';
 
 /**
@@ -15,6 +15,7 @@ globalThis.computed = computed;
 
 const session = vi.hoisted(() => ({
   options: [],
+  targeting: [],
   count: 1,
   picked: [],
   ok: { visible: false, enabled: false, label: null },
@@ -31,7 +32,13 @@ vi.mock('~/composables/game/useGameSession.js', async () => {
           disabled: option.disabled === true,
         })),
       ),
-      targetingChoices: computed(() => []),
+      targetingChoices: computed(() =>
+        session.targeting.map(option => ({
+          optionId: option.id,
+          title: option.text,
+          disabled: option.disabled === true,
+        })),
+      ),
       choiceCount: computed(() => session.count),
       choicePicked: computed(() => session.picked),
       choiceComplete: computed(() => session.picked.length >= session.count),
@@ -40,6 +47,20 @@ vi.mock('~/composables/game/useGameSession.js', async () => {
       isGameOver: computed(() => false),
       onChoiceClick: () => undefined,
       onFinishAction: () => undefined,
+    }),
+  };
+});
+
+// Тултип тянет конфиг Nuxt (`useUI` → `useAppConfig`): кнопке от него нужен только текст подсказки.
+vi.mock('~/components/atoms/ATooltip.vue', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    default: defineComponent({
+      name: 'ATooltip',
+      props: { text: { type: String, default: '' } },
+      setup(props, { slots }) {
+        return () => h('div', { 'data-tooltip': props.text }, slots.default?.());
+      },
     }),
   };
 });
@@ -66,13 +87,22 @@ const threeOptions = () => [
 
 const panel = () =>
   mount(ChoicePanel, {
-    global: { stubs: { NuxtIcon: IconStub } },
+    global: { stubs: { NuxtIcon: IconStub, Icon: IconStub } },
   });
 
-const finish = () =>
-  mount(FinishButton, {
-    global: { stubs: { NuxtIcon: IconStub } },
-  });
+beforeEach(() => {
+  session.options = [];
+  session.targeting = [];
+  session.count = 1;
+  session.picked = [];
+  session.ok = { visible: false, enabled: false, label: null };
+});
+
+const finish = () => mount(FinishButton, {
+  global: { stubs: { NuxtIcon: IconStub, Icon: IconStub } },
+});
+/** Активность кнопки — на самой кнопке: обвязка тултипа её состояние не значит. */
+const finishDisabled = wrapper => wrapper.find('button').attributes('disabled');
 
 describe('окно вариантов свойства: мультивыбор', () => {
   it('на несколько целей рисует чекбоксы и зовёт подтвердить, когда набор собран', () => {
@@ -109,23 +139,49 @@ describe('окно вариантов свойства: мультивыбор',
   });
 });
 
+describe('подписи вариантов: текст свойства, а не id', () => {
+  it('окно вне боя берёт подписи из кандидатов движка', () => {
+    session.targeting = [
+      { id: 'heal', text: 'Восстановите Ифриту 2 здоровья.' },
+      { id: 'draw', text: 'Возьмите 2 карты.' },
+      { id: 'step', text: 'Сдвиньте Ифрита на расстояние до 2 клеток.' },
+    ];
+
+    const window = panel();
+    expect(window.findAll('[data-icon="lucide:circle"]')).toHaveLength(3);
+    expect(window.text()).toContain('Восстановите Ифриту 2 здоровья.');
+    expect(window.text()).not.toContain('heal');
+    // текст варианта стоит по центру кружка-радио, а не чуть выше
+    expect(window.find('button').classes()).toContain('items-center');
+  });
+
+  it('один вариант не дублируется, когда движок отдал и choices, и кандидатов', () => {
+    session.options = threeOptions();
+    session.targeting = threeOptions();
+
+    const window = panel();
+    expect(window.findAll('button')).toHaveLength(3);
+    expect(window.text().match(/добор/g)).toHaveLength(1);
+  });
+});
+
 describe('общая кнопка: набор решает, активна ли она', () => {
   it('обязательное окно на две цели: половина набора кнопку не включает, полный набор — включает', () => {
     session.count = 2;
     session.picked = [];
     session.ok = { visible: false, enabled: false, label: null };
 
-    expect(finish().attributes('disabled')).toBeDefined();
+    expect(finishDisabled(finish())).toBeDefined();
 
     session.picked = ['draw'];
     const half = finish();
     // отметка есть, но набор не собран: подтверждать нечего
-    expect(half.attributes('disabled')).toBeDefined();
+    expect(finishDisabled(half)).toBeDefined();
 
     session.picked = ['draw', 'heal'];
     const full = finish();
-    expect(full.attributes('disabled')).toBeUndefined();
-    expect(full.text()).toContain('Подтвердить');
+    expect(finishDisabled(full)).toBeUndefined();
+    expect(full.find('button').attributes('aria-label')).toContain('Подтвердить');
   });
 
   it('окно на одну цель: одна отметка сразу включает кнопку — как было', () => {
@@ -134,8 +190,8 @@ describe('общая кнопка: набор решает, активна ли 
     session.ok = { visible: false, enabled: false, label: null };
 
     const one = finish();
-    expect(one.attributes('disabled')).toBeUndefined();
-    expect(one.text()).toContain('Подтвердить');
+    expect(finishDisabled(one)).toBeUndefined();
+    expect(one.find('button').attributes('aria-label')).toContain('Подтвердить');
   });
 
   it('необязательное окно: кнопку включает движок, даже если отметок ещё нет', () => {
@@ -144,7 +200,7 @@ describe('общая кнопка: набор решает, активна ли 
     session.ok = { visible: true, enabled: true, label: 'Закончить эффект' };
 
     const optional = finish();
-    expect(optional.attributes('disabled')).toBeUndefined();
-    expect(optional.text()).toContain('Закончить эффект');
+    expect(finishDisabled(optional)).toBeUndefined();
+    expect(optional.find('button').attributes('aria-label')).toContain('Закончить эффект');
   });
 });

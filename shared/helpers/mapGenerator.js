@@ -1,4 +1,4 @@
-import { TERRAIN_IDS, isTerrainId } from '#shared/constants/terrain.js';
+import { MAP_TERRAIN_IDS, isTerrainId } from '#shared/constants/terrain.js';
 import { seatSide } from '#shared/constants/seats.js';
 
 /**
@@ -1042,10 +1042,12 @@ const pickTerrains = (playerCount, smallCount, affinities, rng) => {
   const required = [];
   for (const list of affinities) {
     for (const terrain of list ?? []) {
+      // земля героя из выключенных в генерацию не попадает: иначе тип возвращался бы через способность
+      if (!MAP_TERRAIN_IDS.includes(terrain)) continue;
       if (!required.includes(terrain)) required.push(terrain);
     }
   }
-  const pool = rng.shuffle(TERRAIN_IDS);
+  const pool = rng.shuffle(MAP_TERRAIN_IDS);
   const core = pool.splice(0, playerCount);
   const missing = required.filter(terrain => !core.includes(terrain));
   while (missing.length > smallCount) {
@@ -1054,7 +1056,7 @@ const pickTerrains = (playerCount, smallCount, affinities, rng) => {
     core[index] = missing.shift();
   }
   const rest = rng.shuffle(
-    TERRAIN_IDS.filter(terrain => !core.includes(terrain) && !missing.includes(terrain)),
+    MAP_TERRAIN_IDS.filter(terrain => !core.includes(terrain) && !missing.includes(terrain)),
   );
   const small = [...missing, ...rest].slice(0, smallCount);
   return [...rng.shuffle(core), ...rng.shuffle(small)];
@@ -1086,7 +1088,7 @@ export const generateMap = ({
   // Размер и форма выбираются по сиду один раз на карту: разные партии — разные поля.
   const shapeRng = makeRng(Number(seed));
   const targetCells = Number(cells) || pickRange(shapeRng, preset.cells);
-  const maxTerrains = Math.min(MAX_TERRAIN_COUNT, TERRAIN_IDS.length);
+  const maxTerrains = Math.min(MAX_TERRAIN_COUNT, MAP_TERRAIN_IDS.length);
   const minTerrains = Math.min(MIN_TERRAIN_COUNT, maxTerrains);
   const terrainCount = Math.max(
     minTerrains,

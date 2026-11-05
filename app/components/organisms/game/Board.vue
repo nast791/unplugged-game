@@ -3,7 +3,8 @@
     ref="wrapRef"
     data-board
     :data-gap="fitPad"
-    class="relative h-full min-h-96 w-full overflow-hidden bg-white"
+    class="relative h-full min-h-96 w-full overflow-hidden"
+    :class="props.tableBg ? 'bg-table bg-[url(/images/table.webp)] bg-cover bg-center' : 'bg-white'"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
@@ -12,6 +13,8 @@
     <ClientOnly>
       <v-stage v-if="stageReady" ref="stageRef" :config="stageConfig">
         <v-layer>
+          <v-rect v-if="mapFrame" :config="paperConfig" />
+
           <v-line v-for="(line, index) in edgeLines" :key="`e-${index}`" :config="line" />
 
           <v-group
@@ -48,12 +51,18 @@
               <v-circle :config="nodeOutlineConfig(node)" />
             </template>
 
-            <v-circle v-if="isPlacementCell(node)" :config="placementGlowConfig(node)" />
-            <v-circle
-              v-if="isPlacementCell(node) && isDropCell(node)"
-              :config="placementPulseConfig(node)"
+            <v-arc
+              v-for="(mark, index) in temporaryMarksOf(node)"
+              :key="`t-${index}`"
+              :config="mark"
             />
-            <v-circle v-if="isPlacementCell(node)" :config="placementRingConfig(node)" />
+
+            <v-circle v-if="isActiveCell(node)" :config="cellGlowConfig(node)" />
+            <v-circle
+              v-if="isDropCell(node) || isPulsingCell(node)"
+              :config="cellPulseConfig(node)"
+            />
+            <v-circle v-if="isActiveCell(node)" :config="cellRingConfig(node)" />
 
             <v-text v-if="showCellIds" :config="cellLabelConfig(node)" />
           </v-group>
@@ -64,6 +73,11 @@
               <v-text :config="marker.label" />
             </template>
           </v-group>
+
+          <template v-if="mapFrame">
+            <v-rect :config="vignetteConfig" />
+            <v-line :config="frameConfig" />
+          </template>
 
           <v-group
             v-for="token in placedFighters"
@@ -77,9 +91,27 @@
               ownerId: token.playerId,
             }"
           >
+            <v-circle v-if="isPulsingFighter(token)" :config="fighterPulseConfig(token)" />
+            <v-ellipse :config="fighterShadowConfig(token)" />
             <v-circle :config="fighterHaloConfig(token)" />
             <v-circle :config="fighterBodyConfig(token)" />
-            <v-text :config="fighterLabelConfig(token)" />
+            <v-circle :config="fighterRimShadeConfig(token)" />
+            <v-circle :config="fighterShineConfig(token)" />
+            <v-circle :config="fighterFaceConfig(token)" />
+            <v-circle :config="fighterFaceEdgeConfig(token)" />
+            <v-group
+              v-if="avatarOf(token)"
+              :config="{ clipFunc: fighterAvatarClip(token), listening: false }"
+            >
+              <v-image :config="fighterAvatarConfig(token)" />
+            </v-group>
+            <v-text v-else :config="fighterLabelConfig(token)" />
+
+            <template v-if="hpBadges">
+              <v-path :config="fighterHpHeartConfig(token)" />
+              <v-path :config="fighterHpGlossConfig(token)" />
+              <v-text :config="fighterHpLabelConfig(token)" />
+            </template>
           </v-group>
         </v-layer>
       </v-stage>
@@ -92,6 +124,7 @@
 </template>
 
 <script setup>
+import { TOKEN, tokenFaceRadius, tokenRadius } from '~/composables/ui/useBoardGeometry.js';
 import { useBoardMap } from '~/composables/ui/useBoardMap.js';
 import { useBoardView } from '~/composables/ui/useBoardView.js';
 import { useFitPad } from '~/composables/ui/useFitPad.js';
@@ -99,6 +132,10 @@ import { useGameSession } from '~/composables/game/useGameSession.js';
 
 const props = defineProps({
   interactive: { type: Boolean, default: true },
+  hpBadges: { type: Boolean, default: false },
+  mapFrame: { type: Boolean, default: false },
+  fitUnits: { type: Number, default: 0 },
+  tableBg: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['select-node', 'select-fighter']);
@@ -115,6 +152,7 @@ const {
   framedFighterIds,
   battleRoles,
   placementCells,
+  expectsFighterPick,
 } = useGameSession();
 
 const map = computed(() => view.value?.map ?? null);
@@ -127,26 +165,43 @@ const size = ref({ width: 720, height: 480 });
 const {
   nodes,
   bounds,
+  radius,
   showCellIds,
   sectorsOf,
   sectorConfig,
+  temporaryMarksOf,
   dividersOf,
   patternsOf,
   nodeCircleConfig,
   nodeOutlineConfig,
-  isPlacementCell,
+  isActiveCell,
+  isPulsingCell,
+  isPulsingFighter,
   isDropCell,
-  placementGlowConfig,
-  placementPulseConfig,
-  placementPulse,
-  placementRingConfig,
+  cellGlowConfig,
+  cellPulseConfig,
+  cellRingConfig,
+  pulse,
+  pulseActive,
   cellLabelConfig,
   edgeLines,
   startMarkersOf,
   placedFighters,
   fighterHaloConfig,
+  fighterPulseConfig,
+  fighterShadowConfig,
   fighterBodyConfig,
+  fighterRimShadeConfig,
+  fighterFaceConfig,
+  fighterFaceEdgeConfig,
+  fighterShineConfig,
   fighterLabelConfig,
+  fighterHpHeartConfig,
+  fighterHpGlossConfig,
+  fighterHpLabelConfig,
+  frameConfig,
+  paperConfig,
+  vignetteConfig,
   clickTargetOf,
   cellAt,
   dropCellId,
@@ -163,14 +218,61 @@ const {
   framedFighterIds,
   battleRoles,
   placementCells,
+  pickFighters: expectsFighterPick,
 });
 
-const { pad: fitPad, measure: measureFitPad } = useFitPad(wrapRef);
+const { pad: fitPad, measure: measureFitPad } = useFitPad(wrapRef, () => props.fitUnits);
+
+const avatars = reactive(new Map());
+
+const avatarOf = token => avatars.get(String(token.fighter.image || '')) || null;
+
+const loadAvatars = () => {
+  const urls = new Set(placedFighters.value.map(token => token.fighter.image).filter(Boolean));
+  for (const url of urls) {
+    if (avatars.has(url)) continue;
+    const picture = new Image();
+    picture.onload = () => avatars.set(url, picture);
+    picture.src = url;
+  }
+};
+
+watch(() => placedFighters.value.map(token => token.fighter.image || '').join('|'), loadAvatars, {
+  immediate: true,
+});
+
+const fighterAvatarClip = () => {
+  const edgeR = tokenRadius(radius.value);
+  return ctx => {
+    ctx.beginPath();
+    ctx.arc(0, 0, edgeR, 0, Math.PI * 2, false);
+    ctx.closePath();
+  };
+};
+
+const fighterAvatarConfig = token => {
+  const faceR = tokenFaceRadius(radius.value) * TOKEN.avatar;
+  return {
+    image: avatarOf(token),
+    x: -faceR,
+    y: -faceR,
+    width: faceR * 2,
+    height: faceR * 2,
+    listening: false,
+  };
+};
+
+const fitPadUnits = computed(() => {
+  const units = Number(props.fitUnits) || 0;
+  const width = Number(size.value.width) || 0;
+  if (!units || !width) return 0;
+  return Math.round((width / (width < 767 ? 360 : 1920)) * units);
+});
 
 const { stageConfig, zoomIn, zoomOut, onDragMove } = useBoardView({
   size,
   bounds,
-  fitPad,
+  fitPad: computed(() => (Number(props.fitUnits) > 0 ? fitPadUnits.value : fitPad.value)),
 });
 
 const containerPoint = event => {
@@ -242,25 +344,27 @@ const clearDropCell = () => {
   setDropCell(null);
 };
 
-const PULSE = { near: 8, far: 24, width: 10, peak: 0.3, periodMs: 1500 };
+const PULSE_PERIOD = 1500;
 
-const hoveredPulseNode = () => {
+const pulseRings = () => {
   const stage = stageRef.value?.getNode?.();
-  const id = dropCellId.value;
-  if (typeof stage?.findOne !== 'function' || id == null) return null;
-  const group = stage.findOne(node => String(node.getAttr?.('cellId')) === String(id));
-  return group?.findOne?.(entry => entry.getAttr?.('pulseRing') === true) ?? null;
+  if (typeof stage?.find !== 'function') return [];
+  return stage.find(entry => entry.getAttr?.('pulseRing') === true) ?? [];
 };
 
-const applyGlowPulse = () => {
-  const node = hoveredPulseNode();
-  if (!node) return;
-  const base = Number(node.getAttr('baseRadius')) || 0;
-  const wave = (Date.now() % PULSE.periodMs) / PULSE.periodMs;
-  node.radius(base + PULSE.near + (PULSE.far - PULSE.near) * wave);
-  node.strokeWidth(PULSE.width);
-  node.opacity(PULSE.peak * (1 - wave) ** 1.4);
-  node.getLayer()?.batchDraw();
+const applyPulse = () => {
+  const rings = pulseRings();
+  if (!rings.length) return;
+  const wave = (Date.now() % PULSE_PERIOD) / PULSE_PERIOD;
+  for (const ring of rings) {
+    const base = Number(ring.getAttr('baseRadius')) || 0;
+    const near = Number(ring.getAttr('pulseNear')) || 0;
+    const far = Number(ring.getAttr('pulseFar')) || 0;
+    ring.radius(base + near + (far - near) * wave);
+    ring.strokeWidth(Number(ring.getAttr('pulseWidth')) || 0);
+    ring.opacity((Number(ring.getAttr('pulsePeak')) || 0) * (1 - wave) ** 1.4);
+  }
+  rings[0].getLayer()?.batchDraw();
 };
 
 const onDrop = event => {
@@ -295,7 +399,7 @@ const updateSize = () => {
 
 let resizeObserver;
 
-watch([dropCellId, placementPulse], () => applyGlowPulse(), { flush: 'post' });
+watch([dropCellId, pulse, pulseActive], () => applyPulse(), { flush: 'post' });
 
 onMounted(() => {
   stageReady.value = true;

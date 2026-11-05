@@ -12,7 +12,8 @@ import { endGameIfFinished } from '#shared/helpers/turn.js';
  * Условие читается тем же `runConditions`, что и условия правила, поэтому `$переменные` в нём работают.
  * Если недоступны все варианты, окно не открывается вовсе — выбирать нечего.
  * Поля кандидата сохраняются: окно по чужим картам (`kind: 'options'`) несёт в них название и бонус,
- * и клиент рисует по ним список выбора.
+ * и клиент рисует по ним список выбора. **Подпись варианта — тоже в кандидате** (`title` с `card.options[].text`):
+ * окно, открытое вне боя (эффект карты), `ui.choices` не собирает, и клиент рисовал бы id варианта.
  */
 const optionsWithStates = (partyState, candidates, { card, playerId, vars }) => {
   if (!Array.isArray(candidates)) return candidates;
@@ -22,10 +23,17 @@ const optionsWithStates = (partyState, candidates, { card, playerId, vars }) => 
       entry != null && typeof entry === 'object' ? (entry.optionId ?? entry.id) : entry;
     const option = (card?.options ?? []).find(item => String(item.id) === String(optionId));
     const hasCondition = Boolean(option?.when || option?.any);
+    // подпись берём с самой карты: окно вне боя не собирает `ui.choices`, и без текста клиент рисовал id
+    const title =
+      option?.text ??
+      option?.title ??
+      (entry != null && typeof entry === 'object' ? (entry.title ?? entry.text) : null) ??
+      null;
 
     return {
       ...(entry != null && typeof entry === 'object' ? entry : {}),
       optionId,
+      title,
       disabled:
         hasCondition &&
         !runConditions(partyState, { when: option.when, any: option.any }, { playerId, vars }).ok,

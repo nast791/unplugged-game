@@ -76,6 +76,8 @@ export const createGame = (body, { testId, testSeed } = {}) => {
       team: String(raw.team).trim(),
       order: Number(raw.order),
       control: String(raw.control).trim().toLowerCase(),
+      // Имя игрока из настройки стола; за компьютером имени нет даже если лобби его прислало.
+      name: String(raw.control).trim().toLowerCase() === 'ai' ? '' : String(raw.name ?? '').trim(),
     }))
     .sort((a, b) => a.order - b.order);
 

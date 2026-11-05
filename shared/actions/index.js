@@ -14,6 +14,7 @@ export { SET_REVEAL } from './reveal.js';
 export { SET_STATUS } from './status.js';
 export { SET_HAND_LIMIT } from './handLimit.js';
 export { SET_SKILL } from './skill.js';
+export { SET_CELL_TERRAIN } from './terrain.js';
 
 import { SET_ACTIONS, SET_RESIGNED } from './base.js';
 import { SET_CARDS } from './cards.js';
@@ -30,6 +31,7 @@ import { SET_REVEAL } from './reveal.js';
 import { SET_STATUS } from './status.js';
 import { SET_HAND_LIMIT } from './handLimit.js';
 import { SET_SKILL } from './skill.js';
+import { SET_CELL_TERRAIN } from './terrain.js';
 
 /** Универсальные actions (CAPS) — манипуляторы доменами; вызываются из фаз и из phase.moves. */
 export const actions = {
@@ -49,4 +51,5 @@ export const actions = {
   SET_STATUS,
   SET_HAND_LIMIT,
   SET_SKILL,
+  SET_CELL_TERRAIN,
 };

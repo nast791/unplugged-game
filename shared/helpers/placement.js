@@ -23,12 +23,28 @@ export const nodeTerrains = node => {
   return list.filter(terrain => terrain != null && terrain !== '').map(terrain => String(terrain));
 };
 
+/** Временные стихии клетки: дополнительный кусок, который живёт до конца хода. */
+export const nodeExtraTerrains = node => {
+  const raw = node?.extraTerrain;
+  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  return list.filter(terrain => terrain != null && terrain !== '').map(terrain => String(terrain));
+};
+
+/** Все стихии клетки: постоянные, затем временные без повторов. Основная стихия остаётся первой. */
+export const nodeAllTerrains = node => {
+  const out = [];
+  for (const terrain of [...nodeTerrains(node), ...nodeExtraTerrains(node)]) {
+    if (!out.includes(terrain)) out.push(terrain);
+  }
+  return out;
+};
+
 /** Основная стихия клетки — она и задаёт цвет заливки. */
 export const nodeTerrain = node => nodeTerrains(node)[0] ?? null;
 
 export const cellTerrains = (partyState, cellId) => {
   if (cellId == null) return [];
-  return nodeTerrains(findNode(partyState, cellId));
+  return nodeAllTerrains(findNode(partyState, cellId));
 };
 
 export const cellTerrain = (partyState, cellId) => cellTerrains(partyState, cellId)[0] ?? null;

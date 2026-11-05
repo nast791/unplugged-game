@@ -1,12 +1,12 @@
 import { HINTS } from '#shared/constants/hints.js';
-import { findPlayer } from '#shared/helpers/base.js';
+import { playerLabel } from '#shared/helpers/base.js';
 import { handCardIds } from '#shared/helpers/turn.js';
 
 /** Имя победителя; null — если победитель почему-то не записан. */
 const winnerName = partyState => {
   const winnerId = partyState.winner ?? null;
   if (winnerId == null) return null;
-  return findPlayer(partyState, winnerId)?.name ?? String(winnerId);
+  return playerLabel(partyState, winnerId);
 };
 
 const resultsOf = partyState => ({
@@ -16,7 +16,7 @@ const resultsOf = partyState => ({
   turn: partyState.turn?.index ?? 0,
   players: (partyState.players ?? []).map(player => ({
     id: String(player.id),
-    name: player.name ?? String(player.id),
+    name: playerLabel(partyState, player.id),
     resigned: player.resigned === true,
     fighters: (player.fighters ?? []).map(fighter => ({
       id: String(fighter.id),

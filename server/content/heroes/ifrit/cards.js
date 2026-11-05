@@ -1,9 +1,9 @@
 /**
- * Колода Ифрита: 13 уникальных карт, 30 копий, общих карт пула нет. Разбор — `passport.md` §7.
+ * Колода Ифрита: 14 уникальных карт, 30 копий, общих карт пула нет. Разбор — `passport.md` §7.
  *
  * Оси героя: **темп** (умение покупает третье действие духом, «Вечный огонь» возвращается в руку,
  * «Счёт ударов» награждает поздний удар) и **позиция** (дальний бой на 3 клетки, сдвиги чужих,
- * «Пепельный ветер» сквозь строй, «Прыжок в лаву»). Карта без свойств в колоде ровно одна.
+ * «Пепельный ветер» сквозь строй, «Ожог» отталкивает соседа). Карта без свойств в колоде ровно одна.
  */
 export default [
   {
@@ -19,7 +19,7 @@ export default [
     rules: [],
   },
   {
-    // стихия как сила: на лаве +2, в пустыне +1; на двухцветной клетке сработают оба правила
+    // наказание за бой на своей земле: урон бойцу и сброс карты из чужой руки
     id: 'ifrit_02',
     title: 'Жар из-под земли',
     type: 'attack',
@@ -27,17 +27,20 @@ export default [
     bonus: 3,
     quantity: 3,
     fighter: 'ifrit',
-    text: 'ВО ВРЕМЯ БИТВЫ: Если Ифрит стоит на клетке со стихией лавы, значение карты +2; если на клетке со стихией пустыни — +1.',
+    text: 'ПОСЛЕ БИТВЫ: Если Ифрит стоит на клетке со стихией лавы, нанесите бойцу противника из этой битвы 2 урона, оппонент сбрасывает 1 случайную карту.',
     rules: [
       {
-        moment: 'duringCombat',
-        when: [{ fact: 'FIGHTERS', params: { fighterIds: ['ifrit'], terrain: 'lava' }, min: 1 }],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
-      },
-      {
-        moment: 'duringCombat',
-        when: [{ fact: 'FIGHTERS', params: { fighterIds: ['ifrit'], terrain: 'desert' }, min: 1 }],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 }],
+        moment: 'afterCombat',
+        when: [
+          { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'], terrain: 'lava' }, min: 1 },
+          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foes' },
+          { fact: 'FIGHTERS', params: { fighterIds: '$foes' }, min: 1 },
+          { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
+        ],
+        then: [
+          { action: 'SET_HEALTH', fighterIds: '$foes', delta: -2 },
+          { action: 'SET_CARDS', of: '$enemy', op: 'discard', random: true, count: 1 },
+        ],
       },
     ],
   },
@@ -48,7 +51,7 @@ export default [
     type: 'attack',
     value: 3,
     bonus: 2,
-    quantity: 2,
+    quantity: 1,
     fighter: 'ifrit',
     text: 'ПОСЛЕ БИТВЫ: Если Ифрит стоит на клетке со стихией лавы, положите эту карту обратно в руку со значением на 1 меньше. При значении 0 карта остаётся в сбросе.',
     rules: [
@@ -70,7 +73,7 @@ export default [
     bonus: 3,
     quantity: 3,
     fighter: 'ifrit',
-    text: 'МГНОВЕННО: Можете убить своего пепельного духа; если убили, значение карты +1.',
+    text: 'МГНОВЕННО: Можете уничтожить своего пепельного духа. Если вы это сделали, значение этой карты становится 6. ПОСЛЕ БИТВЫ: Если вы победили, возьмите 1 карту.',
     rules: [
       {
         moment: 'immediately',
@@ -94,8 +97,13 @@ export default [
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [
           { action: 'SET_HEALTH', fighterIds: '$picked', delta: -1 },
-          { action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 },
+          { action: 'SET_COMBAT', op: 'value', side: 'self', to: 6 },
         ],
+      },
+      {
+        moment: 'afterCombat',
+        when: [{ fact: 'COMBAT', params: { winner: 'self' } }],
+        then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
     ],
   },
@@ -198,46 +206,32 @@ export default [
     ],
   },
   {
-    // победа как источник лечения и как сдвиг чужого бойца в свою стихию
-    id: 'ifrit_09',
-    title: 'Пепельный покров',
-    type: 'hybrid',
-    value: 5,
-    bonus: 2,
+    // отталкивание: бьёт соседа и отбрасывает его до двух клеток — разрыв дистанции с ближником
+    id: 'ifrit_10',
+    title: 'Ожог',
+    type: 'effect',
+    value: null,
+    // бонус 3 — единственная такая карта колоды (правило `docs/hero-algorithm.md` §6)
+    bonus: 3,
     quantity: 2,
-    fighter: 'any',
-    text: 'ПОСЛЕ БИТВЫ: Если вы победили, восстановите 1 здоровье своему бойцу, участвовавшему в битве. Также, если вы победили, поставьте бойца противника из этой битвы на любую свободную клетку лавы или пустыни.',
+    fighter: 'ifrit',
+    text: 'Нанесите 2 урона любому бойцу на соседней клетке. Переместите этого бойца на расстояние до 2 клеток.',
     rules: [
       {
-        moment: 'afterCombat',
+        moment: 'effect',
         when: [
-          { fact: 'COMBAT', params: { winner: 'self' } },
-          { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
-        ],
-        then: [{ action: 'SET_HEALTH', fighterIds: '$ours', delta: 1 }],
-      },
-      {
-        moment: 'afterCombat',
-        when: [
-          { fact: 'COMBAT', params: { winner: 'self' } },
-          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
-          // боец противника мог погибнуть в бою, а замороженному телепорт закрыт
-          { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: false }, min: 1, var: 'alive' },
-          // свободная клетка лавы или пустыни: список стихий читает факт CELLS
-          {
-            fact: 'CELLS',
-            params: { terrain: ['lava', 'desert'], free: true, min: 1 },
-            var: 'cells',
-          },
+          { fact: 'FIGHTERS', params: { withinOf: 'ifrit', within: 1 }, min: 1, var: 'targets' },
         ],
         then: [
           {
             action: 'SET_TARGETING',
             op: 'open',
-            kind: 'cells',
-            candidates: '$cells',
+            kind: 'fighters',
+            candidates: '$targets',
             count: 1,
             required: true,
+            // сосед остался один — движок отмечает его сам
+            auto: true,
           },
         ],
       },
@@ -245,61 +239,27 @@ export default [
         moment: 'picked',
         when: [
           { fact: 'PICKED', var: 'picked' },
-          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
+          { fact: 'FIGHTERS', params: { fighterIds: '$picked' }, min: 1 },
         ],
         then: [
-          { action: 'SET_FIGHTER_CELL', fighterId: '$foe', cellId: '$picked', teleport: true },
-        ],
-      },
-    ],
-  },
-  {
-    // прыжок в свою стихию: там «Жар из-под земли» бьёт на 5, а «Вечный огонь» возвращается в руку
-    id: 'ifrit_10',
-    title: 'Прыжок в лаву',
-    type: 'effect',
-    value: null,
-    // бонус 3 — единственная такая карта колоды (правило `docs/hero-algorithm.md` §6)
-    bonus: 3,
-    quantity: 2,
-    fighter: 'ifrit',
-    text: 'Поставьте Ифрита на свободную клетку со стихией лавы.',
-    rules: [
-      {
-        moment: 'effect',
-        // замороженный не перемещается и не телепортируется: без проверки окно открывалось,
-        // а клик падал на `SET_FIGHTER_CELL`
-        when: [
-          { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'], frozen: false }, min: 1 },
+          { action: 'SET_HEALTH', fighterIds: '$picked', delta: -2 },
+          // боец мог погибнуть от урона: без `source` окно перемещения не открывается само
           {
-            fact: 'CELLS',
-            params: { terrain: 'lava', free: true },
-            min: 1,
-            var: 'cells',
-          },
-        ],
-        then: [
-          {
-            action: 'SET_TARGETING',
+            action: 'SET_MOVEMENT',
             op: 'open',
-            kind: 'cells',
-            candidates: '$cells',
-            count: 1,
-            required: true,
+            fighters: '$picked',
+            budget: 2,
+            optional: true,
+            source: 'ifrit_10',
           },
         ],
-      },
-      {
-        moment: 'picked',
-        when: [{ fact: 'PICKED', var: 'picked' }],
-        then: [{ action: 'SET_FIGHTER_CELL', fighterId: 'ifrit', cellId: '$picked' }],
       },
     ],
   },
   {
-    // духи не только плата: сколько их живо плюс один, столько клеток он и пройдёт — и сквозь строй,
+    // духи не только плата: сколько их живо плюс два, столько клеток он и пройдёт — и сквозь строй,
     // забирая здоровье у каждого, через кого прошёл. Бонус 3: без живых духов свойство слабеет до
-    // одной клетки, а сбросить карту под усиление дёшево
+    // двух клеток, а сбросить карту под усиление дёшево
     id: 'ifrit_11',
     title: 'Пепельный ветер',
     type: 'effect',
@@ -307,7 +267,7 @@ export default [
     bonus: 3,
     quantity: 2,
     fighter: 'ifrit',
-    text: 'Переместите Ифрита: он может пройти на столько клеток, сколько живых пепельных духов на поле + 1, в том числе сквозь бойцов противника. Проходя сквозь бойца противника, он крадёт у него 1 здоровье.',
+    text: 'Переместите Ифрита: он может пройти на столько клеток, сколько живых пепельных духов на поле + 2, в том числе сквозь бойцов противника. Проходя сквозь бойца противника, он крадёт у него 1 здоровье.',
     rules: [
       {
         moment: 'effect',
@@ -317,7 +277,7 @@ export default [
             action: 'SET_MOVEMENT',
             op: 'open',
             fighters: ['ifrit'],
-            budget: 4,
+            budget: 5,
             throughEnemies: true,
             damageOnPass: 1,
             healOnPass: 1,
@@ -333,7 +293,7 @@ export default [
             action: 'SET_MOVEMENT',
             op: 'open',
             fighters: ['ifrit'],
-            budget: 3,
+            budget: 4,
             throughEnemies: true,
             damageOnPass: 1,
             healOnPass: 1,
@@ -349,7 +309,7 @@ export default [
             action: 'SET_MOVEMENT',
             op: 'open',
             fighters: ['ifrit'],
-            budget: 2,
+            budget: 3,
             throughEnemies: true,
             damageOnPass: 1,
             healOnPass: 1,
@@ -358,7 +318,7 @@ export default [
         ],
       },
       {
-        // духов не осталось — свойство всё равно работает: «сколько духов + 1» = одна клетка
+        // духов не осталось — свойство всё равно работает: «сколько духов + 2» = две клетки
         moment: 'effect',
         when: [{ fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 0, max: 0 } }],
         then: [
@@ -366,7 +326,7 @@ export default [
             action: 'SET_MOVEMENT',
             op: 'open',
             fighters: ['ifrit'],
-            budget: 1,
+            budget: 2,
             throughEnemies: true,
             damageOnPass: 1,
             healOnPass: 1,
@@ -390,7 +350,10 @@ export default [
     options: [
       { id: 'heal', text: 'Восстановите Ифриту 2 здоровья.' },
       { id: 'draw', text: 'Возьмите 2 карты.' },
-      { id: 'step', text: 'Сдвиньте Ифрита на расстояние до 2 клеток.' },
+      {
+        id: 'step',
+        text: 'Сдвиньте Ифрита на расстояние до 2 клеток. Клетка, на которую он наступил, до конца вашего хода получает дополнительную стихию лавы, если на ней меньше 3 стихий.',
+      },
     ],
     rules: [
       {
@@ -427,7 +390,14 @@ export default [
           { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'] }, min: 1, var: 'hero' },
         ],
         then: [
-          { action: 'SET_MOVEMENT', op: 'open', fighters: '$hero', budget: 2, optional: true },
+          {
+            action: 'SET_MOVEMENT',
+            op: 'open',
+            fighters: '$hero',
+            budget: 2,
+            optional: true,
+            terrainOnStep: 'lava',
+          },
         ],
       },
     ],
@@ -492,6 +462,60 @@ export default [
           { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'], movedThisTurn: true }, min: 1 },
         ],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
+      },
+    ],
+  },
+  {
+    // по площади и без выбора: достаётся и своим — Ифрит бьёт по клеткам, а не по названной цели.
+    // Ифриту урон не достаётся: его собственная клетка в радиус не входит
+    id: 'ifrit_14',
+    title: 'Сжечь всех дотла',
+    type: 'effect',
+    value: null,
+    bonus: 2,
+    quantity: 1,
+    fighter: 'ifrit',
+    text: 'Нанесите 2 урона всем бойцам всех игроков в радиусе 2 клеток от Ифрита. Своим бойцам (кроме Ифрита) также наносится урон.',
+    rules: [
+      {
+        moment: 'effect',
+        when: [
+          { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'] }, min: 1 },
+          {
+            fact: 'FIGHTERS',
+            params: { withinOf: 'ifrit', within: 2 },
+            min: 1,
+            var: 'victims',
+          },
+        ],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$victims', delta: -2 }],
+      },
+    ],
+  },
+  {
+    // ответная искра: на лаве горит сильнее, а после битвы жалит того, кто напал
+    id: 'ifrit_15',
+    title: 'Искры',
+    type: 'hybrid',
+    value: 2,
+    bonus: 2,
+    quantity: 2,
+    fighter: 'ifrit',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если Ифрит стоит на клетке лавы, значение этой карты становится 4. ПОСЛЕ БИТВЫ: Нанесите 1 урон атаковавшему бойцу.',
+    rules: [
+      {
+        moment: 'duringCombat',
+        when: [{ fact: 'FIGHTERS', params: { fighterIds: ['ifrit'], terrain: 'lava' }, min: 1 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 4 }],
+      },
+      {
+        moment: 'afterCombat',
+        when: [
+          { fact: 'COMBAT', params: { role: 'defender' } },
+          { fact: 'COMBAT', params: { select: 'attacker' }, var: 'foe' },
+          { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1 },
+        ],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$foe', delta: -1 }],
       },
     ],
   },

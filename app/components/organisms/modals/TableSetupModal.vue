@@ -9,7 +9,8 @@
     <div class="flex flex-col gap-20" :class="busy ? 'opacity-60' : ''">
       <p class="text-16 text-dim">
         2–4 места: люди и компьютер в любом сочетании, каждый сам за себя. Поле собирает генератор
-        по сиду партии.
+        по сиду партии. За местами людей играет тот, кто сидит за этим экраном: на карточках у них
+        его имя, а у места компьютера имени нет.
       </p>
 
       <fieldset class="contents" :disabled="busy">
@@ -37,7 +38,12 @@
                 randomPlaces ? 'Место —' : `Место ${index + 1}`
               }}</span>
 
-              <ARadioGroup v-model="slot.control" inline :options="CONTROLS" />
+              <ARadioGroup
+                :model-value="slot.control"
+                inline
+                :options="CONTROLS"
+                @update:model-value="value => setControl(slot, value)"
+              />
 
               <AButton
                 v-if="canRemoveSlot"
@@ -51,7 +57,7 @@
               </AButton>
             </div>
 
-            <div class="flex">
+            <div class="flex flex-wrap items-center gap-12">
               <ASelect
                 v-if="!randomHeroes"
                 v-model="slot.heroId"
@@ -260,6 +266,7 @@ import ASwitch from '~/components/atoms/ASwitch.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 import { useGameView } from '~/composables/game/useGameView';
+import { useProfile } from '~/composables/ui/useProfile.js';
 import { useSortable } from '~/composables/ui/useSortable';
 import { closeModal, useIsModalOpen } from '~/composables/ui/useModal';
 
@@ -270,6 +277,7 @@ const props = defineProps({
 });
 
 const { seed, seedView, discard } = useGameView();
+const { nick } = useProfile();
 
 const heroes = computed(() => props.content?.heroes ?? []);
 
@@ -343,6 +351,10 @@ const makeSlot = (control = 'ai', heroId = '') => ({
   control,
   heroId,
 });
+
+const setControl = (slot, value) => {
+  slot.control = String(value);
+};
 
 const {
   draggingIndex,
@@ -493,6 +505,7 @@ const start = async () => {
         team: String.fromCharCode(65 + index),
         order: index + 1,
         control: slot.control,
+        name: slot.control === 'human' ? String(nick.value ?? '').trim() : '',
       })),
       playerId: chosen.heroId,
     };

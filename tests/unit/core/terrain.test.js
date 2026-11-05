@@ -41,7 +41,7 @@ const terrainState = () => {
 };
 
 describe('стихии: палитра', () => {
-  it('десять стихий, у каждой свой цвет и свой узор', () => {
+  it('одиннадцать стихий, у каждой свой цвет и свой узор', () => {
     expect(TERRAIN_IDS).toEqual([
       'ice',
       'forest',
@@ -52,12 +52,13 @@ describe('стихии: палитра', () => {
       'crystal',
       'swamp',
       'fungus',
-      'steppe',
+      'poppy',
+      'dead',
     ]);
     const colors = new Set(TERRAIN_IDS.map(terrainColor));
     expect(colors.size).toBe(TERRAIN_IDS.length);
     for (const id of TERRAIN_IDS) expect(terrainPattern(id), id).toBeTruthy();
-    expect(Object.keys(TERRAIN)).toHaveLength(10);
+    expect(Object.keys(TERRAIN)).toHaveLength(11);
   });
 
   it('неизвестной стихии не существует: это ошибка, а не повод что-то подставить', () => {

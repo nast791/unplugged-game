@@ -2,7 +2,7 @@ import { SET_COMBAT } from '#shared/actions/combat.js';
 import { SET_MOVEMENT, movementHasDestination } from '#shared/actions/movement.js';
 import { advanceCombat, runEffectMoment } from '#shared/cards/run.js';
 import { HINTS } from '#shared/constants/hints.js';
-import { resolveOkBackControls } from '#shared/helpers/base.js';
+import { findOwnedFighter, resolveOkBackControls } from '#shared/helpers/base.js';
 import {
   bonusCardIds,
   endGameIfFinished,
@@ -64,8 +64,11 @@ export default {
   hints: {
     moveFighters: {
       active: () => true,
-      text: partyState =>
-        HINTS.movement.moveFighters({ fromEffect: partyState.movement?.source != null }),
+      text: (partyState, playerId, clientContext = {}) =>
+        HINTS.movement.moveFighters({
+          fromEffect: partyState.movement?.source != null,
+          picked: clientContext.selectedFighterId != null,
+        }),
     },
   },
 
@@ -77,15 +80,25 @@ export default {
     // усиление картой — только у обычного перемещения, эффект карты усиливать нечем
     const playable =
       !fromEffect && !partyState.movement?.bonusUsed ? bonusCardIds(partyState, playerId) : [];
+    // в окне эффекта бойца выбирают кликом по фишке, поэтому свою клетку рамкой не метим;
+    // чужого (принудительное перемещение) метим — иначе непонятно, кого вести
+    const movable = movableFighterIds(partyState, playerId);
+    const markedFighters = fromEffect
+      ? movable.filter(
+          fighterId => findOwnedFighter(partyState, playerId, fighterId).fighter == null,
+        )
+      : movable;
 
     return {
+      // бойца выбирают кликом по фишке, и тогда загораются клетки: в окне эффекта своих не метят
+      selectFighters: true,
       deck: { clickable: false },
       highlightedCellIds:
         selectedFighterId == null
           ? []
           : movementDestinations(partyState, playerId, selectedFighterId),
       // кого вообще можно двигать в этом перемещении: у эффекта это список из правила
-      highlightedFighterIds: movableFighterIds(partyState, playerId),
+      highlightedFighterIds: markedFighters,
       playableCardIds: playable,
       disabledCardIds: handCardIds(partyState, playerId).filter(
         cardId => !playable.includes(cardId),
@@ -138,12 +151,14 @@ export default {
         const reason = movementRejection(partyState, playerId, action.fighterId, cellId);
         if (reason) throw new Error(`PICK: ${reason}`);
 
-        return SET_MOVEMENT(partyState, {
+        const stepped = SET_MOVEMENT(partyState, {
           op: 'step',
           playerId,
           fighterId: action.fighterId,
           cellId,
         });
+        // постановка «одним переносом»: окно закрывается само, эффект доигрывает свои шаги
+        return stepped.movement?.once === true ? finishEffectMovement(stepped, action) : stepped;
       }
 
       if (action.kind === 'card') {
@@ -173,8 +188,8 @@ export default {
     исходной клетки; враги блокируют путь (это перемещение, а не перенос), если правило не разрешило
     проход сквозь них (throughEnemies), а `damageOnPass` бьёт бойцов противника на клетках маршрута
     шага — в том числе на клетке, занятой врагом («сквозь»: маршрут идёт по ней, встать на неё
-    по-прежнему нельзя). Подсвечены только бойцы из списка, кнопка называется «Закончить эффект»,
-    усиления картой нет.
+    по-прежнему нельзя). Рамкой подсвечены только чужие бойцы из списка: своего выбирают кликом по фишке
+    (и тогда загораются клетки), кнопка называется «Закончить эффект», усиления картой нет.
  4. Клик по подсвеченной клетке — шаг (SET_MOVEMENT step → SET_FIGHTER_CELL). Клик по недоступной клетке
     отклоняется с причиной.
  5. Одно усиление за обычное действие: клик по карте с bonus (playableCardIds) уводит её в сброс и

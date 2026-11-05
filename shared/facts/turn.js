@@ -1,5 +1,5 @@
 import { rules } from '#shared/constants/rules.js';
-import { zoneCards } from '#shared/helpers/base.js';
+import { playerByRole, zoneCards } from '#shared/helpers/base.js';
 import { cardHasTag } from '#shared/helpers/cards.js';
 import {
   activePlayerId,
@@ -109,14 +109,17 @@ export const DECK = (ctx, params = {}) => {
 };
 
 /**
- * HAND — карты руки; params: { of, type, tag, min, max, bonusMin }.
- * `of` — чья рука (id игрока), по умолчанию своя: эффекты вроде «враг сбрасывает карту» смотрят чужую руку.
- * `min`/`max` считают число подходящих карт: «в руке противника нет карт» — это `max: 0`.
+ * HAND — карты руки; params: { of, type, tag, min, max, bonusMin, over }.
+ * `of` — чья рука (`self` | `opponent` | `enemy` или id игрока), по умолчанию своя: эффекты вроде
+ * «враг сбрасывает карту» смотрят чужую руку. `min`/`max` считают число подходящих карт:
+ * «в руке противника нет карт» — это `max: 0`.
+ * `over` — сравнение с рукой другого игрока (те же роли): `ok`, только если здесь карт СТРОГО больше.
  * bonusMin отсекает карты со слишком маленьким бонусом (например, «есть чем усилить атаку»),
  * tag — только карты с меткой («сбросьте карту с осколком», см. `shared/helpers/cards.js`).
  */
 export const HAND = (ctx, params = {}) => {
-  const ownerPlayerId = params.of ?? contextPlayerId(ctx);
+  const selfId = contextPlayerId(ctx);
+  const ownerPlayerId = playerByRole(ctx.state, selfId, params.of ?? selfId);
   const cards = handCards(ctx.state, ownerPlayerId)
     .filter(card => params.type == null || card?.type === params.type)
     .filter(card => cardHasTag(card, params.tag))
@@ -125,8 +128,11 @@ export const HAND = (ctx, params = {}) => {
     );
   const min = params.min == null ? 0 : Number(params.min);
   const max = params.max == null ? Infinity : Number(params.max);
+  const otherId =
+    params.over == null ? null : playerByRole(ctx.state, selfId, params.over === true ? 'opponent' : params.over);
+  const overOk = otherId == null || cards.length > handCards(ctx.state, otherId).length;
   return {
-    ok: cards.length >= min && cards.length <= max,
+    ok: cards.length >= min && cards.length <= max && overOk,
     value: cards.map(cardView),
   };
 };

@@ -3,14 +3,15 @@
     <ATooltip v-for="fighter in fighters" :key="fighter.id" :text="titleOf(fighter)">
       <AAvatar
         draggable="true"
+        :src="fighter.image || ''"
         :data-placement-fighter="fighter.id"
         :alt="fighter.name || ''"
         :ui="{
           avatar_root: cn(
             'size-68 cursor-grab border-3 transition-[border-color,box-shadow] active:cursor-grabbing',
             isActive(fighter)
-              ? 'border-accent shadow-[0_0_16px_0_var(--color-accent)]'
-              : 'border-info shadow-[0_0_12px_0_color-mix(in_srgb,var(--color-info)_70%,transparent)] placement-blink',
+              ? 'border-accent shadow-[0_0_calc(var(--spacing)*16)_0_var(--color-accent)]'
+              : 'border-info shadow-[0_0_calc(var(--spacing)*12)_0_color-mix(in_srgb,var(--color-info)_70%,transparent)] placement-blink',
           ),
           avatar_fallback: 'bg-surface-2',
         }"
@@ -43,14 +44,14 @@ const dragGhost = (fighter, element) => {
   ghost.removeAttribute('draggable');
   ghost.style.cssText = [
     'position:fixed',
-    'top:-1000px',
-    'left:-1000px',
+    'top:-100vh',
+    'left:-100vw',
     `width:${size}px`,
     `height:${size}px`,
     'margin:0',
-    'border-radius:9999px',
+    'border-radius:50%',
     'overflow:hidden',
-    'border:3px solid #2f3843',
+    'border:calc(var(--spacing) * 3) solid #2f3843',
     'background:#232b34',
     'box-shadow:none',
     'animation:none',
@@ -59,7 +60,7 @@ const dragGhost = (fighter, element) => {
   ].join(';');
   const picture = ghost.querySelector('img');
   if (picture) {
-    picture.style.cssText += ';width:100%;height:100%;object-fit:cover;border-radius:9999px';
+    picture.style.cssText += ';width:100%;height:100%;object-fit:cover;border-radius:50%';
   }
   document.body.append(ghost);
   return ghost;

@@ -46,6 +46,13 @@ vi.mock('~/composables/ui/useSortable', () => ({
   }),
 }));
 
+// Профиль (`useProfile`) держит ник в `useState`, а состояния Nuxt в тесте нет: имя первого места
+// берётся из профиля, поэтому подставляем ник напрямую (так же, как `player-card.test.js`).
+vi.mock('~/composables/ui/useProfile.js', async () => {
+  const { computed } = await import('vue');
+  return { useProfile: () => ({ nick: computed(() => 'Элизиф') }) };
+});
+
 // Настоящий `useUI` читает конфиг приложения (`app.config.js`), которого в тесте нет: классы пресетов
 // этой проверке не нужны — она про состояние окна (так же, как `player-card.test.js`).
 vi.mock('~/composables/ui/useUI', async importOriginal => {
@@ -228,6 +235,29 @@ describe('Загрузка партии в модалке стола', () => {
 
     releaseNavigation();
     await flushPromises();
+  });
+
+  /**
+   * За человеческим местом играет тот, кто сидит за экраном: на сервер уезжает его ник, а у места
+   * компьютера имени нет. Поля имени в модалке поэтому нет вовсе — имя не настраивается.
+   */
+  it('человеческое место уезжает с ником профиля, место компьютера — без имени', async () => {
+    vi.stubGlobal(
+      '$fetch',
+      vi.fn(() => Promise.resolve(CREATED)),
+    );
+    navigate = vi.fn(() => Promise.resolve());
+
+    await mountTable();
+    click(startButton());
+    await flushPromises();
+
+    const body = globalThis.$fetch.mock.calls[0][1].body;
+    expect(body.heroes.map(slot => [slot.control, slot.name])).toEqual([
+      ['human', 'Элизиф'],
+      ['ai', ''],
+    ]);
+    expect(document.querySelector('[aria-label^="Имя игрока"]')).toBe(null);
   });
 
   it('отмена рвёт запрос, сбрасывает партию и закрывает окно', async () => {

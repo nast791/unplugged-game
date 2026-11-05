@@ -59,7 +59,9 @@ describe('словарь длительностей и пресеты скоро
       'battleDamage',
       'battleReveal',
       'battleStep',
+      'cardDrop',
       'cardFlight',
+      'cardFlip',
       'damageFloat',
     ]);
   });

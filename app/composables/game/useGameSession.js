@@ -1,10 +1,14 @@
 import { runUi } from '#shared/core.js';
 import { cardKey } from '#shared/helpers/cards.js';
-import { fighterClickIntent, fighterPickExpected } from '#shared/helpers/ui.js';
+import {
+  fighterClickIntent,
+  fighterPickExpected,
+  fighterSelectExpected,
+} from '#shared/helpers/ui.js';
 import { markCardFlightsViewerChanged } from '~/composables/animations/useCardFlights.js';
 import { useGameView } from '~/composables/game/useGameView.js';
 import { useProfile } from '~/composables/ui/useProfile.js';
-import { useGameHelpers } from './useGameHelpers.js';
+import { playerLabel, useGameHelpers } from './useGameHelpers.js';
 
 export const timeoutLosers = ({ placement = false, players = [], actorId = null } = {}) => {
   const humans = (players ?? []).filter(
@@ -49,6 +53,19 @@ export const handoverTarget = ({
   if (target == null) return null;
   if (!humans.some(player => String(player.id) === String(target))) return null;
   return String(target) === String(viewerId ?? '') ? null : String(target);
+};
+
+/**
+ * Кто сейчас действует: открытое окно (защита, карта боя, выбор цели) важнее хода,
+ * а конец хода с окном способности («Серебряные башмачки») ждёт клика хозяина хода.
+ */
+export const actingPlayerOf = view => {
+  if (!view) return null;
+  if (view.phase === 'gameEnd') return null;
+  if (view.combat?.choice?.playerId != null) return view.combat.choice.playerId;
+  if (view.combat?.stage === 'defense') return view.combat.defenderPlayerId ?? null;
+  if (view.targeting?.playerId != null) return view.targeting.playerId;
+  return view.currentPlayer ?? null;
 };
 
 const bonusArmedKey = ref('');
@@ -144,7 +161,6 @@ export const useGameSession = () => {
   });
 
   const hint = computed(() => ui.value?.hint || message.value || '');
-  const placementPhase = computed(() => ui.value?.phase ?? null);
   const highlightedCellIds = computed(() => (ui.value?.highlightedCellIds ?? []).map(String));
   const highlightedFighterIds = computed(() => (ui.value?.highlightedFighterIds ?? []).map(String));
   const pickedFighterIds = computed(() => (ui.value?.pickedFighterIds ?? []).map(String));
@@ -233,29 +249,33 @@ export const useGameSession = () => {
       .flatMap(entry =>
         (entry.fighters ?? []).map(fighter => ({
           ...fighter,
-          playerName: entry.name ?? entry.id,
+          playerName: playerLabel(entry),
         })),
       )
       .filter(fighter => ids.has(String(fighter.id)));
   });
 
   const revealedCards = computed(() =>
-    (view.value?.reveal ?? []).flatMap(entry =>
-      (entry.cards ?? []).map(card => ({
+    (view.value?.reveal ?? []).flatMap(entry => {
+      const owner = (players.value ?? []).find(
+        player => String(player.id) === String(entry.playerId),
+      );
+      return (entry.cards ?? []).map(card => ({
         ...card,
         ownerId: entry.playerId,
-        ownerName:
-          (players.value ?? []).find(player => String(player.id) === String(entry.playerId))
-            ?.name ?? String(entry.playerId),
-      })),
-    ),
+        ownerName: playerLabel(owner) || String(entry.playerId),
+      }));
+    }),
   );
 
   const fighterLabel = id => {
     if (id == null) return '—';
     for (const entry of players.value ?? []) {
       const fighter = (entry.fighters ?? []).find(item => String(item.id) === String(id));
-      if (fighter) return `${fighter.name || fighter.id} (${entry.name ?? entry.id})`;
+      if (!fighter) continue;
+      const name = String(fighter.name || fighter.id);
+      const owner = String(entry.name ?? '').trim();
+      return owner && owner !== name ? `${name} (${owner})` : name;
     }
     return String(id);
   };
@@ -264,10 +284,14 @@ export const useGameSession = () => {
     if (card?.fighter == null) return 'любой';
     const binding = String(card.fighter);
     if (binding === 'any') return 'любой';
-    const mine = myFighters.value;
+    // чужая карта в окне битвы: своих ищем первыми, остальных — по всей партии, включая павших
+    const pool = [
+      ...myFighters.value,
+      ...(players.value ?? []).flatMap(entry => [...(entry.fighters ?? []), ...(entry.lost ?? [])]),
+    ];
     const fighter =
-      mine.find(entry => String(entry.id) === binding) ??
-      mine.find(entry => String(entry.group) === binding);
+      pool.find(entry => String(entry.id) === binding) ??
+      pool.find(entry => String(entry.group) === binding);
     return fighter ? fighter.name || fighter.id : binding;
   };
 
@@ -275,10 +299,10 @@ export const useGameSession = () => {
     if (ownerId == null) return '';
     const holder = (players.value ?? []).find(player => String(player.id) === String(ownerId));
     if (!holder) return '';
-    if (String(holder.id) === String(you.value ?? '')) {
-      return String(nick.value ?? '') || String(holder.name ?? '');
-    }
-    return String(holder.name ?? '');
+    const seat = String(holder.name ?? '').trim();
+    if (seat) return seat;
+    if (String(holder.id) === String(you.value ?? '')) return String(nick.value ?? '');
+    return playerLabel(holder);
   };
 
   const combatInfo = computed(() => {
@@ -305,11 +329,18 @@ export const useGameSession = () => {
     return `Битва (${current.stage}): ${parts.join(' · ')}`;
   });
 
+  // выбор бойца ставит клик, а не движок: доска принимает клик и там, где движок ещё ничего не подсветил,
+  // иначе окно эффекта со своим бойцом (своих рамкой не метят) становится мёртвым
+  const fighterClickPhase = computed(
+    () => ui.value?.pickFighters === true || fighterSelectExpected(ui.value),
+  );
+
   const boardInteractive = computed(
     () =>
       !pending.value &&
       !isGameOver.value &&
       (isPlacement.value ||
+        fighterClickPhase.value ||
         highlightedCellIds.value.length > 0 ||
         highlightedFighterIds.value.length > 0),
   );
@@ -335,21 +366,15 @@ export const useGameSession = () => {
     }
   };
 
-  const ensureSelection = () => {
-    const list = myFighters.value;
-    if (!list.length) {
+  // По умолчанию боец не активен: выбор появляется только по клику и снимается сам, когда боец пропал.
+  const keepSelectionValid = () => {
+    const chosen = String(selectedFighterId.value ?? '');
+    if (!myFighters.value.some(fighter => String(fighter.id) === chosen)) {
       selectedFighterId.value = null;
-      return;
     }
-    if (isPlacement.value) return;
-    if (list.some(fighter => String(fighter.id) === String(selectedFighterId.value))) {
-      return;
-    }
-    const pick = list.find(fighter => fighter.currentPosition != null) ?? list[0];
-    selectedFighterId.value = pick ? String(pick.id) : null;
   };
 
-  watch(myFighters, () => ensureSelection(), { immediate: true });
+  watch(myFighters, () => keepSelectionValid(), { immediate: true });
 
   const switchViewer = async id => {
     markCardFlightsViewerChanged();
@@ -357,22 +382,10 @@ export const useGameSession = () => {
     selectedFighterId.value = null;
     selectedNumHeroId.value = null;
     await refresh();
-    ensureSelection();
+    keepSelectionValid();
   };
 
-  const actingPlayerId = computed(() => {
-    const current = view.value;
-    if (!current) return null;
-    if (current.phase === 'gameEnd' || current.phase === 'turnEnd') return null;
-    if (current.combat?.choice?.playerId != null) {
-      return current.combat.choice.playerId;
-    }
-    if (current.combat?.stage === 'defense') {
-      return current.combat.defenderPlayerId ?? null;
-    }
-    if (current.targeting?.playerId != null) return current.targeting.playerId;
-    return current.currentPlayer ?? null;
-  });
+  const actingPlayerId = computed(() => actingPlayerOf(view.value));
 
   const isHumanSeat = id => {
     if (id == null) return false;
@@ -403,7 +416,7 @@ export const useGameSession = () => {
       viewerId: playerId.value,
     });
     if (target == null) {
-      ensureSelection();
+      keepSelectionValid();
       return;
     }
     await switchViewer(target);
@@ -530,7 +543,8 @@ export const useGameSession = () => {
     );
 
     if (intent === 'pick') return pick({ kind: 'fighter', id });
-    if (intent === 'select') {
+    // активным боец становится там, где фаза просит выбор (`selectFighters`): перемещение и расстановка
+    if (intent === 'select' && fighterSelectExpected(ui.value)) {
       selectFighter(id);
       return undefined;
     }
@@ -550,7 +564,8 @@ export const useGameSession = () => {
 
   const onCellClick = cellId => {
     if (cellId == null) {
-      if (isPlacement.value) clearFighterSelection();
+      // клик мимо клетки снимает активность: подсвеченным остаётся только то, что выбрал игрок
+      clearFighterSelection();
       return undefined;
     }
 
@@ -579,7 +594,7 @@ export const useGameSession = () => {
 
   onMounted(() => {
     if (!view.value?.id) return;
-    ensureSelection();
+    keepSelectionValid();
     void syncHotseat();
   });
 
@@ -607,7 +622,6 @@ export const useGameSession = () => {
     error: message,
     hint,
     ui,
-    placementPhase,
     isPlacement,
     combat,
     movement,
@@ -636,6 +650,7 @@ export const useGameSession = () => {
     targetingChoices,
     myItems,
     pickCandidates,
+    expectsFighterPick,
     combatInfo,
     revealedCards,
     deckClickable,

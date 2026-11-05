@@ -1,7 +1,7 @@
 export default {
   id: 'dorothy',
   name: 'Дороти',
-  color: '#8B5CF6',
+  color: '#9AA1AB',
   heroes: [
     {
       id: 'dorothy',
@@ -11,6 +11,7 @@ export default {
       move: 2,
       attackRange: 1,
       size: 1,
+      image: 'avatar-dorothy.webp',
     },
   ],
   assistants: [
@@ -23,9 +24,18 @@ export default {
       move: 3,
       attackRange: 1,
       size: 1,
+      image: 'avatar-toto.webp',
     },
   ],
   items: [],
+  // Арты лежат рядом с паком (`images/`), а наружу отдаются маршрутом
+  // `/api/content/heroes/dorothy/images/{файл}` — когда бэкенд начнёт отдавать картинки сам, поменяется
+  // только сборка пути в `server/utils.js: heroImageUrl`.
+  images: {
+    hero: 'hero.webp',
+    promo: 'promo.webp',
+    back: 'card-back.webp',
+  },
   skill: {
     id: 'dorothy_skill',
     type: 'skill',

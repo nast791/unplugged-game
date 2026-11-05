@@ -53,6 +53,7 @@ describe('scenario: ход через publicApi.runAction', () => {
       moves: [],
       source: null,
       playedCard: null,
+      terrainOnStep: null,
     });
     expect(hand(player(state, '0'))).toHaveLength(4);
     expect(runUi(state, '0').phase).toBe('movement');

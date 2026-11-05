@@ -3,6 +3,7 @@ import { actions } from '#shared/actions/index.js';
 import { combatMomentsAt } from '#shared/constants/moments.js';
 import { runConditions } from '#shared/facts/run.js';
 import { cardKey } from '#shared/helpers/cards.js';
+import { damagedSince, healthSnapshot } from '#shared/helpers/damage.js';
 import { forkState } from '#shared/helpers/fork.js';
 import { closeTargetingWindow, pickAutoCandidates } from '#shared/helpers/targeting.js';
 import { hasMissing, resolveVars } from '#shared/helpers/vars.js';
@@ -62,6 +63,18 @@ export const effectBrings = (partyState, playerId, card) => {
 
 const cardOf = (combat, side) => (side === 'defender' ? combat.defenseCard : combat.attackCard);
 
+/** Отпечаток правимых движком ветвей: по нему видно, изменил ли шаг хоть что-нибудь. */
+const fingerprint = partyState => JSON.stringify(forkState(partyState));
+
+/**
+ * Итог шага: правило, которое ничего не изменило, — «не сработало». Так свойство, чьё действие
+ * не нашло цели (пустое перемещение, некому нанести урон), не выдаёт себя за сработавшее.
+ */
+const stepStatus = (state, before) => {
+  if (waitingForPlayer(state)) return 'waiting';
+  return fingerprint(state) === before ? 'skipped' : 'applied';
+};
+
 /**
  * Правило, за которое отвечает шаг: шагов столько же, сколько правил карты в этом моменте,
  * и идут они в том же порядке — индекс шага среди шагов той же стороны и момента даёт правило.
@@ -97,6 +110,8 @@ const runEffectStep = (partyState, step) => {
     return partyState;
   }
 
+  const before = fingerprint(partyState);
+  const health = healthSnapshot(partyState);
   const state = runRules(partyState, [rule], step.moment, {
     playerId: step.playerId,
     source: step.cardId,
@@ -104,7 +119,10 @@ const runEffectStep = (partyState, step) => {
     autoPick: autoPickFor(cardOf(combat, step.side)),
   });
 
-  step.status = waitingForPlayer(state) ? 'waiting' : 'applied';
+  step.status = stepStatus(state, before);
+  // урон шага: в окне битвы урон карт и урон свойств — разные слагаемые, и свойство показывает своё
+  const damage = damagedSince(state, health);
+  if (damage > 0) step.damage = damage;
   return state;
 };
 
@@ -171,6 +189,7 @@ export const runCombatPicked = partyState => {
   if (!step) return partyState;
 
   const card = cardOf(combat, step.side);
+  const health = healthSnapshot(partyState);
   const state = runRules(partyState, card?.rules ?? [], 'picked', {
     playerId: step.playerId,
     source: step.cardId,
@@ -178,6 +197,9 @@ export const runCombatPicked = partyState => {
   });
 
   step.status = waitingForPlayer(state) ? 'waiting' : 'applied';
+  // шаг ждал решения игрока: урон свойства считается здесь, когда выбор сделан
+  const damage = damagedSince(state, health);
+  if (damage > 0) step.damage = (Number(step.damage) || 0) + damage;
   return state;
 };
 
@@ -229,6 +251,8 @@ export const runEffectMoment = (partyState, moment) => {
       continue;
     }
 
+    const before = fingerprint(state);
+
     state = runRules(state, [rule], moment, {
       playerId: state.effect.playerId,
       source: cardKey(state.effect.card),
@@ -236,7 +260,7 @@ export const runEffectMoment = (partyState, moment) => {
       autoPick: autoPickFor(state.effect.card),
     });
 
-    step.status = state.targeting || state.movement ? 'waiting' : 'applied';
+    step.status = stepStatus(state, before);
     if (step.status === 'waiting') break;
   }
 

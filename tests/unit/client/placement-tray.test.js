@@ -58,7 +58,14 @@ const { session } = await import('~/composables/game/useGameSession.js');
 const { default: PlacementTray } =
   await import('../../../app/components/molecules/game/PlacementTray.vue');
 
-const fighter = (id, name) => ({ id, name, type: 'assistant', currentHp: 1, startHp: 1 });
+const fighter = (id, name, image = '') => ({
+  id,
+  name,
+  image,
+  type: 'assistant',
+  currentHp: 1,
+  startHp: 1,
+});
 
 const setFighters = fighters => {
   session.placementFighters.value = fighters;
@@ -104,6 +111,20 @@ describe('PlacementTray: кого ещё ставить', () => {
     const wrapper = mountTray();
 
     expect(avatars(wrapper)[0].classes().join(' ')).toContain('size-68');
+  });
+
+  it('показывает на полке арт бойца, а не только инициалы', () => {
+    setFighters([
+      fighter('dorothy', 'Дороти', '/api/content/heroes/dorothy/images/avatar-dorothy.webp'),
+      fighter('toto', 'Тото', '/api/content/heroes/dorothy/images/avatar-toto.webp'),
+    ]);
+
+    const pictures = mountTray().findAll('img');
+
+    expect(pictures).toHaveLength(2);
+    expect(pictures[1].attributes('src')).toBe(
+      '/api/content/heroes/dorothy/images/avatar-toto.webp',
+    );
   });
 
   it('клик по аватарке делает её активной: кольцо становится коралловым', async () => {

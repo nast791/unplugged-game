@@ -142,8 +142,8 @@ describe('карта medusa_04 «Зов стаи»', () => {
     expect(paused.combat.choice.fighters).toEqual(['harpies_1', 'harpies_2']);
     expect(paused.combat.effects[0].status).toBe('waiting');
 
-    // подсвечены только те, кого можно двигать, кнопка — про эффект
-    expect(runUi(paused, '0').highlightedFighterIds).toEqual(['harpies_1', 'harpies_2']);
+    // своих бойцов в окне эффекта рамкой не метим: их выбирают кликом по фишке, кнопка — про эффект
+    expect(runUi(paused, '0').highlightedFighterIds).toEqual([]);
     expect(runUi(paused, '0').controls.ok.label).toBe('Закончить эффект');
     expect(movableFighterIds(paused, '0')).toEqual(['harpies_1', 'harpies_2']);
   });

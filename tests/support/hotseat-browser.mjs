@@ -120,8 +120,18 @@ const pointOf = (rect, bounds, cell, pad = 0) => {
   };
   const scale = Math.min(area.width / width, area.height / height, 4);
   return {
-    x: rect.left + pad + (area.width - width * scale) / 2 - bounds.minX * scale + Number(cell.x) * scale,
-    y: rect.top + pad + (area.height - height * scale) / 2 - bounds.minY * scale + Number(cell.y) * scale,
+    x:
+      rect.left +
+      pad +
+      (area.width - width * scale) / 2 -
+      bounds.minX * scale +
+      Number(cell.x) * scale,
+    y:
+      rect.top +
+      pad +
+      (area.height - height * scale) / 2 -
+      bounds.minY * scale +
+      Number(cell.y) * scale,
   };
 };
 
@@ -224,6 +234,7 @@ try {
   let repeats = 0;
   let idle = 0;
   let lastKey = '';
+  let lastActor = null;
   const selection = new Map();
   const selectTries = new Map();
   for (; step < steps; step += 1) {
@@ -240,24 +251,18 @@ try {
       break;
     }
     const actorPlayer = (state.players ?? []).find(entry => String(entry.id) === String(actor));
-    const placement = state.hook === 'gameStart';
 
-    // выбор бойца — состояние клиента: он считает `ui` сам, с выбранным бойцом
+    // выбор бойца — состояние клиента: по умолчанию он пуст, а ставит его клик по фишке
     const alive = (actorPlayer?.fighters ?? []).filter(fighter => Number(fighter.currentHp) > 0);
-    if (
-      !selection.has(actor) ||
-      !alive.some(fighter => String(fighter.id) === selection.get(actor))
-    ) {
-      selection.set(
-        actor,
-        placement
-          ? null
-          : String(
-              alive.find(fighter => fighter.currentPosition != null)?.id ?? alive[0]?.id ?? '',
-            ),
-      );
+    if (lastActor !== actor) {
+      selection.delete(actor);
+      selectTries.delete(actor);
+      lastActor = actor;
     }
-    const ui = runUi(state, actor, { selectedFighterId: selection.get(actor) }) ?? {};
+    if (!alive.some(fighter => String(fighter.id) === selection.get(actor))) {
+      selection.delete(actor);
+    }
+    const ui = runUi(state, actor, { selectedFighterId: selection.get(actor) ?? null }) ?? {};
     const rect = await canvasRect(page);
     const pad = await boardPad(page);
     const bounds = boundsOf(state.map?.nodes ?? []);
@@ -293,19 +298,31 @@ try {
     }
 
     // 2. выбор бойца кликом по канве: движок ждёт именно клика по бойцу (бой, окно цели)
-    const highlightedFighters = ui.highlightedFighterIds ?? [];
+    const highlightedFighters = (ui.highlightedFighterIds ?? []).map(String);
+    // в перемещении кликнуть можно и своего бойца, которого движок не подсветил: выбор ставит сам клик
+    const clickableFighters =
+      ui.pickFighters !== true && String(ui.phase) === 'movement'
+        ? [
+            ...new Set([
+              ...highlightedFighters,
+              ...alive
+                .filter(fighter => fighter.currentPosition != null)
+                .map(fighter => String(fighter.id)),
+            ]),
+          ]
+        : highlightedFighters;
     // «выбрать бойца» бывает там, где дальше кликают клетку: перемещение и расстановка.
     // Каждого подсвеченного пробуем один раз: у окна эффекта двигают не того, кого выбрал клиент.
     const tried = selectTries.get(actor) ?? new Set();
     selectTries.set(actor, tried);
-    const tryFighter = highlightedFighters.map(String).find(id => !tried.has(id)) ?? null;
+    const tryFighter = clickableFighters.find(id => !tried.has(id)) ?? null;
     const needsSelect =
       ui.pickFighters !== true &&
       (ui.highlightedCellIds ?? []).length === 0 &&
       ['movement', 'place'].includes(String(ui.phase)) &&
       tryFighter != null;
-    if (!clicked && (ui.pickFighters === true || needsSelect) && highlightedFighters.length > 0) {
-      const fighterId = String(ui.pickFighters === true ? highlightedFighters[0] : tryFighter);
+    if (!clicked && (ui.pickFighters === true || needsSelect) && clickableFighters.length > 0) {
+      const fighterId = String(ui.pickFighters === true ? clickableFighters[0] : tryFighter);
       const fighter = (state.players ?? [])
         .flatMap(entry => entry.fighters ?? [])
         .find(entry => String(entry.id) === fighterId);
@@ -411,6 +428,12 @@ try {
     const changed = JSON.stringify(after) !== JSON.stringify(state) || drawn;
     const key = JSON.stringify(clicked);
     log.push(clicked);
+    // выбор живёт в состоянии клиента и после действия может быть снят: к следующему ходу бойца
+    // выбираем заново, иначе клик по клетке уходит в пустоту
+    if (clicked?.kind !== 'select') {
+      selection.delete(actor);
+      selectTries.delete(actor);
+    }
 
     if (step % 5 === 0 || !changed) {
       await page.screenshot({ path: join(shotsDir, `step-${String(step).padStart(2, '0')}.png`) });

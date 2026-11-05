@@ -258,9 +258,11 @@ describe('доска: перетаскивание бойца на клетку'
 
     const hovered = glowing().find(config => config?.shadowBlur > legal.shadowBlur);
     expect(hovered).toBeTruthy();
+    // кандидат мигает: у клетки есть свой кружок-волна, который доска двигает на кадре
+    expect(rings().some(config => config?.pulseRing === true)).toBe(true);
   });
 
-  it('в расстановке обводку клетки свечение не перекрашивает', async () => {
+  it('подсветка фазы не перекрашивает границу клетки: и в расстановке, и в движении кольцо голубое', async () => {
     const strokes = wrapper =>
       wrapper
         .findAllComponents({ name: 'VCircle' })
@@ -271,10 +273,11 @@ describe('доска: перетаскивание бойца на клетку'
       highlightedCellIds: [1],
       placementCells: [{ id: 1, occupied: false }],
     });
-    expect(strokes(placement)).not.toContain('#0284c7');
+    expect(strokes(placement)).toContain('#22d3ee');
 
     const movement = await mountBoard({ highlightedCellIds: [1] });
-    expect(strokes(movement)).toContain('#0284c7');
+    expect(strokes(movement)).toContain('#22d3ee');
+    expect(strokes(movement)).not.toContain('#0284c7');
   });
 
   it('перетаскивание не показывает «запрещено», даже когда доска сейчас не слушает', async () => {

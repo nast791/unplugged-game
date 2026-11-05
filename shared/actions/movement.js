@@ -2,6 +2,8 @@ import { SET_CARDS } from '#shared/actions/cards.js';
 import { SET_FIGHTER_CELL } from '#shared/actions/fighter.js';
 import { SET_HEALTH } from '#shared/actions/health.js';
 import { openMovementChoice, finishMovementChoice } from '#shared/actions/combat.js';
+import { addTemporaryTerrain } from '#shared/actions/terrain.js';
+import { isTerrainId } from '#shared/constants/terrain.js';
 import { pathInRadius } from '#shared/helpers/board.js';
 import {
   findCardInHand,
@@ -60,7 +62,14 @@ const stepRoute = (partyState, movement, playerId, fighter, cellId) => {
  * `healOnPass` («крадёт здоровье») — идущий получает столько же за каждого пройденного: лечение идёт
  * тем же `SET_HEALTH`, поэтому выше начального здоровья боец не поднимается.
  */
-const damagePassedFighters = (partyState, movement, playerId, route, damage, { heal = 0, moverId } = {}) => {
+const damagePassedFighters = (
+  partyState,
+  movement,
+  playerId,
+  route,
+  damage,
+  { heal = 0, moverId } = {},
+) => {
   const done = new Set((movement.damagedFighterIds ?? []).map(String));
   const hurt = [];
 
@@ -154,16 +163,18 @@ const canExtendMovement = (partyState, playerId) => bonusCardIds(partyState, pla
  * `fighters` (кого вообще можно двигать), `optional` (можно не двигать никого),
  * `throughEnemies` (разрешить проход сквозь врагов — «Возрождение стаи»), `damageOnPass`
  * (урон бойцам противника на клетках маршрута — «Метель из осколков») и `healOnPass`
- * (идущий забирает столько же здоровья себе — «Пепельный ветер» Ифрита: «крадёт здоровье»).
+ * (идущий забирает столько же здоровья себе — «Пепельный ветер» Ифрита: «крадёт здоровье»),
+ * `terrainOnStep` (клетка, на которую шагнули, получает временную стихию — «Три обещания» Ифрита).
  * Внутри боя такое перемещение ещё и ставит бой на паузу — эффект ждёт, пока игрок подвигал.
  *
  * **Пустое перемещение не открывается** (решение владельца): если ни один боец не может шагнуть ни на
- * одну клетку, окно не появляется вовсе — свойство карты просто не срабатывает, а шаг эффекта
- * отмечается сработавшим. Это защита от тупика: в обязательном окне без клеток не было ни одного
- * легального действия, и партия вставала намертво (`ifrit` против `snow-queen`, сид 33). Исключение —
+ * одну клетку, окно не появляется вовсе — свойство карты просто не срабатывает, и шаг эффекта помечается
+ * «не сработало» (`shared/cards/run.js: stepStatus`: состояние не изменилось). Это защита от тупика:
+ * в обязательном окне без клеток не было ни одного легального действия, и партия вставала намертво
+ * (`ifrit` против `snow-queen`, сид 33). Исключение —
  * обычное перемещение с картой усиления в руке: она расширяет радиус, значит выбор всё-таки есть.
  * params: { op: 'open', playerId?, budget?, fighters?, optional?, throughEnemies?, damageOnPass?,
- *           healOnPass?, source?, playedCard? }
+ *           healOnPass?, terrainOnStep?, source?, playedCard? }
  */
 const openMovement = (partyState, action) => {
   if (partyState.movement) {
@@ -184,6 +195,14 @@ const openMovement = (partyState, action) => {
   // «крадёт здоровье»: за каждого пройденного бойца противника идущий получает столько же себе
   const passHeal = Number(action.healOnPass);
   const healOnPass = Number.isFinite(passHeal) && passHeal > 0 ? passHeal : null;
+  // временная стихия под шагнувшим: пустая строка — «стихии нет», неизвестная — ошибка контента
+  const stepTerrain =
+    action.terrainOnStep == null || action.terrainOnStep === ''
+      ? null
+      : String(action.terrainOnStep);
+  if (stepTerrain != null && !isTerrainId(stepTerrain)) {
+    throw new Error(`SET_MOVEMENT: неизвестная стихия "${stepTerrain}"`);
+  }
 
   const draft = {
     playerId: String(playerId),
@@ -193,9 +212,14 @@ const openMovement = (partyState, action) => {
     budget,
     fighters,
     optional: action.optional === true,
+    // постановка в текущую область вместо шага по радиусу («Зал суда») и окно на один перенос:
+    // обычный черновик этих полей не несёт, чтобы форма окна оставалась прежней
+    ...(action.areaOnly === true ? { areaOnly: true } : {}),
+    ...(action.once === true ? { once: true } : {}),
     throughEnemies: action.throughEnemies === true,
     damageOnPass,
     healOnPass,
+    terrainOnStep: stepTerrain,
     damagedFighterIds: [],
     moves: [],
     source: action.source == null ? null : String(action.source),
@@ -258,10 +282,17 @@ const stepMovement = (partyState, action) => {
       ? stepRoute(partyState, movement, playerId, fighter, action.cellId)
       : null;
 
-  const state = SET_FIGHTER_CELL(partyState, {
+  // постановка в область — не шаг: флаг «двигался в этом ходу» не ставится (телепорт)
+  let state = SET_FIGHTER_CELL(partyState, {
     fighterId: action.fighterId,
     cellId: action.cellId,
+    ...(movement.areaOnly === true ? { teleport: true } : {}),
   });
+
+  // клетка, на которую ступили, получает временную стихию: телепорт в область — не шаг
+  if (movement.terrainOnStep != null && movement.areaOnly !== true) {
+    state = addTemporaryTerrain(state, action.cellId, movement.terrainOnStep);
+  }
 
   const move = { fighterId, from, to: action.cellId };
   // запись маршрута — только там, где он что-то значит: шаг с уроном на проходе
@@ -270,7 +301,10 @@ const stepMovement = (partyState, action) => {
 
   if (!route?.length) return state;
 
-  return damagePassedFighters(state, movement, playerId, route, damage, { heal, moverId: fighterId });
+  return damagePassedFighters(state, movement, playerId, route, damage, {
+    heal,
+    moverId: fighterId,
+  });
 };
 
 /** Усиление перемещения: карта из руки в сброс, её bonus — всему действию, один раз. */

@@ -62,11 +62,21 @@ const betaDefense = {
   fighter: 'beta',
 };
 
+/** Тупик 1—2—3: Бета на 3 не может шагнуть — единственный сосед занят Ифритом. */
+const deadEndMap = {
+  id: 'dead-end',
+  nodes: [
+    { id: 1, neighbors: [2], terrain: 'ice' },
+    { id: 2, neighbors: [1, 3], terrain: 'ice' },
+    { id: 3, neighbors: [2], terrain: 'ice' },
+  ],
+};
+
 /** Ифрит на 2 держит «Стену огня», Бета на 3 с `betaHp` здоровья. */
-const buildState = ({ betaHp = 14 } = {}) =>
+const buildState = ({ betaHp = 14, map = lineMap } = {}) =>
   createState({
     phase: PHASES.turn,
-    map: lineMap,
+    map,
     players: [
       slot(
         '0',
@@ -190,6 +200,15 @@ describe('карта ifrit_08 «Стена огня»', () => {
     expect(after.movement ?? null).toBeNull();
     expect(String(fighterOf(after, '0', 'ifrit').currentPosition)).toBe('2');
     expect(String(fighterOf(after, '1', 'beta').currentPosition)).toBe('3');
+  });
+
+  it('сдвигать некуда — свойство помечено «не сработало», а не сработавшим', () => {
+    // Бета стоит в тупике: её единственный сосед занят Ифритом — шагать некуда
+    const after = openBattle(buildState({ map: deadEndMap }));
+
+    expect(after.movement ?? null).toBeNull();
+    expect(after.combat ?? null).toBeNull();
+    expect(after.lastCombat.effects.map(entry => entry.status)).toEqual(['applied', 'skipped']);
   });
 
   it('атакующий погиб в бою — окно не открывается', () => {

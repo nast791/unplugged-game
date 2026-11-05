@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, h, mergeProps } from 'vue';
 
 /**
@@ -51,8 +51,20 @@ vi.mock('~/components/molecules/game/CardOptions.vue', () => ({
   }),
 }));
 
+vi.mock('~/svg/game/move.svg', async () => {
+  const { defineComponent: makeComponent, h: makeNode } = await import('vue');
+  return {
+    default: makeComponent({
+      name: 'MoveIcon',
+      setup: () => () => makeNode('i', { 'data-icon': 'move' }),
+    }),
+  };
+});
+
+let fighterLabel = 'Анубис';
+
 vi.mock('~/composables/game/useGameSession.js', () => ({
-  useGameSession: () => ({ cardFighterLabel: () => 'Анубис' }),
+  useGameSession: () => ({ cardFighterLabel: () => fighterLabel }),
 }));
 
 const { default: Card } = await import('../../../app/components/molecules/game/Card.vue');
@@ -97,5 +109,15 @@ describe('Card: заголовок не заезжает под ромб уси�
 
     expect(diamond(mountCard())).toBe(true);
     expect(diamond(mountCard({ bonus: 0 }))).toBe(false);
+  });
+
+  it('владелец карты пишется с большой буквы, даже когда это «любой»', () => {
+    fighterLabel = 'любой';
+
+    expect(mountCard().text()).toContain('Любой');
+  });
+
+  afterEach(() => {
+    fighterLabel = 'Анубис';
   });
 });

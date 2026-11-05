@@ -8,12 +8,14 @@ import {
   watch as vueWatch,
 } from 'vue';
 import { terrainColor } from '#shared/constants/terrain.js';
+import { nodeAllTerrains, nodeTerrains } from '#shared/helpers/placement.js';
 import {
   PATTERN_TILES,
   PLACEMENT,
   SHADOW,
   SHOW_CELL_IDS,
   STROKE,
+  TOKEN,
   bendFor,
   cellAtPoint,
   cellPatterns,
@@ -27,16 +29,24 @@ import {
   placementOngoing,
   sectorDividers,
   sectorWedges,
+  shadeColor,
   tileClipFunc,
+  tokenFaceRadius,
+  tokenInk,
+  tokenRadius,
 } from '~/composables/ui/useBoardGeometry.js';
+import { HEART } from '~/constants/heart.js';
 
-const terrainsOf = node => {
-  const raw = node?.terrain;
-  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-  return list.filter(Boolean).map(String);
-};
+// стихии клетки: постоянные, затем временные (дополнительный кусок до конца хода)
+const terrainsOf = node => nodeAllTerrains(node);
+const permanentCountOf = node => nodeTerrains(node).length;
 
 const read = value => (isRef(value) ? value.value : value);
+
+// Акцент выделенной фишки — коралловый, как `--color-accent`: не путается ни с красным удара, ни с голубой подсветкой фазы.
+const SELECT_ACCENT = '#FF7F50';
+// Сколько клетки может занять тень фишки: дальше начинается соседняя клетка, и пятно читается как чужая метка.
+const SHADOW_ROOM = 0.93;
 
 export const useBoardMap = source => {
   const nodes = computed(() => {
@@ -80,6 +90,31 @@ export const useBoardMap = source => {
 
   const inPlacement = computed(() => placementCells.value.size > 0);
   const isPlacementCell = node => placementCells.value.has(String(node.id));
+  const isBusyCell = node => placementCells.value.get(String(node.id)) === true;
+
+  // подсветка фазы — это всегда ожидание клика по клетке: кольцо живёт на тех же клетках, где и в расстановке
+  const activeCells = computed(() => {
+    const ids = new Set(highlightedCells.value);
+    for (const id of placementCells.value.keys()) ids.add(id);
+    return ids;
+  });
+  const isActiveCell = node => activeCells.value.has(String(node.id));
+
+  // выбор бойца (бой, окно цели) — фаза просит клик по бойцу, а не по клетке
+  const pickFighters = computed(() => read(source.pickFighters) === true);
+  const pickFighterIds = computed(() =>
+    pickFighters.value ? new Set(highlightedFighters.value) : new Set(),
+  );
+  const isPulsingFighter = token => pickFighterIds.value.has(String(token.fighter.id));
+
+  const pulsingCells = computed(() => {
+    const ids = new Set();
+    for (const id of activeCells.value) {
+      if (placementCells.value.get(id) !== true) ids.add(id);
+    }
+    return ids;
+  });
+  const isPulsingCell = node => pulsingCells.value.has(String(node.id));
 
   const dropCellId = ref(null);
   const setDropCell = id => {
@@ -88,34 +123,37 @@ export const useBoardMap = source => {
   const isDropCell = node =>
     dropCellId.value != null && String(dropCellId.value) === String(node.id);
 
-  const placementPulse = ref(0);
+  /** Пульс нужен там, где игроку предстоит выбор: клетки-кандидаты и бойцы окна цели. */
+  const pulseActive = computed(
+    () => dropCellId.value != null || pulsingCells.value.size > 0 || pickFighterIds.value.size > 0,
+  );
+
+  const pulse = ref(0);
   let pulseFrame = null;
 
   const stopPulse = () => {
     if (pulseFrame == null) return;
     cancelAnimationFrame(pulseFrame);
     pulseFrame = null;
-    placementPulse.value = 0;
+    pulse.value = 0;
   };
 
   const stepPulse = () => {
-    placementPulse.value = (Math.sin(Date.now() / 240) + 1) / 2;
+    pulse.value = (Math.sin(Date.now() / 240) + 1) / 2;
     pulseFrame = requestAnimationFrame(stepPulse);
   };
 
-  vueWatch(dropCellId, value => {
-    if (value == null) {
-      stopPulse();
-      return;
-    }
+  const startPulse = () => {
     if (pulseFrame != null) return;
     pulseFrame = requestAnimationFrame(stepPulse);
-  });
+  };
+
+  vueWatch(pulseActive, wanted => (wanted ? startPulse() : stopPulse()));
 
   if (getCurrentInstance()) onBoardUnmount(stopPulse);
 
   const setPulse = value => {
-    placementPulse.value = Math.max(0, Math.min(1, Number(value) || 0));
+    pulse.value = Math.max(0, Math.min(1, Number(value) || 0));
   };
 
   const nodeById = computed(() => {
@@ -134,15 +172,94 @@ export const useBoardMap = source => {
     placementMarkers(nodes.value, radius.value, read(source.players)),
   );
 
-  const nodeStroke = node => {
-    if (inPlacement.value) {
-      return { color: STROKE.edgeColor, width: STROKE.cell };
-    }
-    if (isHighlighted(node)) {
-      return { color: '#0284c7', width: STROKE.highlight };
-    }
-    return { color: STROKE.edgeColor, width: STROKE.cell };
-  };
+  const FRAME = { pad: 28, cut: 22, alpha: 0.55 };
+
+  const frameBox = computed(() => {
+    const box = bounds.value ?? {};
+    return {
+      x0: Number(box.minX ?? 0) - FRAME.pad,
+      y0: Number(box.minY ?? 0) - FRAME.pad,
+      x1: Number(box.maxX ?? 0) + FRAME.pad,
+      y1: Number(box.maxY ?? 0) + FRAME.pad,
+    };
+  });
+
+  const paperConfig = computed(() => {
+    const { x0, y0, x1, y1 } = frameBox.value;
+
+    return {
+      x: x0,
+      y: y0,
+      width: x1 - x0,
+      height: y1 - y0,
+      fill: '#efece6',
+      listening: false,
+      shadowColor: 'rgba(0, 0, 0, 0.45)',
+      shadowBlur: 26,
+      shadowOffsetY: 6,
+      shadowForStrokeEnabled: false,
+    };
+  });
+
+  const frameConfig = computed(() => {
+    const { x0, y0, x1, y1 } = frameBox.value;
+    const cut = FRAME.cut;
+
+    return {
+      points: [
+        x0 + cut,
+        y0,
+        x1 - cut,
+        y0,
+        x1,
+        y0 + cut,
+        x1,
+        y1 - cut,
+        x1 - cut,
+        y1,
+        x0 + cut,
+        y1,
+        x0,
+        y1 - cut,
+        x0,
+        y0 + cut,
+      ],
+      closed: true,
+      stroke: `rgba(24, 31, 41, ${FRAME.alpha})`,
+      strokeWidth: 2,
+      strokeScaleEnabled: false,
+      listening: false,
+    };
+  });
+
+  const vignetteConfig = computed(() => {
+    const { x0, y0, x1, y1 } = frameBox.value;
+    const width = x1 - x0;
+    const height = y1 - y0;
+    const centre = { x: width / 2, y: height / 2 };
+
+    return {
+      x: x0,
+      y: y0,
+      width,
+      height,
+      fillRadialGradientStartPoint: centre,
+      fillRadialGradientStartRadius: 0,
+      fillRadialGradientEndPoint: centre,
+      fillRadialGradientEndRadius: Math.hypot(width, height) / 2,
+      fillRadialGradientColorStops: [
+        0,
+        'rgba(6, 10, 16, 0)',
+        0.55,
+        'rgba(6, 10, 16, 0)',
+        1,
+        'rgba(6, 10, 16, 0.42)',
+      ],
+      listening: false,
+    };
+  });
+
+  const nodeStroke = () => ({ color: STROKE.edgeColor, width: STROKE.cell });
 
   const nodeCircleConfig = node => {
     const stroke = nodeStroke(node);
@@ -168,15 +285,13 @@ export const useBoardMap = source => {
     };
   };
 
-  const placementGlowLevel = node => {
-    if (placementCells.value.get(String(node.id)) === true) return 0;
+  const cellGlowLevel = node => {
+    if (isBusyCell(node)) return 0;
     return isDropCell(node) ? 3 : isHighlighted(node) ? 2 : 1;
   };
 
-  const glowPulseOf = level => (level === 3 ? placementPulse.value : 0);
-
-  const placementGlowConfig = node => {
-    const level = placementGlowLevel(node);
+  const cellGlowConfig = node => {
+    const level = cellGlowLevel(node);
     const spread = radius.value + PLACEMENT.stroke + 1;
     return {
       radius: spread,
@@ -191,19 +306,29 @@ export const useBoardMap = source => {
     };
   };
 
-  const placementPulseConfig = node => ({
-    radius: radius.value + PLACEMENT.stroke + 2,
-    stroke: PLACEMENT.free,
-    strokeWidth: 8,
-    opacity: 0,
-    listening: false,
-    pulseRing: true,
-    baseRadius: radius.value,
-  });
+  /** Кольцо-кандидат: тонкая расходящаяся волна. Под курсором она крупнее — там бросок уже решён. */
+  const CELL_WAVE = { near: 2, far: 16, width: 6, peak: 0.22 };
+  const DROP_WAVE = { near: 8, far: 24, width: 10, peak: 0.3 };
 
-  const placementRingConfig = node => {
-    const busy = placementCells.value.get(String(node.id)) === true;
-    const level = placementGlowLevel(node);
+  const cellPulseConfig = node => {
+    const wave = isDropCell(node) ? DROP_WAVE : CELL_WAVE;
+    return {
+      radius: radius.value + PLACEMENT.stroke + 2,
+      stroke: PLACEMENT.free,
+      strokeWidth: wave.width,
+      opacity: 0,
+      listening: false,
+      pulseRing: true,
+      baseRadius: radius.value,
+      pulseNear: wave.near,
+      pulseFar: wave.far,
+      pulseWidth: wave.width,
+      pulsePeak: wave.peak,
+    };
+  };
+
+  const cellRingConfig = node => {
+    const busy = isBusyCell(node);
     return {
       radius: radius.value + PLACEMENT.stroke,
       fill: undefined,
@@ -217,19 +342,56 @@ export const useBoardMap = source => {
     };
   };
 
-  const sectorsOf = node => sectorWedges(terrainsOf(node));
+  // временная стихия — отдельный сектор с золотой каймой: видно, что это добавка, а не стихия клетки
+  const sectorsOf = node => {
+    const permanent = permanentCountOf(node);
+    return sectorWedges(terrainsOf(node)).map((sector, index) => ({
+      ...sector,
+      temporary: index >= permanent,
+    }));
+  };
   const dividersOf = node => sectorDividers(terrainsOf(node), radius.value);
   const sectorConfig = sector => ({
     radius: radius.value,
     angle: sector.angle,
     rotation: sector.rotation,
     fill: sector.color,
+    ...(sector.temporary
+      ? {
+          stroke: '#F7C846',
+          strokeWidth: 2,
+          shadowColor: '#F7C846',
+          shadowBlur: 6,
+          shadowOpacity: 0.55,
+        }
+      : {}),
     listening: false,
   });
+
+  // дуга-метка поверх временного сектора: пунктирный обод показывает, что стихия исчезнет в конце хода
+  const temporaryMarksOf = node => {
+    const cellRadius = radius.value;
+    return sectorsOf(node)
+      .filter(sector => sector.temporary)
+      .map(sector => ({
+        x: 0,
+        y: 0,
+        innerRadius: cellRadius * 0.7,
+        outerRadius: cellRadius - STROKE.cell * 0.5,
+        angle: sector.angle,
+        rotation: sector.rotation,
+        fill: 'rgba(247, 200, 70, 0.14)',
+        stroke: '#F7C846',
+        strokeWidth: 2,
+        dash: [5, 4],
+        listening: false,
+      }));
+  };
 
   const tileImages = ref({});
 
   onMounted(() => {
+    if (pulseActive.value) startPulse();
     for (const [terrain, tile] of Object.entries(PATTERN_TILES)) {
       const image = new Image();
       image.onload = () => {
@@ -318,48 +480,314 @@ export const useBoardMap = source => {
     return placed;
   });
 
+  // Выбор игрока и роль в битве не спорят: выбранный боец, который бьёт или защищается, остаётся цветом боя.
+  const isAccentSelected = token => {
+    const id = String(token.fighter.id);
+    const fighting = battleMarks.value.attacker === id || battleMarks.value.defender === id;
+    return !fighting && String(read(source.selectedFighterId)) === id;
+  };
+
   const fighterHaloConfig = token => {
     const id = String(token.fighter.id);
     const attacker = battleMarks.value.attacker === id;
     const defender = battleMarks.value.defender === id;
 
-    const framed = attacker || framedFighters.value.has(id);
+    // красный — только у того, кто бьёт: рамка фазы и роль защитника рисуются голубым
+    const framed = framedFighters.value.has(id);
     const highlighted = !attacker && !defender && highlightedFighters.value.has(id);
     const marked = Boolean(attacker || defender);
-    const selected = String(read(source.selectedFighterId)) === id;
     const picked = pickedFighters.value.has(id);
-    const alive = framed || highlighted || marked || picked;
+    const accent = isAccentSelected(token);
+    const alive = attacker || framed || highlighted || marked || picked || accent;
 
-    // отмеченная цель — та же рамка активности, что у выбранного бойца: без заливки, но толще подсветки
+    // выбор показывает тень-подсветка под фишкой, поэтому кольца у него нет: остаются только линии фаз и битвы
+    const ring = radius.value * (alive ? 0.92 : 0.82);
     return {
-      radius: radius.value * (alive ? 0.92 : 0.82),
-      fill:
-        selected && !framed && !highlighted && !marked && !picked ? token.color : 'transparent',
+      radius: ring,
+      fill: 'transparent',
       opacity: alive ? 1 : 0.35,
-      stroke: framed ? '#dc2626' : highlighted || defender || picked ? '#0ea5e9' : 'transparent',
-      strokeWidth: picked ? 7 : framed || highlighted || marked ? 5 : 0,
+      stroke: attacker
+        ? '#dc2626'
+        : framed || defender || highlighted || picked
+          ? '#0ea5e9'
+          : 'transparent',
+      strokeWidth: picked ? 7 : attacker || framed || highlighted || marked ? 5 : 0,
       listening: false,
     };
   };
 
-  const fighterBodyConfig = token => ({
-    radius: radius.value * 0.62,
-    fill: token.color,
-    stroke: '#fff',
-    strokeWidth: 3,
+  const FIGHTER_WAVE = { near: 2, far: 14, width: 5, peak: 0.3 };
+
+  const fighterPulseConfig = token => {
+    const id = String(token.fighter.id);
+    const base = radius.value * 0.92;
+    const red = battleMarks.value.attacker === id;
+    return {
+      radius: base,
+      stroke: red ? '#dc2626' : '#0ea5e9',
+      strokeWidth: FIGHTER_WAVE.width,
+      opacity: 0,
+      listening: false,
+      pulseRing: true,
+      baseRadius: base,
+      pulseNear: FIGHTER_WAVE.near,
+      pulseFar: FIGHTER_WAVE.far,
+      pulseWidth: FIGHTER_WAVE.width,
+      pulsePeak: FIGHTER_WAVE.peak,
+    };
+  };
+
+  // Фишка объёмная: кромка цвета героя со светом сверху, вдавленное поле под портрет и блик по кромке.
+  // Внешней обводки нет — тонкая тёмная линия по контуру «сплющивала» фишку; край держит тень.
+  const fighterShades = color => ({
+    high: shadeColor(color, 0.5),
+    light: shadeColor(color, 0.16),
+    base: color,
+    deep: shadeColor(color, -0.55),
   });
 
-  const fighterLabelConfig = token => ({
-    text: String(token.fighter.name || token.fighter.id).slice(0, 1),
-    fontSize: Math.round(radius.value * 0.62),
-    fontStyle: 'bold',
-    fill: '#fff',
-    width: radius.value * 1.24,
-    align: 'center',
-    x: -radius.value * 0.62,
-    y: -radius.value * 0.32,
-    listening: false,
-  });
+  // Тень под фишкой: мягкое пятно снизу, чтобы фишка стояла на поле, а не лежала на нём.
+  // У выбранной фишки это ровное свечение вокруг — со всех сторон одинаково, без перекоса вниз.
+  const fighterShadowConfig = token => {
+    const body = tokenRadius(radius.value);
+    const accent = isAccentSelected(token);
+    // за клетку тень не выходит: поле рисуется кружками, и пятно на соседе читается как чужая метка
+    const room = radius.value * SHADOW_ROOM;
+    const dropY = body * 0.42;
+    const glow = accent ? Math.min(body * 1.18, room) : 0;
+    const radiusX = accent ? glow : Math.min(body * 1.06, room);
+    const radiusY = accent ? glow : Math.min(body * 0.92, Math.max(2, room - dropY));
+    // плотное кольцо света начинается сразу за фишкой и тает к краю клетки — на светлой пустыне не хуже, чем на камне
+    const edge = glow > 0 ? body / glow : 0;
+    return {
+      x: 0,
+      y: accent ? 0 : dropY,
+      radiusX,
+      radiusY,
+      fillRadialGradientStartPoint: { x: 0, y: 0 },
+      fillRadialGradientEndPoint: { x: 0, y: 0 },
+      fillRadialGradientStartRadius: 0,
+      fillRadialGradientEndRadius: Math.max(radiusX, radiusY),
+      fillRadialGradientColorStops: accent
+        ? [
+            0,
+            'rgba(255, 127, 80, 0.9)',
+            Math.max(0, edge - 0.02),
+            'rgba(255, 127, 80, 0.9)',
+            Math.min(0.95, edge + 0.16),
+            'rgba(255, 127, 80, 0.75)',
+            1,
+            'rgba(255, 127, 80, 0)',
+          ]
+        : [0, 'rgba(15, 23, 42, 0.55)', 1, 'rgba(15, 23, 42, 0)'],
+      fillPriority: 'radial-gradient',
+      listening: false,
+    };
+  };
+
+  // Кромка выпуклая: чем дальше от точки света в верхнем левом углу, тем темнее — круг читается куполом.
+  const fighterBodyConfig = token => {
+    const body = tokenRadius(radius.value);
+    const shades = fighterShades(token.color);
+    return {
+      radius: body,
+      fillRadialGradientStartPoint: { x: -body * 0.3, y: -body * 0.38 },
+      fillRadialGradientEndPoint: { x: -body * 0.3, y: -body * 0.38 },
+      fillRadialGradientStartRadius: 0,
+      fillRadialGradientEndRadius: body * 1.62,
+      fillRadialGradientColorStops: [
+        0,
+        shades.high,
+        0.36,
+        shades.light,
+        0.7,
+        shades.base,
+        1,
+        shades.deep,
+      ],
+      fillPriority: 'radial-gradient',
+    };
+  };
+
+  // Скругление к самому краю: тёмная кромка по всему контуру, мягкая, без линии-обводки.
+  const fighterRimShadeConfig = () => {
+    const body = tokenRadius(radius.value);
+    return {
+      radius: body,
+      fillRadialGradientStartPoint: { x: 0, y: 0 },
+      fillRadialGradientEndPoint: { x: 0, y: 0 },
+      fillRadialGradientStartRadius: 0,
+      fillRadialGradientEndRadius: body,
+      fillRadialGradientColorStops: [
+        0,
+        'rgba(15, 23, 42, 0)',
+        0.72,
+        'rgba(15, 23, 42, 0)',
+        1,
+        'rgba(15, 23, 42, 0.3)',
+      ],
+      fillPriority: 'radial-gradient',
+      listening: false,
+    };
+  };
+
+  const fighterFaceConfig = token => {
+    const body = tokenRadius(radius.value);
+    const face = tokenFaceRadius(radius.value);
+    return {
+      radius: face,
+      fillRadialGradientStartPoint: { x: -face * 0.25, y: -face * 0.3 },
+      fillRadialGradientEndPoint: { x: face * 0.5, y: face * 0.7 },
+      fillRadialGradientStartRadius: 0,
+      fillRadialGradientEndRadius: face * 1.5,
+      fillRadialGradientColorStops: [
+        0,
+        shadeColor(token.color, -0.05),
+        1,
+        shadeColor(token.color, -0.62),
+      ],
+      fillPriority: 'radial-gradient',
+      stroke: 'rgba(15, 23, 42, 0.3)',
+      strokeWidth: Math.max(1.5, (body - face) * 0.34),
+      listening: false,
+    };
+  };
+
+  // Блик на кромке — серп света по верхнему краю: кольцо от сдвинутого центра, без среза на конце.
+  const fighterShineConfig = token => {
+    const body = tokenRadius(radius.value);
+    return {
+      radius: body,
+      x: 0,
+      y: 0,
+      fillRadialGradientStartPoint: { x: -body * 0.34, y: -body * 0.4 },
+      fillRadialGradientEndPoint: { x: -body * 0.34, y: -body * 0.4 },
+      fillRadialGradientStartRadius: body * 0.6,
+      fillRadialGradientEndRadius: body * 1.06,
+      fillRadialGradientColorStops: [
+        0,
+        'rgba(255, 255, 255, 0)',
+        0.5,
+        'rgba(255, 255, 255, 0.62)',
+        1,
+        'rgba(255, 255, 255, 0)',
+      ],
+      fillPriority: 'radial-gradient',
+      listening: false,
+    };
+  };
+
+  // Поле портрета вдавлено: затемнение по краю круга, поверх аватара, — иначе портрет лежит заподлицо.
+  const fighterFaceEdgeConfig = token => {
+    const face = tokenFaceRadius(radius.value);
+    return {
+      radius: face,
+      fillRadialGradientStartPoint: { x: 0, y: 0 },
+      fillRadialGradientEndPoint: { x: 0, y: 0 },
+      fillRadialGradientStartRadius: face * 0.64,
+      fillRadialGradientEndRadius: face,
+      fillRadialGradientColorStops: [0, 'rgba(15, 23, 42, 0)', 1, 'rgba(15, 23, 42, 0.42)'],
+      fillPriority: 'radial-gradient',
+      listening: false,
+    };
+  };
+
+  const fighterLabelConfig = token => {
+    const face = tokenFaceRadius(radius.value);
+    const fontSize = Math.max(8, Math.round(face * 1.1));
+    return {
+      text: String(token.fighter.name || token.fighter.id).slice(0, 1),
+      fontSize,
+      fontStyle: 'bold',
+      fill: tokenInk(token.color),
+      width: face * 2,
+      align: 'center',
+      x: -face,
+      y: -Math.round(fontSize * 0.52),
+      listening: false,
+    };
+  };
+
+  // Здоровье — объёмное сердце, как у гекса героя, торчащее из-под фишки вправо-вниз.
+  const hpHeartOf = () => {
+    const body = tokenRadius(radius.value);
+    const reach = body * 0.84;
+    const size = Math.max(13, body * 0.72);
+    return { x: reach, y: reach, size, scale: size / HEART.width };
+  };
+
+  const fighterHpHeartConfig = () => {
+    const { x, y, scale } = hpHeartOf();
+    return {
+      data: HEART.path,
+      x,
+      y,
+      scaleX: scale,
+      scaleY: scale,
+      offsetX: HEART.centerX,
+      offsetY: HEART.centerY,
+      fillPriority: 'linear-gradient',
+      fillLinearGradientStartPoint: { x: HEART.left, y: HEART.top },
+      fillLinearGradientEndPoint: {
+        x: HEART.left + HEART.width * 0.55,
+        y: HEART.top + HEART.height,
+      },
+      fillLinearGradientColorStops: [0, '#ff8d7c', 0.42, '#e2322b', 1, '#8d0f14'],
+      shadowColor: 'rgba(0, 0, 0, 0.45)',
+      shadowBlur: Math.max(2, scale * HEART.width * 0.22),
+      shadowOffsetY: 1,
+      listening: false,
+    };
+  };
+
+  const fighterHpGlossConfig = () => {
+    const { x, y, scale } = hpHeartOf();
+    return {
+      data: HEART.path,
+      x,
+      y,
+      scaleX: scale,
+      scaleY: scale,
+      offsetX: HEART.centerX,
+      offsetY: HEART.centerY,
+      fillPriority: 'radial-gradient',
+      fillRadialGradientStartPoint: { x: HEART.glossX, y: HEART.glossY },
+      fillRadialGradientEndPoint: { x: HEART.glossX, y: HEART.glossY },
+      fillRadialGradientStartRadius: 0,
+      fillRadialGradientEndRadius: HEART.glossRadius,
+      fillRadialGradientColorStops: [
+        0,
+        'rgba(255, 255, 255, 0.7)',
+        0.55,
+        'rgba(255, 255, 255, 0.12)',
+        1,
+        'rgba(255, 255, 255, 0)',
+      ],
+      listening: false,
+    };
+  };
+
+  const fighterHpLabelConfig = token => {
+    const { x, y, size, scale } = hpHeartOf();
+    const fontSize = Math.max(7, Math.round(size * 0.5));
+    const height = Math.round(fontSize * 1.6);
+    const dy = (HEART.top + HEART.height * 0.47 - HEART.centerY) * scale;
+    return {
+      text: String(Number(token.fighter.currentHp ?? 0)),
+      x: x - size / 2,
+      y: y + dy - height / 2,
+      width: size,
+      height,
+      align: 'center',
+      verticalAlign: 'middle',
+      fontSize,
+      fontStyle: 'bold',
+      fill: '#ffffff',
+      shadowColor: 'rgba(0, 0, 0, 0.55)',
+      shadowBlur: 2,
+      listening: false,
+    };
+  };
 
   const clickTargetOf = target => clickTarget(target);
 
@@ -374,26 +802,43 @@ export const useBoardMap = source => {
     inPlacement,
     dropCellId,
     isDropCell,
-    placementPulse,
+    isActiveCell,
+    isPulsingCell,
+    isPulsingFighter,
+    pulseActive,
+    pulse,
     setDropCell,
     setPulse,
     isPlacementCell,
     sectorsOf,
     sectorConfig,
+    temporaryMarksOf,
     dividersOf,
     patternsOf,
     nodeCircleConfig,
     nodeOutlineConfig,
-    placementGlowConfig,
-    placementPulseConfig,
-    placementRingConfig,
+    cellGlowConfig,
+    cellPulseConfig,
+    cellRingConfig,
     cellLabelConfig,
     edgeLines,
     startMarkersOf,
+    frameConfig,
+    paperConfig,
+    vignetteConfig,
     placedFighters,
     fighterHaloConfig,
+    fighterPulseConfig,
+    fighterShadowConfig,
     fighterBodyConfig,
+    fighterRimShadeConfig,
+    fighterFaceConfig,
+    fighterFaceEdgeConfig,
+    fighterShineConfig,
     fighterLabelConfig,
+    fighterHpHeartConfig,
+    fighterHpGlossConfig,
+    fighterHpLabelConfig,
     clickTargetOf,
     cellAt,
   };

@@ -1,0 +1,24 @@
+<!-- Объёмное сердце здоровья: тело с градиентом и блик сверху — без рамки (решение владельца). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24">
+  <defs>
+    <linearGradient id="heartBody" x1="0.1" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#ff8d7c" />
+      <stop offset="0.42" stop-color="#e2322b" />
+      <stop offset="1" stop-color="#8d0f14" />
+    </linearGradient>
+    <radialGradient id="heartGloss" cx="0.34" cy="0.26" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.7" />
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.12" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <path
+    d="M12 22.2C12 22.2 2.4 15.7 2.4 9.6C2.4 6.5 4.9 4.1 8 4.1C9.9 4.1 11.3 5.1 12 6.4C12.7 5.1 14.1 4.1 16 4.1C19.1 4.1 21.6 6.5 21.6 9.6C21.6 15.7 12 22.2 12 22.2Z"
+    fill="url(#heartBody)"
+  />
+  <path
+    d="M12 22.2C12 22.2 2.4 15.7 2.4 9.6C2.4 6.5 4.9 4.1 8 4.1C9.9 4.1 11.3 5.1 12 6.4C12.7 5.1 14.1 4.1 16 4.1C19.1 4.1 21.6 6.5 21.6 9.6C21.6 15.7 12 22.2 12 22.2Z"
+    fill="url(#heartGloss)"
+  />
+</svg>

@@ -34,6 +34,8 @@ export const playerFields = {
   skillActive: ['self', 'team', 'enemy'],
   items: ['self', 'team', 'enemy'],
   fighters: ['self', 'team', 'enemy'],
+  // павшие бойцы — публичный факт: карточка игрока и окно битвы показывают их убитыми
+  lost: ['self', 'team', 'enemy'],
   placementReady: ['self', 'team', 'enemy'],
   resigned: ['self', 'team', 'enemy'],
   deck: [],

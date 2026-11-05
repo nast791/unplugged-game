@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/publicApi.js';
+import { runAction, runLifecycle, runUi } from '#shared/publicApi.js';
 import ifritCards from '../../../server/content/heroes/ifrit/cards.js';
 import { createState, fighter, hand, PHASES, player } from '../../fixtures/state.js';
 
@@ -53,10 +53,10 @@ const slot = (id, name, order, fighters, hand = [], deckCards = []) => ({
 });
 
 /** Ифрит на 2 со 10 из 14 здоровья держит «Три обещания»; в колоде две карты. */
-const buildState = ({ deckCards = [deckCard(1), deckCard(2)] } = {}) =>
+const buildState = ({ deckCards = [deckCard(1), deckCard(2)], map = lineMap } = {}) =>
   createState({
     phase: PHASES.turn,
-    map: lineMap,
+    map,
     players: [
       slot(
         '0',
@@ -84,6 +84,14 @@ const pick = (state, optionId) =>
 
 const fighterOf = (state, playerId, fighterId) =>
   player(state, playerId).fighters.find(entry => entry.id === fighterId);
+
+const nodeOf = (state, cellId) =>
+  state.map.nodes.find(node => String(node.id) === String(cellId));
+
+const endTurn = state => {
+  state.hook = PHASES.turnEnd;
+  return runLifecycle(state);
+};
 
 describe('карта ifrit_12 «Три обещания»', () => {
   it('описана правилами, моменты — из списка', () => {
@@ -122,6 +130,12 @@ describe('карта ifrit_12 «Три обещания»', () => {
       'heal',
       'draw',
       'step',
+    ]);
+    // вариант приходит с текстом с карты: окно эффекта вне боя ui.choices не собирает
+    expect(played.targeting.candidates.map(entry => entry.title)).toEqual([
+      'Восстановите Ифриту 2 здоровья.',
+      'Возьмите 2 карты.',
+      'Сдвиньте Ифрита на расстояние до 2 клеток. Клетка, на которую он наступил, до конца вашего хода получает дополнительную стихию лавы, если на ней меньше 3 стихий.',
     ]);
     // у обязательного окна общей кнопки отказа нет: ui её не показывает
     expect(runUi(played, '0').controls.ok).toMatchObject({ visible: false, enabled: false });
@@ -177,6 +191,7 @@ describe('карта ifrit_12 «Три обещания»', () => {
       budget: 2,
       optional: true,
       fighters: ['ifrit'],
+      terrainOnStep: 'lava',
     });
     expect(fighterOf(after, '0', 'ifrit').currentHp).toBe(10);
     expect(hand(player(after, '0'))).toEqual([]);
@@ -211,6 +226,79 @@ describe('карта ifrit_12 «Три обещания»', () => {
     expect(String(fighterOf(closed, '0', 'ifrit').currentPosition)).toBe('4');
     expect(closed.movement ?? null).toBeNull();
     expect(closed.effect ?? null).toBeNull();
+  });
+
+  it('каждая клетка под шагом получает временную лаву, стихия клетки остаётся', () => {
+    const stepped = runAction(pick(play(buildState()), 'step'), {
+      type: 'PICK',
+      kind: 'cell',
+      id: '3',
+      fighterId: 'ifrit',
+      playerId: '0',
+    });
+    const twice = runAction(stepped, {
+      type: 'PICK',
+      kind: 'cell',
+      id: '4',
+      fighterId: 'ifrit',
+      playerId: '0',
+    });
+
+    // добавка лежит отдельно от `terrain`: цвет и основная стихия клетки не меняются
+    expect(nodeOf(twice, 3)).toMatchObject({ terrain: 'ice', extraTerrain: ['lava'] });
+    expect(nodeOf(twice, 4)).toMatchObject({ terrain: 'ice', extraTerrain: ['lava'] });
+    // клетка, с которой Ифрит начал, не получает ничего: на неё он не ступал
+    expect(nodeOf(twice, 2).extraTerrain).toBeUndefined();
+  });
+
+  it('на клетке уже есть лава — второй лавы не появляется', () => {
+    const lavaLine = {
+      ...lineMap,
+      nodes: lineMap.nodes.map(node => (node.id === 3 ? { ...node, terrain: 'lava' } : node)),
+    };
+    const stepped = runAction(pick(play(buildState({ map: lavaLine })), 'step'), {
+      type: 'PICK',
+      kind: 'cell',
+      id: '3',
+      fighterId: 'ifrit',
+      playerId: '0',
+    });
+
+    expect(nodeOf(stepped, 3).terrain).toBe('lava');
+    expect(nodeOf(stepped, 3).extraTerrain).toBeUndefined();
+  });
+
+  it('три стихии — предел: четвёртая на клетку не добавляется', () => {
+    const fullLine = {
+      ...lineMap,
+      nodes: lineMap.nodes.map(node =>
+        node.id === 3 ? { ...node, terrain: ['ice', 'forest', 'desert'] } : node,
+      ),
+    };
+    const stepped = runAction(pick(play(buildState({ map: fullLine })), 'step'), {
+      type: 'PICK',
+      kind: 'cell',
+      id: '3',
+      fighterId: 'ifrit',
+      playerId: '0',
+    });
+
+    expect(nodeOf(stepped, 3).terrain).toEqual(['ice', 'forest', 'desert']);
+    expect(nodeOf(stepped, 3).extraTerrain).toBeUndefined();
+  });
+
+  it('временная лава снимается в конце хода', () => {
+    const stepped = runAction(pick(play(buildState()), 'step'), {
+      type: 'PICK',
+      kind: 'cell',
+      id: '3',
+      fighterId: 'ifrit',
+      playerId: '0',
+    });
+    const after = endTurn(runAction(stepped, { type: 'UI_OK', playerId: '0' }));
+
+    expect(after.map.nodes.every(node => node.extraTerrain == null)).toBe(true);
+    expect(nodeOf(after, 3).terrain).toBe('ice');
   });
 
   it('вариант heal не поднимает здоровье выше startHp', () => {

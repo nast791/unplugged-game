@@ -27,6 +27,10 @@ import { findFighter } from '#shared/helpers/base.js';
  * params.role (проверка, необязательно): 'attacker' | 'defender' — роль ctx.player в этой битве.
  * Нужна свойствам, которые отличают удар от защиты: «в защиту значение карты противника −1».
  *
+ * params.range (проверка, необязательно): дальность атаки атакующего бойца (`attackRange`).
+ * Читается вместе с `role`: «Ифрит защищается от ближней атаки» — `role: 'defender', range: 1`.
+ * У завершённого боя дальность записана в `lastCombat.attackerRange` (атакующий мог погибнуть).
+ *
  * params.select (значение → список fighterId, необязательно):
  * - 'attacker' — attackerFighterId
  * - 'target'   — атакованный боец (targetFighterId): герой или помощник, кого выбрали целью
@@ -183,9 +187,11 @@ const effectsCountFor = (state, ctx, side) => {
 };
 
 /**
- * Усиление карты стороны в открытом бою. Значение — число (усиление карты), `ok` — была ли карта.
+ * Усиление карты стороны в открытом бою. Значение — число (усиление карты), `ok` — была ли карта
+ * и попала ли она в границы `min`/`max`/`over`/`under`.
  * Стороны те же, что у `effects`: `self` | `opponent` | `attacker` | `defender`.
  * Так работает «Саван»: его значение становится равным усилению карты, которой напали.
+ * А границы сравнивают усиления сторон — «Помилование» против «Наказания» в суде Анубиса.
  */
 const bonusCardFor = (combat, side, ctx) => {
   const key = String(side);
@@ -213,6 +219,15 @@ const battleFor = (state, wantsCurrent) => {
   return lastCombat && lastCombat.winner != null ? lastCombat : null;
 };
 
+/** Дальность атаки атакующего: у живого бойца из состояния, у завершённого боя — из записи. */
+const attackerRangeOf = (state, battle) => {
+  const recorded = Number(battle?.attackerRange);
+  if (Number.isFinite(recorded)) return recorded;
+  const fighter = findFighter(state, battle?.attackerFighterId).fighter;
+  const live = Number(fighter?.attackRange);
+  return Number.isFinite(live) ? live : null;
+};
+
 export const COMBAT = (ctx, params = {}) => {
   // «есть ли эффекты у карты стороны» читается и до расчёта чисел: итог боя тут не нужен
   if (params.effects != null && params.effects !== '') {
@@ -225,7 +240,19 @@ export const COMBAT = (ctx, params = {}) => {
     const combat = ctx.state?.combat ?? null;
     if (!combat) return { ok: false, value: 0 };
     const card = bonusCardFor(combat, params.bonus, ctx);
-    return { ok: card != null, value: cardBonus(card ?? {}) };
+    const value = cardBonus(card ?? {});
+    const bounds = ['min', 'max', 'over', 'under'].filter(
+      key => params[key] != null && params[key] !== '',
+    );
+    const within = bounds.every(key => {
+      const limit = Number(params[key]);
+      if (!Number.isFinite(limit)) throw new Error(`fact COMBAT: bonus ${key} должен быть числом`);
+      if (key === 'min') return value >= limit;
+      if (key === 'max') return value <= limit;
+      if (key === 'over') return value > limit;
+      return value < limit;
+    });
+    return { ok: card != null && within, value };
   }
 
   // победитель — свойство завершённого боя: его читаем из итога, а не из открытого боя
@@ -244,7 +271,8 @@ export const COMBAT = (ctx, params = {}) => {
   const wantsCurrent =
     (params.player != null && params.player !== '') ||
     (params.select != null && params.select !== '') ||
-    (params.role != null && params.role !== '');
+    (params.role != null && params.role !== '') ||
+    (params.range != null && params.range !== '');
   const battle = battleFor(ctx.state, wantsCurrent);
   if (!battle) return { ok: false, value: null };
 
@@ -263,6 +291,15 @@ export const COMBAT = (ctx, params = {}) => {
         : String(battle.defenderPlayerId) === String(selfId)
           ? 'defender'
           : null;
+
+    if (params.range != null && params.range !== '') {
+      const wantedRange = Number(params.range);
+      if (!Number.isFinite(wantedRange) || wantedRange < 1) {
+        throw new Error(`fact COMBAT: неверный range "${params.range}" (нужно число от 1)`);
+      }
+      const range = attackerRangeOf(ctx.state, battle);
+      if (range == null || range !== wantedRange) return { ok: false, value: role };
+    }
 
     return { ok: role === wanted, value: role };
   }

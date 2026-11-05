@@ -118,7 +118,12 @@ describe('словарь подсказок', () => {
         { cells: false, count: 2, picked: 0 },
         { cells: true, count: 2, picked: 1 },
       ],
-      'movement.moveFighters': [{ fromEffect: true }, { fromEffect: false }],
+      'movement.moveFighters': [
+        { fromEffect: true },
+        { fromEffect: false },
+        { fromEffect: true, picked: true },
+        { fromEffect: false, picked: true },
+      ],
       'defense.effectOption': [
         { required: true },
         { required: false },

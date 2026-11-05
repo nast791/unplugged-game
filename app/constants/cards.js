@@ -15,6 +15,10 @@ export const CARD_MOMENT_PREFIXES = [
   { moment: 'turnEnd', keys: ['КОНЕЦ ХОДА'] },
 ];
 
+// Опции свойства («Помилование», «Наказание» у Анубиса) — части текста, а не выбор игрока: их нельзя
+// нажать, поэтому клиент рисует их строкой с подписью, а не списком опций окна выбора.
+export const CARD_TEXT_OPTION_LABELS = ['Помилование', 'Наказание'];
+
 export const cardType = type =>
   CARD_TYPES[String(type)] ?? {
     label: String(type ?? ''),

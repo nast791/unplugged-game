@@ -32,104 +32,29 @@ export default {
       type: 'item',
       count: 1,
       color: '#D4B97A',
-      state: 'inactive',
-      states: { active: 'цела', inactive: 'отсутствует' },
+      state: 'active',
       condition:
-        'Появляется картой «Погребальная пелена»; цела, пока Амат жива — в начале вашего хода пелена рвётся, если Амат мертва',
+        'Активна с начала партии, пока Амат жива; в начале вашего хода становится не активной навсегда, если Амат мертва',
       icon: 'bx:wind',
     },
   ],
+  tags: ['scales'],
   terrainAffinity: ['desert'],
   skill: {
     id: 'anubis_skill',
     type: 'skill',
     fighter: 'anubis',
-    title: 'Взвешивание сердца',
-    text: 'КОНЕЦ ХОДА: Если Анубис не наносил урон в этом ходу, выберите бойца противника в его области — он получает 1 урон (2, пока цела пелена). НАЧАЛО ХОДА: Если Амат мертва, пелена рвётся.',
+    title: 'Суд Осириса',
+    text: 'Пока пелена активна, на картах с пометкой весов работают Помилование (усиление карты противника не больше вашего) и Наказание (строго больше). НАЧАЛО ХОДА: Если Амат мертва, пелена рвётся навсегда.',
     rules: [
       {
-        // пелена держится, пока жив зверь: потеря Амат снимает и «поедание» карт, и усиленный суд
+        // пелена держится, пока жив зверь: потеря Амат рвёт её навсегда, и весы замолкают
         moment: 'turnStart',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'LOST', params: { group: 'amat', min: 1 } },
         ],
         then: [{ action: 'SET_ITEM', group: 'shroud', to: 'inactive' }],
-      },
-      {
-        moment: 'turnEnd',
-        when: [
-          // условие — урон, а не шаг: суд молчит в тот ход, когда Анубис бил сам
-          {
-            fact: 'FIGHTERS',
-            params: { fighterIds: ['anubis'], dealtDamageThisTurn: true },
-            max: 0,
-          },
-          { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
-          {
-            fact: 'FIGHTERS',
-            params: { side: 'opponent', areaOf: 'anubis' },
-            min: 1,
-            var: 'foes',
-          },
-        ],
-        then: [
-          {
-            action: 'SET_TARGETING',
-            op: 'open',
-            kind: 'fighters',
-            candidates: '$foes',
-            count: 1,
-            required: true,
-            auto: true,
-            toggle: true,
-          },
-        ],
-      },
-      {
-        moment: 'picked',
-        when: [
-          { fact: 'PICKED', var: 'picked' },
-          { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
-        ],
-        then: [{ action: 'SET_HEALTH', fighterIds: '$picked', delta: -2 }],
-      },
-      {
-        moment: 'turnEnd',
-        when: [
-          {
-            fact: 'FIGHTERS',
-            params: { fighterIds: ['anubis'], dealtDamageThisTurn: true },
-            max: 0,
-          },
-          { fact: 'ITEMS', params: { group: 'shroud', state: 'inactive' }, min: 1 },
-          {
-            fact: 'FIGHTERS',
-            params: { side: 'opponent', areaOf: 'anubis' },
-            min: 1,
-            var: 'foes',
-          },
-        ],
-        then: [
-          {
-            action: 'SET_TARGETING',
-            op: 'open',
-            kind: 'fighters',
-            candidates: '$foes',
-            count: 1,
-            required: true,
-            auto: true,
-            toggle: true,
-          },
-        ],
-      },
-      {
-        moment: 'picked',
-        when: [
-          { fact: 'PICKED', var: 'picked' },
-          { fact: 'ITEMS', params: { group: 'shroud', state: 'inactive' }, min: 1 },
-        ],
-        then: [{ action: 'SET_HEALTH', fighterIds: '$picked', delta: -1 }],
       },
     ],
   },

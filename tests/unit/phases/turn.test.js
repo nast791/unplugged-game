@@ -86,6 +86,7 @@ describe('phase choose', () => {
       moves: [],
       source: null,
       playedCard: null,
+      terrainOnStep: null,
     });
     expect(hand(player(state, '0'))).toHaveLength(before + 1);
     expect(deck(player(state, '0'))).toHaveLength(1);
