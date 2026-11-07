@@ -12,7 +12,7 @@ import {
 } from './decide.js';
 import { cardById } from './pool.js';
 import { resourceOf, resourceProgress, resourceReady } from './resources.js';
-import { defaultWeights, scoreOf, stillHero } from './value.js';
+import { scoreOf, stillHero } from './value.js';
 import { pairScore } from './matchups.js';
 import { SELECTION_TEMPERATURE, scoreOptions } from './qvalue.js';
 import trainedWeights from './value-weights.js';
@@ -526,8 +526,10 @@ export const searchBudget = () => {
      */
     worldPool: envNumber('SEARCH_WORLD_POOL') ?? 0, // нетерпение: выигрышные исходы дисконтируются по числу ходов, проигрышные — нет
     gamma: Number(env.SEARCH_GAMMA ?? '0.995'),
-    // оценка листа: ручная формула или обученная модель (`bot/play/value.js`)
-    evaluation: env.SEARCH_EVAL ?? 'heuristic',
+    // оценка листа: обученная модель (`bot/play/value.js`) или ручная формула.
+    // По умолчанию — **обученная**: приёмка §62 (600 + 600 партий, зеркальные пары) дала 53% против 47%
+    // в её пользу; ручная осталась выключателем `SEARCH_EVAL=heuristic` для замеров «как было».
+    evaluation: env.SEARCH_EVAL ?? 'net',
     // лист на границе хода: доигрывать мой ход до конца (`turnEnd`) и ответ соперника (`replyTurn`) —
     // так поиск думает ход целиком, а не первые `depth` шагов (политика `turn`, §25)
     turnEnd: env.SEARCH_TURN_END === '1',

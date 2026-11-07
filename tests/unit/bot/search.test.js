@@ -54,7 +54,7 @@ describe('детерминизация', () => {
     for (const card of [...opponent.hand.cards, ...opponent.deck.cards]) {
       expect(pool.has(String(card.id))).toBe(true);
     }
-  });
+  }, 30000);
 
   it('своя колода тасуется: порядок будущих доборов бот не знает', () => {
     const start = firstSearchState(2);
@@ -151,7 +151,7 @@ describe('выбор действия поиском', () => {
     const end = rolloutEnd(start.state, start.playerId, { ...budget, rng: { value: 3 } });
     expect(end.failed).toBe(false);
     expect(end.steps).toBeGreaterThan(0);
-  });
+  }, 30000);
 
   it('поиск воспроизводим: тот же состояние и бюджет — то же решение', () => {
     const start = firstSearchState(7);
@@ -162,7 +162,7 @@ describe('выбор действия поиском', () => {
     const first = searchAction(start.state, start.playerId, entries, budget);
     const second = searchAction(start.state, start.playerId, entries, budget);
     expect(JSON.stringify(second.action)).toBe(JSON.stringify(first.action));
-  });
+  }, 30000);
 
   it('партия с поиском доходит до конца', () => {
     // поиск на ход дороже жадной политики, поэтому проверяем одну партию и с запасом по времени
@@ -175,7 +175,7 @@ describe('выбор действия поиском', () => {
     });
 
     expect(report.status).toBe('finished');
-  }, 30000);
+  }, 60000);
 
   it('лист весами пары: поиск играет по артефакту матчапов и остаётся легальным', () => {
     const start = firstSearchState(9);

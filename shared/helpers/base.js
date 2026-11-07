@@ -205,15 +205,3 @@ export const playerByRole = (partyState, actingPlayerId, ref) => {
   const other = (partyState.players ?? []).find(entry => isEnemyPlayer(partyState, selfId, entry));
   return other?.id ?? ref;
 };
-
-export const occupiedOwnCellIds = (player, exceptFighterId) => {
-  const blocked = new Set();
-  for (const fighter of player?.fighters ?? []) {
-    if (fighter.currentPosition == null) continue;
-    if (exceptFighterId != null && String(fighter.id) === String(exceptFighterId)) {
-      continue;
-    }
-    blocked.add(String(fighter.currentPosition));
-  }
-  return blocked;
-};

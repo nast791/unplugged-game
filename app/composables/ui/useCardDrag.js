@@ -3,8 +3,6 @@ import { computed, reactive, ref } from 'vue';
 const drag = reactive({ active: false, key: '', card: null, x: 0, y: 0, width: 0, height: 0 });
 const over = ref('');
 
-export const getCardDrag = () => drag;
-
 export const startCardDrag = payload => {
   drag.active = true;
   drag.key = String(payload?.key ?? '');

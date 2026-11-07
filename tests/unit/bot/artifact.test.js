@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { tableOf } from '../../../bot/play/artifact.js';
 import { actionsFor } from '../../../bot/play/decide.js';
-import { createDuel, playDuel } from '../../../bot/play/duel.js';
+import { playDuel } from '../../../bot/play/duel.js';
 import { rankOptions } from '../../../bot/play/qvalue.js';
 import live from '../../../bot/play/qvalue-weights.js';
 

@@ -53,15 +53,6 @@ const betaAttack = {
   fighter: 'beta',
 };
 
-const betaDefense = {
-  id: 'beta_def',
-  instanceId: 'beta_def_1',
-  type: 'hybrid',
-  value: 2,
-  bonus: 1,
-  fighter: 'beta',
-};
-
 /** Тупик 1—2—3: Бета на 3 не может шагнуть — единственный сосед занят Ифритом. */
 const deadEndMap = {
   id: 'dead-end',

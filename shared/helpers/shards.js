@@ -19,11 +19,6 @@ export const shardCount = (state, playerId) =>
   zoneCards(findPlayer(state, playerId)?.discard).filter(card => cardHasTag(card, SHARD_TAG))
     .length;
 
-/** Сколько копий предмета несёт пак героя (сколько осколков вообще бывает). */
-export const shardPoolSize = (state, playerId) =>
-  (findPlayer(state, playerId)?.items ?? []).filter(item => String(item.group) === SHARD_GROUP)
-    .length;
-
 /** Выставить табло по счёту: `count` копий в `collected`, остальные — в `ice`. */
 export const syncShardItems = (state, playerId) => {
   const player = findPlayer(state, playerId);

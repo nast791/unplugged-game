@@ -5,11 +5,10 @@ import {
   findFighter,
   findOwnedFighter,
   findPlayer,
-  playerHeroes,
   zoneCards,
 } from '#shared/helpers/base.js';
 import { cardBonus, cardKey } from '#shared/helpers/cards.js';
-import { findNode, sharesArea } from '#shared/helpers/placement.js';
+import { findNode } from '#shared/helpers/placement.js';
 
 /** Активный игрок хода. */
 export const activePlayerId = partyState => partyState.turn?.playerId ?? null;
@@ -103,12 +102,6 @@ export const isHandOverLimit = (partyState, playerId) =>
 export const mustDiscardCount = (partyState, playerId) =>
   Math.max(0, handCards(partyState, playerId).length - handLimitFor(partyState, playerId));
 
-/** Герои игрока — цель истощения; помощники урон не получают. */
-export const heroFighterIds = player =>
-  playerHeroes(player)
-    .filter(fighter => Number(fighter.currentHp) > 0)
-    .map(fighter => String(fighter.id));
-
 /**
  * Радиус перемещения бойца: move + усиление текущего перемещения.
  * У перемещения от эффекта карты свой бюджет (`movement.budget`), он важнее move бойца.
@@ -129,13 +122,6 @@ export const movableFighterIds = (partyState, playerId) => {
     // замороженный в списке есть, но шаг ему закрыт — подсвечивать его нельзя (см. movementDestinations)
     return movementFighterRejection(partyState, movement, playerId, fighterId) == null;
   });
-};
-
-/** Можно ли двигать этого бойца в текущем перемещении. */
-export const canMoveFighter = (partyState, playerId, fighterId) => {
-  const movement = partyState?.movement;
-  if (!movement || movement.fighters == null) return true;
-  return movement.fighters.includes(String(fighterId));
 };
 
 /** Занятые клетки; exceptFighterId исключается. */
@@ -257,16 +243,6 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
   const budget = movementBudget(fighter, movement);
   const occupied = occupiedCellIds(partyState, fighterId);
 
-  // Постановка в текущую область (`areaOnly`): это не шаг, а перенос — радиус не считается,
-  // важна только стихия, в которой боец стоит сейчас. Так «Зал суда» ставит Анубиса или Амат.
-  if (movement.areaOnly === true) {
-    const areaCells = (partyState.map?.nodes ?? [])
-      .map(node => String(node.id))
-      .filter(cellId => cellId !== String(fighter.currentPosition) && !occupied.has(cellId))
-      .filter(cellId => sharesArea(partyState, fighter.currentPosition, cellId));
-    return [...new Set(areaCells)].sort(byCellId);
-  }
-
   if (budget <= 0) return [];
 
   const origin = movement.origins?.[String(fighterId)] ?? fighter.currentPosition;
@@ -313,9 +289,7 @@ export const movementRejection = (partyState, playerId, fighterId, cellId) => {
     if (occupiedCellIds(partyState, fighterId).has(String(cellId))) {
       return `клетка ${cellId} занята`;
     }
-    return movement.areaOnly === true
-      ? `клетка ${cellId} вне области бойца`
-      : `клетка ${cellId} вне радиуса перемещения`;
+    return `клетка ${cellId} вне радиуса перемещения`;
   }
 
   return null;

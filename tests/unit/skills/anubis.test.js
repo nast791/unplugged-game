@@ -112,7 +112,7 @@ describe('способность Анубиса (Суд Осириса)', () => 
     expect(anubis.skill.text).toContain('НАЧАЛО ХОДА');
     expect(anubis.skill.rules).toHaveLength(1);
     expect(anubis.skill.rules[0].moment).toBe('turnStart');
-    expect(anubis.heroes[0]).toMatchObject({ hp: 15, move: 2, attackRange: 2 });
+    expect(anubis.heroes[0]).toMatchObject({ hp: 16, move: 2, attackRange: 2 });
     expect(anubis.assistants[0]).toMatchObject({ id: 'amat', hp: 8, move: 2, attackRange: 1 });
     // пелена активна с начала партии: предмет — индикатор суда, подпись состояния даёт клиент
     expect(anubis.items[0]).toMatchObject({ id: 'shroud', state: 'active', count: 1 });

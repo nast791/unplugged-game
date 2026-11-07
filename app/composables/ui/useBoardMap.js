@@ -15,7 +15,6 @@ import {
   SHADOW,
   SHOW_CELL_IDS,
   STROKE,
-  TOKEN,
   bendFor,
   cellAtPoint,
   cellPatterns,
@@ -43,8 +42,6 @@ const permanentCountOf = node => nodeTerrains(node).length;
 
 const read = value => (isRef(value) ? value.value : value);
 
-// Акцент выделенной фишки — коралловый, как `--color-accent`: не путается ни с красным удара, ни с голубой подсветкой фазы.
-const SELECT_ACCENT = '#FF7F50';
 // Сколько клетки может занять тень фишки: дальше начинается соседняя клетка, и пятно читается как чужая метка.
 const SHADOW_ROOM = 0.93;
 

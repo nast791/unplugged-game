@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment, moments } from '#shared/constants/moments.js';
 import { runSkillMoment } from '#shared/skills/run.js';
-import { ap, createState, fighter, hand, PHASES, player } from '../../fixtures/state.js';
+import { ap, createState, hand, PHASES, player } from '../../fixtures/state.js';
 
 /** Состояние с синтетической способностью игрока 0 (правила задаём прямо в тесте). */
 const stateWith = (rules, patch = {}) => {

@@ -19,7 +19,7 @@ export const shuffle = (items, rng) => {
 };
 
 /** Версия артов в адресе: браузер кэширует картинку по URL, и без смены версии новый файл не виден. */
-const HERO_ART_VERSION = 27;
+const HERO_ART_VERSION = 28;
 
 /**
  * Адрес арта героя: в паке лежит только имя файла (`images: { hero: 'hero.webp' }`, `image` бойца),

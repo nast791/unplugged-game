@@ -6,7 +6,7 @@
  * Третья ось — **суд весов**: карты с меткой `scales` получают Помилование или Наказание, пока
  * пелена активна; их правила сравнивают усиления карт боя (`COMBAT { bonus, max|over }`).
  * Весы — только у карт, на которые оппонент отвечает картой из боя; на эффекте весов не бывает:
- * сравнивать усиления не с чем, поэтому «Зал суда» судит руку, а не вскрытие.
+ * сравнивать усиления не с чем, поэтому «Зал суда» просто переносит бойца на три клетки.
  * Пелену выключает умение «Суд Осириса» (`index.js`), а судят карты.
  */
 export default [
@@ -107,7 +107,7 @@ export default [
     quantity: 3,
     fighter: 'anubis',
     tags: ['scales'],
-    text: 'ВО ВРЕМЯ БИТВЫ: Значение карты становится равным бонусу карты, которой напали на вас. Помилование. ПОСЛЕ БИТВЫ: Восстановите Анубису 2 здоровья. Наказание. ВО ВРЕМЯ БИТВЫ: Значение этой карты +2 (прибавляется к скопированному бонусу).',
+    text: 'ВО ВРЕМЯ БИТВЫ: Значение карты становится равным бонусу карты, которой напали на вас. Помилование. ПОСЛЕ БИТВЫ: Восстановите Анубису 2 здоровья. Наказание. ВО ВРЕМЯ БИТВЫ: Значение этой карты +3 (прибавляется к скопированному бонусу).',
     rules: [
       {
         moment: 'duringCombat',
@@ -126,14 +126,14 @@ export default [
         then: [{ action: 'SET_HEALTH', fighterIds: ['anubis'], delta: 2 }],
       },
       {
-        // яростная атака (усиление строго больше нашего зеркала) — и саван укрепляется на +2
+        // яростная атака (усиление строго больше нашего зеркала) — и саван укрепляется на +3
         moment: 'duringCombat',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
           { fact: 'COMBAT', params: { bonus: 'opponent', over: '$mine' } },
         ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 3 }],
       },
     ],
   },
@@ -214,12 +214,12 @@ export default [
     id: 'anubis_06',
     title: 'Немой приговор',
     type: 'hybrid',
-    value: 2,
+    value: 3,
     bonus: 2,
     quantity: 2,
     fighter: 'anubis',
     tags: ['scales'],
-    text: 'ПОСЛЕ БИТВЫ: Если в руке оппонента нет карт, нанесите герою оппонента 4 урона. Помилование. ПОСЛЕ БИТВЫ: Переместите Анубиса или Амат на расстояние до 2 клеток (без прохода). Наказание. ПОСЛЕ БИТВЫ: Нанесите участвовавшему в битве бойцу оппонента 3 урона.',
+    text: 'ПОСЛЕ БИТВЫ: Если в руке оппонента нет карт, нанесите герою оппонента 4 урона. Помилование. ВО ВРЕМЯ БИТВЫ: Если вы защищаетесь, уменьшите боевой урон на 1. ПОСЛЕ БИТВЫ: Переместите Анубиса или Амат на расстояние до 2 клеток (без прохода). Наказание. ПОСЛЕ БИТВЫ: Нанесите участвовавшему в битве бойцу оппонента 3 урона.',
     rules: [
       {
         moment: 'afterCombat',
@@ -234,6 +234,17 @@ export default [
           },
         ],
         then: [{ action: 'SET_HEALTH', fighterIds: '$enemyHero', delta: -4 }],
+      },
+      {
+        // помилование щитом: в защиту урон боя меньше на 1 (значение своей карты выше на 1)
+        moment: 'duringCombat',
+        when: [
+          { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
+          { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
+          { fact: 'COMBAT', params: { bonus: 'opponent', max: '$mine' } },
+          { fact: 'COMBAT', params: { role: 'defender' } },
+        ],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 }],
       },
       {
         // помилование двигает своих: окно перемещения выбирает, кого из двоих вести
@@ -256,6 +267,7 @@ export default [
             fighters: '$movers',
             budget: 2,
             optional: true,
+            teleport: true,
           },
         ],
       },
@@ -376,7 +388,7 @@ export default [
     ],
   },
   {
-    // покой как ресурс: тихий ход — карта и здоровье
+    // покой как ресурс: карта за розыгрыш, здоровье — только за тихий ход без шага
     id: 'anubis_09',
     title: 'Суд молчит',
     type: 'effect',
@@ -384,17 +396,18 @@ export default [
     bonus: 2,
     quantity: 3,
     fighter: 'anubis',
-    text: 'Если Анубис не двигался в этом ходу, возьмите карту и восстановите ему 2 здоровья.',
+    text: 'Возьмите 1 карту. Если Анубис не двигался в этом ходу, также восстановите ему 2 здоровья.',
     rules: [
+      {
+        moment: 'effect',
+        then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
+      },
       {
         moment: 'effect',
         when: [
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
         ],
-        then: [
-          { action: 'SET_CARDS', op: 'draw', count: 1 },
-          { action: 'SET_HEALTH', fighterIds: ['anubis'], delta: 2 },
-        ],
+        then: [{ action: 'SET_HEALTH', fighterIds: ['anubis'], delta: 2 }],
       },
     ],
   },
@@ -417,7 +430,7 @@ export default [
     ],
   },
   {
-    // зал, где судят стоя: постановка одного из двоих в его же область, затем приговор руке.
+    // зал, где судят стоя: постановка одного из двоих без шага (до трёх клеток).
     // весов на карте нет: на эффект оппонент не отвечает картой, сравнивать усиления не с чем
     id: 'anubis_11',
     title: 'Зал суда',
@@ -426,10 +439,10 @@ export default [
     bonus: 3,
     quantity: 1,
     fighter: 'anubis',
-    text: 'Поставьте Анубиса или Амат на любую клетку в их текущих областях (не считается движением). Возьмите 1 карту. Если после этого в руке оппонента карт больше, чем у вас, он сбрасывает 1 случайную карту из руки.',
+    text: 'Поставьте Анубиса или Амат на любую свободную клетку на расстоянии до 3 клеток (не считается движением).',
     rules: [
       {
-        // окно перемещения выбирает, кого вести (`areaOnly` — вся его область, `once` — один перенос)
+        // окно перемещения выбирает, кого вести; `teleport` — без шага, `once` — один перенос
         moment: 'effect',
         when: [
           {
@@ -444,21 +457,11 @@ export default [
             action: 'SET_MOVEMENT',
             op: 'open',
             fighters: '$movers',
-            areaOnly: true,
+            budget: 3,
+            optional: true,
             once: true,
+            teleport: true,
           },
-        ],
-      },
-      {
-        moment: 'effect',
-        then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
-      },
-      {
-        // условие читается после добора: рука оппонента «после этого» уже сравнима с нашей
-        moment: 'effect',
-        when: [{ fact: 'HAND', params: { of: 'opponent', over: 'self' } }],
-        then: [
-          { action: 'SET_CARDS', of: 'opponent', op: 'discard', random: true, count: 1 },
         ],
       },
     ],
@@ -515,7 +518,7 @@ export default [
     quantity: 2,
     fighter: 'amat',
     tags: ['scales'],
-    text: 'ПОСЛЕ БИТВЫ: Если вы победили, оппонент сбрасывает 1 случайную карту. Помилование. ПОСЛЕ БИТВЫ: Восстановите Амат 2 здоровья. Наказание. ПОСЛЕ БИТВЫ: Нанесите герою оппонента 3 урона.',
+    text: 'ПОСЛЕ БИТВЫ: Если вы победили, оппонент сбрасывает 1 случайную карту. Помилование. ПОСЛЕ БИТВЫ: Восстановите 2 здоровья Анубису или Амат. Наказание. ПОСЛЕ БИТВЫ: Нанесите герою оппонента 3 урона.',
     rules: [
       {
         moment: 'afterCombat',
@@ -526,15 +529,42 @@ export default [
         then: [{ action: 'SET_CARDS', of: '$enemy', op: 'discard', random: true, count: 1 }],
       },
       {
-        // высокий бонус карты делает помилование обычным исходом: зверь залечивает раны
+        // высокий бонус карты делает помилование обычным исходом: лечат любого из двоих, кого выберут
         moment: 'afterCombat',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
           { fact: 'COMBAT', params: { bonus: 'opponent', max: '$mine' } },
-          { fact: 'FIGHTERS', params: { fighterIds: ['amat'] }, min: 1 },
+          {
+            fact: 'FIGHTERS',
+            params: { fighterIds: ['anubis', 'amat'] },
+            min: 1,
+            var: 'targets',
+          },
         ],
-        then: [{ action: 'SET_HEALTH', fighterIds: ['amat'], delta: 2 }],
+        then: [
+          {
+            action: 'SET_TARGETING',
+            op: 'open',
+            kind: 'fighters',
+            candidates: '$targets',
+            count: 1,
+            required: true,
+            // живой остался один — движок отмечает его сам
+            auto: true,
+          },
+        ],
+      },
+      {
+        moment: 'picked',
+        when: [
+          { fact: 'PICKED', var: 'picked' },
+          { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
+          { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
+          { fact: 'COMBAT', params: { bonus: 'opponent', max: '$mine' } },
+          { fact: 'FIGHTERS', params: { fighterIds: '$picked' }, min: 1 },
+        ],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$picked', delta: 2 }],
       },
       {
         // наказание — только против сильнейших козырей: прямой урон герою оппонента

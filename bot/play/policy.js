@@ -99,15 +99,6 @@ if (typeof process !== 'undefined' && process?.env) {
 /** Значение гена: переменная среды важнее проектного. */
 export const gene = (name, fallback) => (envGenes[name] != null ? envGenes[name] : fallback);
 
-/** Числа политики с учётом переменных среды — для отчётов и замеров вклада генов. */
-export const genesOf = weights => {
-  const out = {};
-  for (const [key, value] of Object.entries(weights ?? {})) {
-    if (typeof value === 'number') out[key] = gene(key, value);
-  }
-  return out;
-};
-
 export const policies = {
   /** Наугад: разброс весов от сида нужен, чтобы прогоны не были однообразными. */
   random: ({ style = 2 } = {}) => ({

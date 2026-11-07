@@ -1,5 +1,4 @@
 import { computed } from 'vue';
-import { cardBonus } from '#shared/helpers/cards.js';
 import {
   CARD_MOMENT_PREFIXES,
   CARD_TEXT_OPTION_LABELS,
@@ -187,8 +186,6 @@ export const momentsOfStage = stage => {
   if (stage === 'close') return ['afterCombat'];
   return [];
 };
-
-export const cardMoveBonus = card => cardBonus(card);
 
 export const useGameHelpers = () => {
   const { view, playerId } = useGameView();

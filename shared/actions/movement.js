@@ -7,7 +7,6 @@ import { isTerrainId } from '#shared/constants/terrain.js';
 import { pathInRadius } from '#shared/helpers/board.js';
 import {
   findCardInHand,
-  findOwnedFighter,
   findPlayer,
   isEnemyPlayer,
 } from '#shared/helpers/base.js';
@@ -212,9 +211,9 @@ const openMovement = (partyState, action) => {
     budget,
     fighters,
     optional: action.optional === true,
-    // постановка в текущую область вместо шага по радиусу («Зал суда») и окно на один перенос:
+    // постановка без шага (`teleport`: «Зал суда», «Немой приговор») и окно на один перенос:
     // обычный черновик этих полей не несёт, чтобы форма окна оставалась прежней
-    ...(action.areaOnly === true ? { areaOnly: true } : {}),
+    ...(action.teleport === true ? { teleport: true } : {}),
     ...(action.once === true ? { once: true } : {}),
     throughEnemies: action.throughEnemies === true,
     damageOnPass,
@@ -282,15 +281,15 @@ const stepMovement = (partyState, action) => {
       ? stepRoute(partyState, movement, playerId, fighter, action.cellId)
       : null;
 
-  // постановка в область — не шаг: флаг «двигался в этом ходу» не ставится (телепорт)
+  // постановка без прохода — не шаг: флаг «двигался в этом ходу» не ставится (телепорт)
   let state = SET_FIGHTER_CELL(partyState, {
     fighterId: action.fighterId,
     cellId: action.cellId,
-    ...(movement.areaOnly === true ? { teleport: true } : {}),
+    ...(movement.teleport === true ? { teleport: true } : {}),
   });
 
-  // клетка, на которую ступили, получает временную стихию: телепорт в область — не шаг
-  if (movement.terrainOnStep != null && movement.areaOnly !== true) {
+  // клетка, на которую ступили, получает временную стихию: телепорт — не шаг
+  if (movement.terrainOnStep != null && movement.teleport !== true) {
     state = addTemporaryTerrain(state, action.cellId, movement.terrainOnStep);
   }
 

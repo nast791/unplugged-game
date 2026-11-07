@@ -70,35 +70,6 @@ for (let head = 0; head < queue.length; head += 1) {
   }
 }
 
-/** Цвет середины фигуры рядом с точкой: ближайшие пиксели за пределами полосы кромки. */
-const coreColor = key => {
-  const x = key % width;
-  const y = (key - x) / width;
-  for (let radius = 1; radius <= CORE + 2; radius += 1) {
-    let red = 0;
-    let green = 0;
-    let blue = 0;
-    let weight = 0;
-    for (let dy = -radius; dy <= radius; dy += 1) {
-      for (let dx = -radius; dx <= radius; dx += 1) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        const nkey = ny * width + nx;
-        if (distance[nkey] < CORE) continue;
-        const index = nkey << 2;
-        red += pixels[index];
-        green += pixels[index + 1];
-        blue += pixels[index + 2];
-        weight += 1;
-      }
-    }
-    if (weight > 0) return [red / weight, green / weight, blue / weight];
-  }
-  return null;
-};
-
 /** Цвет фона рядом с точкой: самый светлый из вырезанных соседей (фон светлее волоса, а зазоры между прядями тёмные). */
 const backgroundColor = key => {
   const x = key % width;

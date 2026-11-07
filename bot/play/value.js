@@ -1,5 +1,7 @@
 import { heroIds } from './pool.js';
-import { resourceOf, resourceProgress, resourceReady } from './resources.js';
+import { resourceOf, resourceProgress, resourceReady, resourceSteps } from './resources.js';
+import { heroes } from '../../server/content/index.js';
+import { cellDistances } from './actionFeatures.js';
 
 /**
  * Оценка позиции для поиска: маленькая линейная модель на признаках состояния.
@@ -25,7 +27,18 @@ import { resourceOf, resourceProgress, resourceReady } from './resources.js';
  * паков: не двигался ли мой герой (`movedThisTurn` — условие «Погребального звона», «Суда молчит»,
  * «Наотмашь»), запас чужой руки (её размер, а не разница), здоровье помощников отдельно от героя
  * (у Ифрита духи — двигатель, у Анубиса Амат — расход) и заморозка (`SET_STATUS` Снежной королевы).
- * Признаков стало 63: 15 базовых, 12 индикаторов, 36 взаимодействий с героем.
+ * **Механики карт, которых не было в признаках (m02640).** Аудит всех паков показал, из чего вообще
+ * состоят свойства: битва (`COMBAT`), окна выбора (`PICKED`), предметы-состояния (`ITEMS`), группы бойцов,
+ * сброс и раскрытая колода, остаток действий. Под это добавлены признаки `combatOpen`/`combatLead`,
+ * `reach`/`adjacentFoes`/`room`, `freeTerrain`, `assistants`/`lostAssistants`/`reviveReady`,
+ * `handBonus`/`handTagged`, `rivalLimit`, `actionsLeft`.
+ *
+ * **Ступени ресурса (m03187).** У Снежной королевы осколки включаются ступенями 4/5/6/7, у Теслы варианты
+ * 5/7: лист читал только верхний порог умения и не видел, что до следующей ступени один осколок. Признаки
+ * `resourceStep` (расстояние до ближайшей непройденной ступени) и `resourceShare` (доля верхней) считаются
+ * по порогам **карт** пака (`bot/play/resources.js: resourceSteps`).
+ *
+ * Признаков стало 118: 34 базовых, 12 индикаторов, 72 взаимодействия с героем.
  *
  * **Матрица матчапов (§20).** Для каждой пары «мой герой против этого соперника» из этой же модели
  * считается проекция (`bot/play/matchups.js`): внутри пары индикаторы постоянны, поэтому оценка сводится к
@@ -71,10 +84,179 @@ const frozenCount = player =>
 
 const cards = (player, zone) => (player?.[zone]?.cards ?? []).length;
 
-/** Ресурс героя на игрока: готовность к порогу, включённый порог и топливо в руке (`bot/play/resources.js`). */
+/**
+ * Стихии, которые читает пак героя: `terrainAffinity` (родная земля) плюс любой `terrain` в правилах
+ * его карт и умения (лава Ифрита, песок Анубиса). Считается из контента, а не списком — новая карта
+ * «от стихии» попадает в признак без правки бота.
+ */
+const terrainsOfHero = (() => {
+  const cache = new Map();
+  const collect = (value, out) => {
+    if (Array.isArray(value)) {
+      for (const entry of value) collect(entry, out);
+      return out;
+    }
+    if (value == null || typeof value !== 'object') return out;
+    if (value.terrain != null) {
+      for (const terrain of Array.isArray(value.terrain) ? value.terrain : [value.terrain]) {
+        out.add(String(terrain));
+      }
+    }
+    for (const entry of Object.values(value)) collect(entry, out);
+    return out;
+  };
+  return heroId => {
+    const key = String(heroId ?? '');
+    if (!cache.has(key)) {
+      const pack = heroes[key] ?? null;
+      const terrains = collect([pack?.cards, pack?.skill], new Set(pack?.terrainAffinity ?? []));
+      cache.set(key, terrains);
+    }
+    return cache.get(key);
+  };
+})();
+
+/** Родные стихии героя: родная земля пака плюс всё, что читают его карты. */
+const affinityOf = player => terrainsOfHero(player?.heroId);
+
+/** Стихии клетки: `node.terrain` — строка или список (`shared/constants/terrain.js`). */
+const cellTerrainList = (state, cellId) => {
+  const node = (state.map?.nodes ?? []).find(entry => String(entry.id) === String(cellId));
+  if (node == null) return [];
+  return Array.isArray(node.terrain) ? node.terrain : [node.terrain];
+};
+
+/** Бойцы игрока на его родной стихии: там срабатывают карты «от стихии» (лава Ифрита, песок Анубиса). */
+const onOwnTerrain = (state, player) => {
+  const affinity = affinityOf(player);
+  return (player?.fighters ?? []).filter(fighter => {
+    if ((Number(fighter.currentHp) || 0) <= 0 || fighter.currentPosition == null) return false;
+    return cellTerrainList(state, fighter.currentPosition).some(terrain => affinity.has(terrain));
+  }).length;
+};
+
+/** Чужие бойцы на МОЕЙ стихии: чужая фигура в моей зоне — потеря контроля над полем. */
+const onMyTerrain = (state, me, others) => {
+  const affinity = affinityOf(me);
+  return sum(others, player =>
+    (player?.fighters ?? []).filter(fighter => {
+      if ((Number(fighter.currentHp) || 0) <= 0 || fighter.currentPosition == null) return false;
+      return cellTerrainList(state, fighter.currentPosition).some(terrain => affinity.has(terrain));
+    }).length,
+  );
+};
+
+/** Живые бойцы игрока, о которых что-то известно полю: снятые с доски сюда не попадают. */
+const liveFighters = player =>
+  (player?.fighters ?? []).filter(
+    fighter => (Number(fighter.currentHp) || 0) > 0 && fighter.currentPosition != null,
+  );
+
+const heroFighter = player => liveFighters(player).find(fighter => fighter.type === 'hero') ?? null;
+
+const foeFighters = others => others.flatMap(player => liveFighters(player));
+
+const occupiedCellIds = state =>
+  new Set(
+    (state.players ?? []).flatMap(player =>
+      liveFighters(player).map(fighter => String(fighter.currentPosition)),
+    ),
+  );
+
+/** Ближайший чужой боец к моему герою: шаги по линиям поля, дальше шести не различаем. */
+const nearestFoeDistance = (state, me, others) => {
+  const hero = heroFighter(me);
+  if (hero == null) return 6;
+  const distances = cellDistances(state, hero.currentPosition);
+  return foeFighters(others).reduce(
+    (best, foe) => Math.min(best, distances.get(String(foe.currentPosition)) ?? 6),
+    6,
+  );
+};
+
+/** Чужие бойцы **в пределах моей дальности атаки**: «достаю» против «не достаю». */
+const foesInReach = (state, me, others) => {
+  const hero = heroFighter(me);
+  if (hero == null) return 0;
+  const range = Math.max(1, Number(hero.attackRange) || 1);
+  const distances = cellDistances(state, hero.currentPosition);
+  return foeFighters(others).filter(
+    foe => (distances.get(String(foe.currentPosition)) ?? 6) <= range,
+  ).length;
+};
+
+/** Чужие бойцы вплотную к моему герою: ближняя угроза. */
+const foesAdjacent = (state, me, others) => {
+  const hero = heroFighter(me);
+  if (hero == null) return 0;
+  const distances = cellDistances(state, hero.currentPosition);
+  return foeFighters(others).filter(
+    foe => (distances.get(String(foe.currentPosition)) ?? 6) === 1,
+  ).length;
+};
+
+/** Свободные клетки рядом с моим героем: теснота запирает шаг и окна перемещения. */
+const roomAround = (state, me) => {
+  const hero = heroFighter(me);
+  if (hero == null) return 0;
+  const node = (state.map?.nodes ?? []).find(
+    entry => String(entry.id) === String(hero.currentPosition),
+  );
+  const occupied = occupiedCellIds(state);
+  return (node?.neighbors ?? []).filter(cellId => !occupied.has(String(cellId))).length;
+};
+
+/** Свободные клетки родной стихии: есть ли куда встать картой «от стихии» и телепортом. */
+const freeAffinityCells = (state, me) => {
+  const affinity = affinityOf(me);
+  if (affinity.size === 0) return 0;
+  const occupied = occupiedCellIds(state);
+  let count = 0;
+  for (const node of state.map?.nodes ?? []) {
+    if (occupied.has(String(node.id))) continue;
+    const terrains = Array.isArray(node.terrain) ? node.terrain : [node.terrain];
+    if (terrains.some(terrain => affinity.has(String(terrain)))) count += 1;
+  }
+  return count;
+};
+
+/** Открытый бой: моё значение против чужого (`state.combat` живёт до закрытия боя). */
+const combatFeatures = (state, viewerId) => {
+  const combat = state.combat ?? null;
+  if (combat == null) return { open: 0, lead: 0 };
+  const key = String(viewerId);
+  const mineAttacks = String(combat.attackerPlayerId) === key;
+  const mineDefends = String(combat.defenderPlayerId) === key;
+  // бой двух других игроков на четвёртом столе — не моя битва, в признаки не идёт
+  if (!mineAttacks && !mineDefends) return { open: 0, lead: 0 };
+  const mine = Number(mineAttacks ? combat.attackValue : combat.defenseValue) || 0;
+  const theirs = Number(mineAttacks ? combat.defenseValue : combat.attackValue) || 0;
+  return { open: 1, lead: (mine - theirs) / 10 };
+};
+
+/** Сумма усилений карт в руке: топливо удара и защиты, которого не видно по числу карт. */
+const handBonus = player => sum(player?.hand?.cards ?? [], card => Number(card.bonus) || 0);
+
+/** Карты с метками в руке: у Анубиса это весы, у Снежной королевы — осколки. */
+const handTagged = player =>
+  (player?.hand?.cards ?? []).filter(card => (card.tags ?? []).length > 0).length;
+
+const assistantsAlive = player =>
+  liveFighters(player).filter(fighter => fighter.type === 'assistant').length;
+
+const lostCount = player => (player?.lost ?? []).length;
+
+/** Ресурс героя на игрока: готовность к порогу, включённый порог, ступени и топливо в руке (`bot/play/resources.js`). */
 const resourcesOf = player => {
   const resource = resourceOf(player);
-  return { progress: resourceProgress(resource), on: resourceReady(resource), fuel: resource.fuel };
+  const steps = resourceSteps(resource);
+  return {
+    progress: resourceProgress(resource),
+    on: resourceReady(resource),
+    gap: steps.gap,
+    share: steps.share,
+    fuel: resource.fuel,
+  };
 };
 
 /**
@@ -90,6 +272,8 @@ export const baseFeatureNames = [
   'thinDeck', // штраф за тонкую колоду (нелинейность: 5 карт хуже, чем 10)
   'resource', // готовность ресурса героя к его порогу (0..1): собрано ли то, чем он играет
   'resourceOn', // порог достигнут: механика героя включена (катушки, осколки, пелена)
+  'resourceStep', // шаг до СЛЕДУЮЩЕЙ ступени карт (0 — ступень близко, 1 — далеко): у Снежной их 4/5/6/7
+  'resourceShare', // доля верхней ступени (0..1): ресурс сверх порога умения тоже виден
   'fuel', // карты-топливо в руке: чем ресурс можно двинуть прямо сейчас
   'stillness', // мой герой не двигался в этом ходу — покой это условие его карт (Анубис, Дороти)
   'rivalHand', // рука соперника: его топливо на удар и защиту (не разница, а его запас)
@@ -97,6 +281,23 @@ export const baseFeatureNames = [
   'frozen', // замороженные бойцы: статус отнимает шаг и телепорт
   'handLimit', // перебор руки: карты сверх лимита уйдут в сброс
   'round', // ход партии: время работает против того, кто ведёт
+  'terrainStand', // бойцы на родной стихии героя: там срабатывают карты «от стихии» (песок, лава)
+  'terrainFoe', // чужие бойцы на МОЕЙ стихии со знаком минус: чужая фигура в моей зоне — потеря контроля
+  'distance', // близость моего героя к ближайшему чужому бойцу (1 — вплотную, 0 — далеко)
+  'discard', // сброс — второй запас карт: у Снежной королевы он и есть ресурс
+  'combatOpen', // идёт моя битва прямо сейчас (свойство карты ещё разыгрывается)
+  'combatLead', // перевес значений в открытом бою: «Саван» и весы выигрывают или проигрывают
+  'reach', // чужие бойцы в пределах МОЕЙ дальности атаки: достаю или не достаю
+  'adjacentFoes', // чужие бойцы вплотную к моему герою: ближняя угроза
+  'room', // свободные клетки рядом с героем: теснота запирает шаг и окна перемещения
+  'freeTerrain', // свободные клетки родной стихии: есть куда встать картой «от стихии»
+  'assistants', // живые помощники: у Ифрита духи — двигатель, у Анубиса Амат — расход
+  'lostAssistants', // убитые бойцы в запасе: материал для воскрешения и счёт потерь
+  'reviveReady', // у кого есть кого вернуть: воскрешение как ресурс, а не как факт окна
+  'handBonus', // сумма усилений карт в руке: топливо удара и защиты, которого не видно по числу
+  'handTagged', // карты с метками в руке: весы Анубиса, осколки Снежной королевы
+  'rivalLimit', // лимит руки соперника: перебор считается по его лимиту, а не по семёрке
+  'actionsLeft', // остаток действий в моём ходу: ход уже потрачен или ещё нет
 ];
 
 /** Признаки, которые у разных архетипов значат разное: для каждого героя модель учит их вес отдельно. */
@@ -105,8 +306,14 @@ export const conditionedFeatures = [
   'hand',
   'deck',
   'resource',
+  'resourceStep',
   'stillness',
   'sidekickHp',
+  'terrainStand',
+  'distance',
+  'reach',
+  'handBonus',
+  'assistants',
 ];
 
 /**
@@ -137,6 +344,7 @@ export const featuresOf = (state, viewerId) => {
   const otherResources = others.map(resourcesOf);
   const diffResource = pick => pick(mineResource) - sum(otherResources, pick);
   const limit = 7;
+  const combat = combatFeatures(state, key);
 
   const base = [
     diff(heroHp) / 8,
@@ -150,13 +358,33 @@ export const featuresOf = (state, viewerId) => {
       5,
     diffResource(entry => entry.progress),
     diffResource(entry => entry.on),
+    diffResource(entry => entry.gap),
+    diffResource(entry => entry.share),
     diffResource(entry => entry.fuel) / limit,
     stillHero(mine),
     sum(others, player => cards(player, 'hand')) / limit,
     diff(assistantsHp) / 12,
     diff(frozenCount) / 2,
-    (mine == null ? 0 : Math.max(0, cards(mine, 'hand') - limit)) / limit,
+    (mine == null ? 0 : Math.max(0, cards(mine, 'hand') - Number(mine.handLimit ?? limit))) / limit,
     Number(state.turn?.index ?? 0) / 20,
+    diff(player => onOwnTerrain(state, player)) / 2,
+    -onMyTerrain(state, mine, others) / 2,
+    (5 - nearestFoeDistance(state, mine, others)) / 5,
+    diff(player => cards(player, 'discard')) / 25,
+    combat.open,
+    combat.lead,
+    foesInReach(state, mine, others) / 3,
+    foesAdjacent(state, mine, others) / 4,
+    roomAround(state, mine) / 6,
+    Math.min(1, freeAffinityCells(state, mine) / 4),
+    diff(assistantsAlive) / 3,
+    diff(lostCount) / 3,
+    (mine != null && lostCount(mine) > 0 ? 1 : 0) -
+      sum(others, player => (lostCount(player) > 0 ? 1 : 0)),
+    diff(handBonus) / 10,
+    diff(handTagged) / 5,
+    diff(player => Number(player.handLimit ?? limit)) / limit,
+    (Number(state.turn?.actionsLeft ?? 0) / Math.max(1, Number(state.turn?.actionsTotal ?? 1))),
   ];
 
   const myHero = String(mine?.heroId ?? '');
@@ -190,6 +418,10 @@ const baseDefaults = {
   frozen: -0.5,
   handLimit: -0.5,
   round: 0,
+  terrainStand: 0.6,
+  terrainFoe: -0.4,
+  distance: 0.2,
+  discard: 0.3,
 };
 
 /**
@@ -212,3 +444,4 @@ export const scoreOf = (state, viewerId, weights = defaultWeights) => {
 
   return clamp(Math.tanh(total));
 };
+

@@ -107,28 +107,3 @@ export const pathInRadius = (nodes, fromId, toId, originId, radius, blocked = nu
   return path.reverse();
 };
 
-/** Путь from→to только по клеткам радиуса перемещения (без лимита шагов). */
-export const canWalkInRadius = (nodes, fromId, toId, originId, radius, blocked = null) => {
-  if (String(fromId) === String(toId)) return true;
-
-  const reach = movementZoneIds(nodes, originId, radius, blocked);
-  if (!reach.has(String(toId)) || !reach.has(String(fromId))) return false;
-
-  const byId = indexNodes(nodes);
-  const queue = [String(fromId)];
-  const seen = new Set([String(fromId)]);
-
-  while (queue.length) {
-    const id = queue.shift();
-    const neighbors = byId.get(id)?.neighbors ?? [];
-    for (const raw of neighbors) {
-      const nextId = String(raw);
-      if (seen.has(nextId) || !reach.has(nextId)) continue;
-      if (nextId === String(toId)) return true;
-      seen.add(nextId);
-      queue.push(nextId);
-    }
-  }
-
-  return false;
-};

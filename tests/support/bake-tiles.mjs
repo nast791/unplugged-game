@@ -164,23 +164,6 @@ const veinTile = async ({ file, ground, vein, size = CELLS }) => {
 };
 
 /**
- * Непрозрачная плитка «ковыль»: стебли рисуем сами — в исходниках травы нет. Наклон и высота
- * считаются от индекса, поэтому плитка повторяема и не зависит от Math.random.
- */
-const grassTile = async ({ size = CELLS, ground, blade, count = 340 }) => {
-  const blades = Array.from({ length: count }, (_, index) => {
-    const x = (index * 97) % size;
-    const height = size * (0.2 + ((index * 37) % 100) / 180);
-    const bend = (((index * 53) % 80) - 40) * 0.5;
-    const width = 1 + ((index * 13) % 3);
-    const opacity = 0.25 + ((index * 29) % 70) / 100;
-    return `<path d="M ${x} ${size} Q ${x + bend} ${size - height * 0.55} ${x + bend * 2} ${size - height}" stroke="rgb(${blade.join(',')})" stroke-width="${width}" fill="none" opacity="${opacity.toFixed(2)}"/>`;
-  }).join('');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" fill="rgb(${ground.join(',')})"/>${blades}</svg>`;
-  return sharp(Buffer.from(svg)).png().toBuffer();
-};
-
-/**
  * Споры поверх готовой плитки: круги и кольца считаются от индекса, поэтому рисунок повторяем.
  * Нужны грибнице: акварельный фон сам по себе читается как облако, а не как грибная земля.
  */

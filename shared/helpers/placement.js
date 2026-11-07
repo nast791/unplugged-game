@@ -69,11 +69,6 @@ export const numberedCellId = (partyState, playerId) => {
   return node?.id ?? null;
 };
 
-export const numberedCell = (partyState, playerId) => {
-  const cellId = numberedCellId(partyState, playerId);
-  return cellId == null ? null : findNode(partyState, cellId);
-};
-
 /** Области номерной клетки героя: в них же расставляются его помощники. */
 export const playerPlacementTerrains = (partyState, playerId) =>
   cellTerrains(partyState, numberedCellId(partyState, playerId));
@@ -102,15 +97,6 @@ export const hasHeroOnNumberedCell = (partyState, playerId) => {
   if (cellId == null) return false;
   const player = findPlayer(partyState, playerId);
   return playerHeroes(player).some(fighter => String(fighter.currentPosition) === String(cellId));
-};
-
-export const heroOnNumberedCell = (partyState, playerId) => {
-  const cellId = numberedCellId(partyState, playerId);
-  if (cellId == null) return null;
-  const player = findPlayer(partyState, playerId);
-  return (
-    playerHeroes(player).find(fighter => String(fighter.currentPosition) === String(cellId)) ?? null
-  );
 };
 
 export const isLockedHero = (fighter, partyState, playerId) => {

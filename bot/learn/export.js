@@ -34,7 +34,7 @@ import {
   rivalOf,
 } from '../play/actionFeatures.js';
 import { actionsFor, playDuel } from '../play/duel.js';
-import { PLAN_POLICIES, SEARCH_POLICIES, proposalPolicy } from '../play/decide.js';
+import { SEARCH_POLICIES, proposalPolicy } from '../play/decide.js';
 import { cardIdOf } from '../play/metrics.js';
 import { heroIds } from '../play/pool.js';
 import { hasQValue } from '../play/qvalue.js';

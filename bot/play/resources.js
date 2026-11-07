@@ -1,5 +1,5 @@
 import { zoneCards } from '#shared/helpers/base.js';
-import { cardHasTag, cardTags } from '#shared/helpers/cards.js';
+import { cardHasTag } from '#shared/helpers/cards.js';
 import { heroes } from '../../server/content/index.js';
 
 /**
@@ -8,9 +8,9 @@ import { heroes } from '../../server/content/index.js';
  * Читается **из пака**, а не из списка состояний. Правила героя и его карт ссылаются на ресурс фактами:
  * `ITEMS { group, state }` — копии предмета, `CARDS { zone: 'discard', tag }` — карты с меткой. Порог
  * механики — самый высокий `min` в **умении** героя (у Теслы активные катушки, порог 2 — обе; у Снежной
- * королевы карты с осколком в сбросе, порог 6; у Анубиса целая пелена, порог 1), а состояние или метка
- * этого факта — «готовый» ресурс. Карты порог не задают: у Снежной королевы в них есть ступени на 8 и 9
- * осколков, и брать верхнюю ступень за основной порог значило бы считать её режим выключенным.
+ * королевы карты с осколком в сбросе, порог 5; у Анубиса целая пелена, порог 1), а состояние или метка
+ * этого факта — «готовый» ресурс. Карты основной порог не задают, но дают **ступени** (у Снежной королевы
+ * 4/5/6/7 осколков): по ним считается расстояние до ближайшей непройденной ступени.
  *
  * Прежний хардкод `['active', 'collected']` этого не умел и врал дважды: пул осколков «во льду» не
  * попадал в признак вовсе, а `count` копии (у осколков 12) читался как число зарядов — у Снежной
@@ -63,14 +63,21 @@ const buildSpec = heroId => {
       // `min` пишут и на самом факте, и внутри `params` (`shared/facts/run.js`)
       need: number(fact.min ?? fact.params?.min, 1),
     }));
-  const cardFacts = facts
-    .filter(
-      fact => fact?.fact === 'CARDS' && fact.params?.zone === 'discard' && fact.params?.tag != null,
-    )
-    .map(fact => ({
-      tag: String(fact.params.tag),
-      need: number(fact.min ?? fact.params?.min, 1),
-    }));
+  const toCardFacts = list =>
+    list
+      .filter(
+        fact => fact?.fact === 'CARDS' && fact.params?.zone === 'discard' && fact.params?.tag != null,
+      )
+      .map(fact => ({
+        tag: String(fact.params.tag),
+        need: number(fact.min ?? fact.params?.min, 1),
+      }));
+  const cardFacts = toCardFacts(facts);
+  // Ступени — из **всех** карт пака: умение задаёт основной порог, карты — промежуточные ступени
+  const cardSteps = toCardFacts([
+    ...skillFacts,
+    ...(pack?.cards ?? []).flatMap(card => factsOf(card?.rules)),
+  ]);
 
   const top = entries => entries.reduce((best, entry) => Math.max(best, entry.need), 0);
   const best = entries => entries.find(entry => entry.need === top(entries)) ?? null;
@@ -90,12 +97,22 @@ const buildSpec = heroId => {
   const spec = (cardSpec?.need ?? 0) > (itemSpec?.need ?? 0) ? cardSpec : itemSpec;
   if (spec == null) return null;
 
+  // Ступени механике задают **карты**, а не умение: у Снежной королевы осколки включаются на 4, 5, 6, 7,
+  // и лист должен видеть расстояние до следующей ступени, а не только до верхней.
+  // Порог 1 — проверка «ресурс вообще есть», а не ступень: он не должен притворяться близкой ступенью
+  const needs =
+    spec.tag != null
+      ? cardSteps.filter(entry => entry.tag === spec.tag).map(entry => entry.need)
+      : itemFacts.map(entry => entry.need);
+  const steps = [...new Set(needs.filter(need => need > 1))].sort((left, right) => left - right);
+
   return {
     kind: spec.tag != null ? 'card' : 'item',
     group: spec.group ?? null,
     state: spec.state ?? null,
     tag: spec.tag ?? null,
     need: spec.need,
+    steps,
     // Рука, заточенная под механику: считается один раз на героя, а не на каждую оценку листа
     fuel: new Set(
       (pack.cards ?? [])
@@ -119,7 +136,7 @@ export const resourceSpec = heroId => {
  * `ready` считается по источнику, который читают правила пака, а не по табло предмета.
  */
 export const resourceOf = (player, spec = resourceSpec(player?.heroId ?? player?.id)) => {
-  if (spec == null || player == null) return { ready: 0, need: 0, fuel: 0 };
+  if (spec == null || player == null) return { ready: 0, need: 0, fuel: 0, steps: [] };
 
   const ready =
     spec.kind === 'item'
@@ -129,7 +146,18 @@ export const resourceOf = (player, spec = resourceSpec(player?.heroId ?? player?
       : zoneCards(player.discard).filter(card => cardHasTag(card, spec.tag)).length;
   const fuel = zoneCards(player.hand).filter(card => spec.fuel.has(String(card.id))).length;
 
-  return { ready, need: spec.need, fuel };
+  return { ready, need: spec.need, fuel, steps: spec.steps ?? [] };
+};
+
+/** Расстояние до следующей ступени и доля верхней: ступени — пороги в картах пака. */
+export const resourceSteps = ({ ready, steps = [] }) => {
+  const top = steps.length > 0 ? steps[steps.length - 1] : 0;
+  if (top <= 0) return { gap: 0, share: 0 };
+  const next = steps.find(step => step > ready) ?? null;
+  return {
+    gap: next == null ? 0 : Math.min(1, Math.max(0, (next - ready) / top)),
+    share: Math.min(1, Math.max(0, ready / top)),
+  };
 };
 
 /** Готовность ресурса к порогу `[0, 1]`: «сколько уже собрано». */

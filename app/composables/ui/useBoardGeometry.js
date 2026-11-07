@@ -1,7 +1,6 @@
 import { seatSide } from '#shared/constants/seats.js';
 import {
   colorLuminance,
-  isTerrainId,
   terrainColor,
   terrainLabelColor,
 } from '#shared/constants/terrain.js';

@@ -9,7 +9,7 @@
 import { lifecycle } from '#shared/constants/hooks.js';
 import { commonMoves } from '#shared/actions/moves.js';
 import { runFact, runFacts } from '#shared/facts/run.js';
-import { findPlayer, resolvePhaseHint } from '#shared/helpers/base.js';
+import { resolvePhaseHint } from '#shared/helpers/base.js';
 import { forkState } from '#shared/helpers/fork.js';
 import { syncAllShardItems } from '#shared/helpers/shards.js';
 import { lifecycleHooks } from '#shared/lifecycle/registry.js';

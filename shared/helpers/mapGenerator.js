@@ -196,30 +196,6 @@ const draftCells = (target, rng, options = {}) => {
   return { cells, width, height };
 };
 
-/** Глубина клетки: 0 — на самом краю поля, 1 — соседняя с краем, дальше — внутри. */
-const cellDepth = (cells, cell, width, height) => {
-  const present = new Set(cells.map(entry => `${entry.col}:${entry.row}`));
-  const directions = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ];
-  let depth = Infinity;
-  for (const [dx, dy] of directions) {
-    let step = 1;
-    for (;;) {
-      const col = cell.col + dx * step;
-      const row = cell.row + dy * step;
-      if (col < 0 || row < 0 || col >= width || row >= height) break;
-      if (!present.has(`${col}:${row}`)) break;
-      step += 1;
-    }
-    depth = Math.min(depth, step - 1);
-  }
-  return depth;
-};
-
 /**
  * Сколько шагов от клетки до **края поля** в её сторону: 0 — клетка в самой крайней колонке (строке)
  * поля, 1 — в следующей от края. Считаем от габарита всего поля, а не «до первой дырки в ряду»:

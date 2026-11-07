@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runUi } from '#shared/publicApi.js';
-import { createState, fighter, hand, PHASES, player } from '../../fixtures/state.js';
+import { createState, fighter, hand, PHASES } from '../../fixtures/state.js';
 import anubisCards from '../../../server/content/heroes/anubis/cards.js';
 import dorothyCards from '../../../server/content/heroes/dorothy/cards.js';
 import ifritCards from '../../../server/content/heroes/ifrit/cards.js';
@@ -179,13 +179,13 @@ describe('карта эффекта предлагается, только ес�
     expect(playableFor(withCrow, 'snow-queen_13')).toBe(true);
   });
 
-  it('«Суд молчит»: двигавшийся Анубис — карта задизейблена, тихий ход — играется', () => {
+  it('«Суд молчит»: карта играется и в тихий ход, и после шага — добор безусловный', () => {
     const moved = buildState({
       cardId: 'anubis_09',
       mineFighters: [unit('anubis', 1, 15, { movedThisTurn: true }), unit('amat', 2, 8)],
     });
-    expect(playableFor(moved, 'anubis_09')).toBe(false);
-    expect(isDisabled(moved, 'anubis_09')).toBe(true);
+    expect(playableFor(moved, 'anubis_09')).toBe(true);
+    expect(isDisabled(moved, 'anubis_09')).toBe(false);
 
     const quiet = buildState({
       cardId: 'anubis_09',

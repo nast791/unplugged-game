@@ -20,7 +20,6 @@
  * поэтому «чистой» силы политики на герое тут нет; меряется её **прибавка к винрейту героя**, а это
  * ровно то, что решает приёмку.
  */
-import { noiseMargin } from './matchup.js';
 import { runMatrixParallel } from '../learn/parallel.js';
 import { artifactName } from '../play/artifact.js';
 import { heroIds as poolHeroIds, heroName } from '../play/pool.js';

@@ -219,9 +219,6 @@ const ownerOfFighter = (state, fighterId) =>
     (player.fighters ?? []).some(fighter => String(fighter.id) === String(fighterId)),
   )?.id ?? null;
 
-/** Здоровье самого слабого врага, до которого бот достаёт (0 — никто не достаёт). */
-const weakestReachableEnemy = (state, playerId) => weakestReachable(state, playerId)?.hp ?? 0;
-
 /**
  * Своё определение карты или умения по `source` окна: карта могла уже уйти из зоны (объявлена в бою,
  * ушла в сброс), тогда её берём из реестра контента. Бот читает **свою** карту — как игрок, который

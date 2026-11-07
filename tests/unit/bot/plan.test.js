@@ -147,7 +147,7 @@ describe('план на ход', () => {
   });
 
   it('на границе хода оценка плана — это оценка позиции, а с ответом соперника она уже другая', () => {
-    const boundary = opponentTurnState(5);
+    const boundary = opponentTurnState(19);
     expect(boundary).not.toBeNull();
     const budget = planBudget();
 

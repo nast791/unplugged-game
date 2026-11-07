@@ -1,4 +1,4 @@
-﻿// Запекание **знака** UnPlugged: пиксельная сетка 3×3 и иконки.
+// Запекание **знака** UnPlugged: пиксельная сетка 3×3 и иконки.
 //
 // Знак — шесть квадратов 24×24 с шагом 29 (сетка 3×3) плюс улетевший квадрат 16: буква U, из которой
 // «вынули» верхний правый контакт. Цвета знака — из `docs/ui-plan.md` §9.2.
@@ -24,10 +24,6 @@ const PUBLIC = path.join(ROOT, 'public');
 const CYAN = '#22D3EE';
 const VIOLET = '#8B5CF6';
 const PINK = '#D946EF';
-// Те же три цвета на ступень темнее — для светлого фона, иначе голубой на белом слепнет.
-const CYAN_D = '#0891B2';
-const VIOLET_D = '#7C3AED';
-const PINK_D = '#C026D3';
 // Фон приложения (`--color-app`): подложка растровых иконок и плитки манифеста.
 const APP = '#12161B';
 
@@ -57,8 +53,6 @@ const GRID = [
 const FLYING_BIG = [86, 4, 16, 0.9];
 const FLYING_SMALL = [94, 22, 7, 0.5];
 const FLYING = [FLYING_BIG, FLYING_SMALL];
-
-const gridPaths = squares => squares.map(([x, y, size]) => rect(x, y, size, size));
 
 const squaresMarkup = (squares, fill) =>
   squares
