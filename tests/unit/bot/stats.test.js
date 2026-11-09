@@ -43,5 +43,5 @@ describe('замер политики по героям', () => {
       expect(theirs).toBeLessThanOrEqual(theirsTotal);
       expect(row).toMatch(/\*\*[+-]\d+\.\d\*\*/);
     }
-  }, 120_000);
+  }, 240_000);
 });

@@ -111,7 +111,8 @@ export default [
     ],
   },
   {
-    // вороны «пьют кровь»: победа вороны выбивает карту из чужой руки на выбор противника
+    // вороны «пьют кровь»: победа вороны выбивает карту из чужой руки — выбирает сама королева,
+    // поэтому «мусорный» сброс на усмотрение противника (он отдавал пустышку) снят
     id: 'snow-queen_03',
     title: 'Клёв в темноте',
     type: 'attack',
@@ -119,26 +120,32 @@ export default [
     bonus: 2,
     quantity: 3,
     fighter: 'crow',
-    text: 'ПОСЛЕ БИТВЫ: Если ворона победила, оппонент сбрасывает 1 карту из руки на свой выбор.',
+    text: 'ПОСЛЕ БИТВЫ: Если ворона победила, посмотрите руку противника и выберите из неё 1 карту — противник сбрасывает её.',
     rules: [
       {
         moment: 'afterCombat',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
-          { fact: 'HAND', params: { of: '$enemy', min: 1 }, var: 'enemyCards' },
+          // пустая рука — выбирать нечего, окно не открывается (как у «Ледяного зеркала»)
+          { fact: 'CARDS', params: { of: '$enemy', zone: 'hand', min: 1 }, var: 'enemyCards' },
         ],
         then: [
           {
-            action: 'SET_COMBAT',
-            op: 'choice',
-            effect: 'discard',
-            actor: '$enemy',
-            max: 1,
+            action: 'SET_TARGETING',
+            op: 'open',
+            kind: 'options',
             candidates: '$enemyCards',
-            optional: false,
+            count: 1,
+            required: true,
           },
         ],
+      },
+      {
+        // противника называем ролью: переменная из условия другого правила сюда не переносится
+        moment: 'picked',
+        when: [{ fact: 'PICKED', var: 'choice' }],
+        then: [{ action: 'SET_CARDS', of: 'opponent', op: 'discard', cardIds: '$choice' }],
       },
     ],
   },
@@ -207,16 +214,16 @@ export default [
     ],
   },
   {
-    // «хлеб» колоды: 2 на старте, 4 на льду, 7 на верхнем пороге — предел игры
+    // «хлеб» колоды: 3 на старте, 5 на льду, 7 на верхнем пороге — предел игры
     id: 'snow-queen_06',
     title: 'Сосулька',
     type: 'hybrid',
-    value: 2,
+    value: 3,
     bonus: 2,
     quantity: 3,
     fighter: 'any',
     tags: ['shard'],
-    text: 'ВО ВРЕМЯ БИТВЫ: Если ваш боец в этой битве стоит на клетке со стихией льда, значение карты становится 4. При 6 и более осколках значение становится 7 на любой клетке.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если ваш боец в этой битве стоит на клетке со стихией льда, значение карты становится 5. При 6 и более осколках значение становится 7 на любой клетке.',
     rules: [
       {
         moment: 'duringCombat',
@@ -224,7 +231,7 @@ export default [
           { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
           { fact: 'FIGHTERS', params: { fighterIds: '$ours', terrain: 'ice' }, min: 1 },
         ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 4 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 5 }],
       },
       {
         // Лёд и порог осколков независимы: правило не требует стоять на льду. Если сработали оба,
@@ -236,7 +243,8 @@ export default [
     ],
   },
   {
-    // добор на победе: колода не выдыхается, пока бои выиграны
+    // добор на победе: колода не выдыхается, пока бои выиграны. Лечение — единственное в колоде,
+    // и оно требует победы, то есть не спасает проигранную партию от чипа
     id: 'snow-queen_07',
     title: 'Снежная тропа',
     type: 'hybrid',
@@ -244,12 +252,19 @@ export default [
     bonus: 4,
     quantity: 2,
     fighter: 'any',
-    text: 'ПОСЛЕ БИТВЫ: Если вы победили, возьмите карту.',
+    text: 'ПОСЛЕ БИТВЫ: Если вы победили, возьмите карту и восстановите 1 здоровье своему бойцу из этой битвы.',
     rules: [
       {
         moment: 'afterCombat',
-        when: [{ fact: 'COMBAT', params: { winner: 'self' } }],
-        then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
+        when: [
+          { fact: 'COMBAT', params: { winner: 'self' } },
+          { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
+        ],
+        then: [
+          { action: 'SET_CARDS', op: 'draw', count: 1 },
+          // выше начального здоровье не поднимает сам экшен
+          { action: 'SET_HEALTH', fighterIds: '$ours', delta: 1 },
+        ],
       },
     ],
   },
@@ -325,7 +340,7 @@ export default [
     ],
   },
   {
-    // контр-игра включается с четырёх осколков — раньше умения (пять, §7)
+    // контр-игра включается с трёх осколков — заметно раньше умения (пять, §7)
     id: 'snow-queen_10',
     title: 'Трещина',
     type: 'hybrid',
@@ -333,12 +348,12 @@ export default [
     bonus: 1,
     quantity: 2,
     fighter: 'snow-queen',
-    text: 'ВО ВРЕМЯ БИТВЫ: При 4 и более осколках отмените эффекты карты оппонента.',
+    text: 'ВО ВРЕМЯ БИТВЫ: При 3 и более осколках отмените эффекты карты оппонента.',
     rules: [
       {
         moment: 'duringCombat',
         when: [
-          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 4 } },
+          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 3 } },
           // отменять нечего, если у карты противника нет свойств
           { fact: 'COMBAT', params: { effects: 'opponent' }, min: 1 },
         ],
