@@ -110,26 +110,26 @@ describe('политики: выбор действия', () => {
     expect(pressGap).toBeGreaterThan(patientGap);
   });
 
-  it('условия карты меняют выбор: «Погребальный звон» в покое сильнее карты на 5', () => {
+  it('условия карты меняют выбор: «Погребальный звон» в покое сильнее карты на 4', () => {
     const state = attackReady();
     const anubis = player(state, '0');
     anubis.heroId = 'anubis';
     anubis.fighters.find(fighter => fighter.id === 'alpha').id = 'anubis';
     anubis.hand.cards = [
       { ...cardById('anubis_01'), instanceId: 'bell_0' },
-      fixtureCard({ id: 'plain_05', type: 'attack', value: 5, bonus: 1, fighter: 'anubis' }),
+      fixtureCard({ id: 'plain_04', type: 'attack', value: 4, bonus: 1, fighter: 'anubis' }),
     ];
 
-    // по напечатанному числу карта на 5 сильнее (4 против 5) — так выбирает `greedy`
+    // по напечатанному числу карта на 4 сильнее (3 против 4) — так выбирает `greedy`
     const greedy = actionsFor(state, '0', { policy: 'greedy' });
-    expect(weightOf(greedy, isCard('plain_05_0'))).toBeGreaterThan(
+    expect(weightOf(greedy, isCard('plain_04_0'))).toBeGreaterThan(
       weightOf(greedy, isCard('bell_0')),
     );
 
-    // политика `conditions` читает правило карты: пока Анубис не двигался, звон — это 6
+    // политика `conditions` читает правило карты: пока Анубис не двигался, звон — это 5
     const conditions = actionsFor(state, '0', { policy: 'conditions' });
     expect(weightOf(conditions, isCard('bell_0'))).toBeGreaterThan(
-      weightOf(conditions, isCard('plain_05_0')),
+      weightOf(conditions, isCard('plain_04_0')),
     );
   });
 
@@ -296,12 +296,12 @@ describe('политики: выбор действия', () => {
     const conditions = weightsFor('conditions', { hand: 3, canDraw: true });
     const deck = { average: 4 };
 
-    // «Погребальный звон» — та же карта (4), но при покое её число 6: весит больше
-    expect(attackWeight({ value: 4 }, conditions, { ...deck, strength: 6 })).toBeGreaterThan(
+    // «Погребальный звон» — та же карта (3), но при покое её число 5: весит больше
+    expect(attackWeight({ value: 4 }, conditions, { ...deck, strength: 5 })).toBeGreaterThan(
       attackWeight({ value: 4 }, conditions, deck),
     );
     // у `greedy` ген нулевой: эффективное число политика не оплачивает
-    expect(attackWeight({ value: 4 }, greedy, { ...deck, strength: 6 })).toBe(
+    expect(attackWeight({ value: 4 }, greedy, { ...deck, strength: 5 })).toBe(
       attackWeight({ value: 4 }, greedy, deck),
     );
     // обещанная польза (сброс чужой карты) — премия гена `condition`

@@ -23,7 +23,7 @@ export default [
     quantity: 3,
     fighter: 'snow-queen',
     tags: ['shard'],
-    text: 'ПОСЛЕ БИТВЫ: Если вы проиграли эту битву, оппонент сбрасывает 1 карту из руки на свой выбор. Если выиграли — сбросьте верхнюю карту своей колоды и можете поставить участвовавшего в битве бойца оппонента на любую свободную клетку льда.',
+    text: 'ПОСЛЕ БИТВЫ: Если вы проиграли эту битву, оппонент сбрасывает 1 карту из руки на свой выбор. Если выиграли — можете поставить участвовавшего в битве бойца оппонента на любую свободную клетку льда.',
     rules: [
       {
         moment: 'afterCombat',
@@ -50,14 +50,12 @@ export default [
         moment: 'afterCombat',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
-          { fact: 'DECK', params: { min: 1 } },
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
           // замороженному телепорт закрыт движком: без этой проверки окно открывалось, а клик падал
           { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: false }, min: 1, var: 'alive' },
           { fact: 'CELLS', params: { terrain: 'ice', free: true, min: 1 }, var: 'cells' },
         ],
         then: [
-          { action: 'SET_CARDS', op: 'discard', from: 'deck', count: 1 },
           {
             action: 'SET_TARGETING',
             op: 'open',
@@ -90,7 +88,7 @@ export default [
     bonus: 2,
     quantity: 2,
     fighter: 'snow-queen',
-    text: 'ВО ВРЕМЯ БИТВЫ: При 4 и более осколках атакующий заморожен — он не может перемещаться или телепортироваться до конца своего хода. ПОСЛЕ БИТВЫ: При 6 и более осколков он ещё и получает 1 урон.',
+    text: 'ВО ВРЕМЯ БИТВЫ: При 4 и более осколках атакующий заморожен — он не может перемещаться или телепортироваться до конца своего хода. ПОСЛЕ БИТВЫ: При 5 и более осколках он ещё и получает 1 урон.',
     rules: [
       {
         moment: 'duringCombat',
@@ -103,7 +101,7 @@ export default [
       {
         moment: 'afterCombat',
         when: [
-          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 6 } },
+          { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } },
           { fact: 'COMBAT', params: { select: 'attacker' }, var: 'foe' },
           // атакующий мог погибнуть в бою — тогда добивать некого
           { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1, var: 'alive' },
@@ -218,7 +216,7 @@ export default [
     quantity: 3,
     fighter: 'any',
     tags: ['shard'],
-    text: 'ВО ВРЕМЯ БИТВЫ: Если ваш боец в этой битве стоит на клетке со стихией льда, значение карты становится 4. При 7 и более осколках значение становится 7 на любой клетке.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если ваш боец в этой битве стоит на клетке со стихией льда, значение карты становится 4. При 6 и более осколках значение становится 7 на любой клетке.',
     rules: [
       {
         moment: 'duringCombat',
@@ -232,7 +230,7 @@ export default [
         // Лёд и порог осколков независимы: правило не требует стоять на льду. Если сработали оба,
         // значение выставит последнее правило (7) — поэтому порядок здесь важен, а не накопителен.
         moment: 'duringCombat',
-        when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 7 } }],
+        when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 6 } }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 7 }],
       },
     ],
@@ -392,7 +390,7 @@ export default [
     bonus: 1,
     quantity: 2,
     fighter: 'snow-queen',
-    text: 'При 5 и более осколках нанесите 2 урона каждому бойцу оппонента в области королевы, затем замешайте 2 карты с осколком из сброса в колоду.',
+    text: 'При 5 и более осколках нанесите 2 урона каждому бойцу оппонента в области королевы, затем замешайте 1 карту с осколком из сброса в колоду.',
     rules: [
       {
         moment: 'effect',
@@ -424,7 +422,7 @@ export default [
             from: 'discard',
             to: 'deck',
             cardIds: '$shards',
-            count: 2,
+            count: 1,
           },
           { action: 'SET_CARDS', op: 'shuffle', zone: 'deck' },
         ],

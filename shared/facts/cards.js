@@ -12,6 +12,9 @@ const contextPlayerId = ctx => ctx.playerId ?? ctx.player?.id ?? ctx.state?.turn
  * `of` — чей сброс/колода/рука (по умолчанию своя); `zone` — `discard` (по умолчанию), `deck`, `hand`;
  * `tag` — метка карты (её заводит пак героя, `shared/helpers/cards.js`), `type` — тип карты;
  * `min`/`max` считают число подходящих карт, `value` — всегда список карт.
+ * `count: true` отдаёт в `value` число карт, а не список: «урон, равный числу карт эффектов в сбросе».
+ * `limit` берёт верхние `limit` карт колоды (у колоды верх — конец массива), `exclude` выбрасывает
+ * карты по ключу: так «посмотрите 2 верхние карты» становится списком кандидатов окна выбора.
  * Элемент списка годится прямо в `candidates` окна `kind: 'options'`: `optionId` — ключ копии
  * (им же карта уходит в сброс через `SET_CARDS { cardIds }`), `title` — название, `bonus` — усиление.
  * Так карта вида «посмотрите руку противника и выберите карту» открывает окно по чужой руке.
@@ -22,15 +25,30 @@ export const CARDS = (ctx, params = {}) => {
   const zoneName = params.zone == null ? 'discard' : String(params.zone);
   if (!player || !ZONES.includes(zoneName)) return { ok: false, value: [] };
 
-  const cards = zoneCards(player[zoneName]).filter(card => cardHasTag(card, params.tag));
+  const excluded = new Set(
+    (Array.isArray(params.exclude) ? params.exclude : [params.exclude])
+      .filter(value => value != null)
+      .map(value => String(value?.cardId ?? value)),
+  );
+  const cards = zoneCards(player[zoneName])
+    .filter(card => cardHasTag(card, params.tag))
+    .filter(card => params.returnable !== true || card?.noReturn !== true)
+    .filter(card => !excluded.has(cardKey(card)));
+  const limited =
+    params.limit == null || zoneName !== 'deck'
+      ? cards.slice(0, params.limit == null ? cards.length : Number(params.limit))
+      : cards.slice(-Number(params.limit));
   const filtered =
-    params.type == null ? cards : cards.filter(card => card?.type === String(params.type));
+    params.type == null ? limited : limited.filter(card => card?.type === String(params.type));
 
   const min = params.min ?? 0;
   const max = params.max == null ? Infinity : Number(params.max);
+  const ok = filtered.length >= Number(min) && filtered.length <= max;
+
+  if (params.count === true) return { ok, value: filtered.length };
 
   return {
-    ok: filtered.length >= Number(min) && filtered.length <= max,
+    ok,
     value: filtered.map(card => ({
       cardId: cardKey(card),
       optionId: cardKey(card),

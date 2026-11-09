@@ -1,5 +1,5 @@
 import { bfsDistance } from '#shared/helpers/board.js';
-import { findFighter, findPlayer, isTeamFormat } from '#shared/helpers/base.js';
+import { findFighter, findPlayer, isTeamFormat, playerByRole } from '#shared/helpers/base.js';
 import { cellTerrain, cellTerrains, sharesArea } from '#shared/helpers/placement.js';
 
 const sortedPlayers = state =>
@@ -169,7 +169,12 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
 /** FIGHTERS — бойцы по фильтру; params.min — минимальный размер списка, params.max — максимальный. */
 export const FIGHTERS = (ctx, params = {}) => {
   const ownerPlayerId = ctx.player?.id ?? ctx.state?.turn?.playerId;
-  const list = queryFighters(ctx.state, params, { ownerPlayerId });
+  // `of` понимает и id игрока, и роль (`opponent`, `self`): вне боя роль отвечает «тот, кто напротив»
+  const resolved =
+    params.of == null
+      ? params
+      : { ...params, of: playerByRole(ctx.state, ownerPlayerId, params.of) };
+  const list = queryFighters(ctx.state, resolved, { ownerPlayerId });
   const min = params.min ?? 0;
   const max = params.max == null ? Infinity : Number(params.max);
   return { ok: list.length >= min && list.length <= max, value: list };

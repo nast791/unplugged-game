@@ -35,8 +35,6 @@ export const runMatrix = ({
   policy = 'random',
   policyB = null,
   maxSteps = undefined,
-  artifact = null,
-  artifactB = null,
   onPair,
 } = {}) => {
   const pairResults = matchups(heroes).map(({ heroA, heroB }) => {
@@ -48,8 +46,6 @@ export const runMatrix = ({
       policy,
       policyB,
       maxSteps,
-      artifact,
-      artifactB,
     }).map(report => ({
       ...report,
       matchup: `${heroA} против ${heroB}`,

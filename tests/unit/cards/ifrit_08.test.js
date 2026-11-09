@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/publicApi.js';
+import { runAction, runLifecycle } from '#shared/publicApi.js';
 import ifritCards from '../../../server/content/heroes/ifrit/cards.js';
-import { createState, discard, fighter, PHASES, player } from '../../fixtures/state.js';
+import { createState, discard, fighter, hand, PHASES, player } from '../../fixtures/state.js';
 
 const card = ifritCards.find(entry => entry.id === 'ifrit_08');
 
-/** Линия 1—2—3—4: Ифрит на 2, Бета на 3, есть куда отодвинуть. */
+/** Линия 1—2—3—4: Ифрит на 2, Бета на 3. */
 const lineMap = {
   id: 'line',
   nodes: [
@@ -33,13 +33,22 @@ const unit = (id, cell, hp, extra = {}) => ({
   ...extra,
 });
 
-const slot = (id, name, order, fighters, hand = []) => ({
+const filler = {
+  id: 'filler',
+  instanceId: 'filler_1',
+  type: 'attack',
+  value: 1,
+  bonus: 1,
+  fighter: 'ifrit',
+};
+
+const slot = (id, name, order, fighters, cards = []) => ({
   id,
   name,
   order,
   placementReady: true,
-  deck: zone([]),
-  hand: zone(hand),
+  deck: zone(id === '0' ? [filler] : []),
+  hand: zone(cards),
   discard: zone([]),
   fighters,
 });
@@ -51,16 +60,6 @@ const betaAttack = {
   value: 6,
   bonus: 1,
   fighter: 'beta',
-};
-
-/** Тупик 1—2—3: Бета на 3 не может шагнуть — единственный сосед занят Ифритом. */
-const deadEndMap = {
-  id: 'dead-end',
-  nodes: [
-    { id: 1, neighbors: [2], terrain: 'ice' },
-    { id: 2, neighbors: [1, 3], terrain: 'ice' },
-    { id: 3, neighbors: [2], terrain: 'ice' },
-  ],
 };
 
 /** Ифрит на 2 держит «Стену огня», Бета на 3 с `betaHp` здоровья. */
@@ -82,7 +81,7 @@ const buildState = ({ betaHp = 14, map = lineMap } = {}) =>
     _enteredHooks: { gameStart: true, turn: true },
   });
 
-/** Ифрит бьёт Стеной огня (4), Бета пасует. */
+/** Ифрит бьёт «Стеной огня» (4), Бета пасует. */
 const openBattle = state => {
   const opened = runAction(state, {
     type: 'PICK',
@@ -93,18 +92,40 @@ const openBattle = state => {
   return runAction(opened, { type: 'UI_OK', playerId: '1' });
 };
 
-/** Окно перемещения закрывает сам атакующий общей кнопкой. */
-const finish = state => runAction(state, { type: 'UI_OK', playerId: '0' });
+/** Бета бьёт картой `attack`, Ифрит отвечает «Стеной огня» (4). */
+const defendBattle = (state, attack) => {
+  const opened = runAction(state, {
+    type: 'PICK',
+    kind: 'card',
+    id: attack.instanceId,
+    playerId: '1',
+  });
+  return runAction(opened, { type: 'PICK', kind: 'card', id: 'ifrit_08_1', playerId: '0' });
+};
 
-const step = (state, fighterId, cellId) =>
-  runAction(state, { type: 'PICK', kind: 'cell', id: cellId, fighterId, playerId: '0' });
+/** Бета бьёт картой `attack`, Ифрит пасует. */
+const passDefense = (state, attack) => {
+  const opened = runAction(state, {
+    type: 'PICK',
+    kind: 'card',
+    id: attack.instanceId,
+    playerId: '1',
+  });
+  return runAction(opened, { type: 'UI_OK', playerId: '0' });
+};
+
+const endTurn = state => {
+  state.hook = PHASES.turnEnd;
+  return runLifecycle(state);
+};
+
+const nodeOf = (state, cellId) => state.map.nodes.find(node => String(node.id) === String(cellId));
 
 const fighterOf = (state, playerId, fighterId) =>
   player(state, playerId).fighters.find(entry => entry.id === fighterId);
 
 describe('карта ifrit_08 «Стена огня»', () => {
-  it('описана правилами, момент — из списка', () => {
-    // первое правило — добор после битвы (без условий), второе — сдвиг атакующего на победе
+  it('описана правилами, моменты — из списка', () => {
     expect(card.rules).toHaveLength(2);
     for (const rule of card.rules) {
       expect(rule.moment).toBe('afterCombat');
@@ -118,123 +139,104 @@ describe('карта ifrit_08 «Стена огня»', () => {
       quantity: 2,
       fighter: 'any',
     });
+    expect(card.text).toContain('Доберите 1 карту');
+    expect(card.text).toContain('до конца вашего хода');
+    expect(card.text).toMatch(/меньше 3 стихий/);
     expect(card.rules[0].then[0]).toMatchObject({ action: 'SET_CARDS', op: 'draw', count: 1 });
     expect(card.rules[1].when[0]).toMatchObject({ fact: 'COMBAT', params: { winner: 'self' } });
+    expect(card.rules[1].when[1]).toMatchObject({
+      fact: 'FIGHTERS',
+      params: { fighterIds: ['ifrit'] },
+      var: 'hero',
+    });
     expect(card.rules[1].then[0]).toMatchObject({
-      action: 'SET_MOVEMENT',
-      op: 'open',
-      fighters: '$alive',
-      budget: 1,
-      optional: true,
+      action: 'SET_CELL_TERRAIN',
+      op: 'add',
+      cellId: '$hero',
+      terrain: 'lava',
     });
   });
 
-  it('после победы открывается окно перемещения атакующего с бюджетом 1', () => {
+  it('после победы в атаке клетка Ифрита получает лаву, стихия клетки остаётся', () => {
     const after = openBattle(buildState());
 
     expect(after.lastCombat.winner).toBe('attacker');
-    expect(after.movement).toMatchObject({
-      playerId: '0',
-      budget: 1,
-      optional: true,
-      fighters: ['beta'],
+    expect(nodeOf(after, 2)).toMatchObject({
+      terrain: 'ice',
+      extraTerrain: ['lava'],
+      extraTerrainBy: '0',
     });
-    expect(runUi(after, '0').controls.ok).toMatchObject({
-      visible: true,
-      label: 'Закончить эффект',
-    });
-    // бой ждёт решения игрока: шаг добора применён, шаг перемещения — в ожидании
-    expect(after.combat.effects.map(entry => entry.status)).toEqual(['applied', 'waiting']);
+    // клетка, на которой стоял противник, не поджигается: огонь у Ифрита под ногами
+    expect(nodeOf(after, 3).extraTerrain).toBeUndefined();
+    expect(fighterOf(after, '0', 'ifrit').currentPosition).toBe(2);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
   });
 
-  it('атакующего можно сдвинуть на соседнюю клетку, и бой после этого закрывается', () => {
-    const moved = step(openBattle(buildState()), 'beta', '4');
+  it('победа добирает карту, а сама карта уходит в сброс', () => {
+    const after = openBattle(buildState());
 
-    expect(fighterOf(moved, '1', 'beta').currentPosition).toBe('4');
-    expect(fighterOf(moved, '1', 'beta').currentHp).toBe(10); // 4 урона пришло до сдвига
-
-    const closed = finish(moved);
-
-    expect(closed.movement ?? null).toBeNull();
-    expect(closed.combat ?? null).toBeNull();
-    expect(closed.combat ?? null).toBeNull();
-    // карта ушла в сброс, а сдвиг сохранён
-    expect(discard(player(closed, '0')).map(entry => entry.id)).toEqual(['ifrit_08']);
-    expect(fighterOf(closed, '1', 'beta').currentPosition).toBe('4');
+    expect(hand(player(after, '0')).map(entry => entry.id)).toEqual(['filler']);
+    expect(discard(player(after, '0')).map(entry => entry.id)).toEqual(['ifrit_08']);
   });
 
-  it('от окна можно отказаться: боец остаётся на месте', () => {
-    const after = finish(openBattle(buildState()));
-
-    expect(after.movement ?? null).toBeNull();
-    expect(String(fighterOf(after, '1', 'beta').currentPosition)).toBe('3');
-    // отказ виден в отчёте боя: очередь свойств остаётся в `lastCombat`
-    expect(after.lastCombat.effects.map(entry => entry.status)).toEqual(['applied', 'declined']);
-  });
-
-  it('при поражении окна нет: сдвигать некого', () => {
-    // Бета бьёт Ифрита на 6, Ифрит пасует — побеждает защитник, свойство не срабатывает
-    const state = buildState();
-    player(state, '1').hand = zone([betaAttack]);
-    state.turn = { ...state.turn, playerId: '1', actedRound: ['1'] };
-
-    const opened = runAction(state, {
-      type: 'PICK',
-      kind: 'card',
-      id: 'beta_atk_1',
-      playerId: '1',
-    });
-    const after = runAction(opened, { type: 'UI_OK', playerId: '0' });
-
-    expect(after.lastCombat.winner).toBe('attacker');
-    expect(after.lastCombat.winnerPlayerId).toBe('1');
-    expect(after.movement ?? null).toBeNull();
-    expect(String(fighterOf(after, '0', 'ifrit').currentPosition)).toBe('2');
-    expect(String(fighterOf(after, '1', 'beta').currentPosition)).toBe('3');
-  });
-
-  it('сдвигать некуда — свойство помечено «не сработало», а не сработавшим', () => {
-    // Бета стоит в тупике: её единственный сосед занят Ифритом — шагать некуда
-    const after = openBattle(buildState({ map: deadEndMap }));
+  it('окно боя закрывается сразу: свойства не спрашивают игрока', () => {
+    const after = openBattle(buildState());
 
     expect(after.movement ?? null).toBeNull();
     expect(after.combat ?? null).toBeNull();
-    expect(after.lastCombat.effects.map(entry => entry.status)).toEqual(['applied', 'skipped']);
+    expect(after.targeting ?? null).toBeNull();
+    expect(after.lastCombat.effects.map(entry => entry.status)).toEqual(['applied', 'applied']);
   });
 
-  it('атакующий погиб в бою — окно не открывается', () => {
-    // Бета на 4 hp получает 4 урона и уходит в `lost`: двигать в бою некого
-    const after = openBattle(buildState({ betaHp: 4 }));
-
-    expect(player(after, '1').fighters).toEqual([]);
-    expect(player(after, '1').lost.map(entry => entry.id)).toEqual(['beta']);
-    expect(after.movement ?? null).toBeNull();
-    expect(after.lastCombat.combatDamage).toBe(4);
-  });
-
-  it('играется и в защиту: победа защитника тоже открывает окно по атакующему', () => {
-    // Ифрит защищается «Стеной огня» (4) против атаки 3: побеждает защитник,
-    // и правило двигает бойца противника — того, кто атаковал
+  it('при поражении лавы нет', () => {
     const state = buildState();
+    const attack = betaAttack;
+    player(state, '1').hand = zone([attack]);
     state.turn = { ...state.turn, playerId: '1', actedRound: ['1'] };
-    player(state, '1').hand = zone([
-      { ...betaAttack, id: 'beta_atk_low', instanceId: 'beta_atk_low_1', value: 3 },
-    ]);
 
-    const opened = runAction(state, {
-      type: 'PICK',
-      kind: 'card',
-      id: 'beta_atk_low_1',
-      playerId: '1',
-    });
-    const after = runAction(opened, {
-      type: 'PICK',
-      kind: 'card',
-      id: 'ifrit_08_1',
-      playerId: '0',
-    });
+    const after = passDefense(state, attack);
 
+    expect(after.lastCombat.winner).toBe('attacker');
+    expect(nodeOf(after, 2).extraTerrain).toBeUndefined();
+    expect(after.movement ?? null).toBeNull();
+  });
+
+  it('на клетке уже три стихии — лавы не появляется', () => {
+    const fullMap = {
+      ...lineMap,
+      nodes: lineMap.nodes.map(node =>
+        node.id === 2 ? { ...node, terrain: ['ice', 'forest', 'desert'] } : node,
+      ),
+    };
+    const after = openBattle(buildState({ map: fullMap }));
+
+    expect(nodeOf(after, 2).terrain).toEqual(['ice', 'forest', 'desert']);
+    expect(nodeOf(after, 2).extraTerrain).toBeUndefined();
+  });
+
+  it('играется и в защиту: лава доживает до хода Ифрита и снимается в его конце', () => {
+    const state = buildState();
+    const lowAttack = { ...betaAttack, id: 'beta_atk_low', instanceId: 'beta_atk_low_1', value: 3 };
+    player(state, '1').hand = zone([lowAttack]);
+    state.turn = { ...state.turn, playerId: '1', actedRound: ['1'] };
+
+    const after = defendBattle(state, lowAttack);
+
+    // защитник победил — огонь под Ифритом, и он переживает конец чужого хода
     expect(after.lastCombat.winner).toBe('defender');
-    expect(after.movement).toMatchObject({ playerId: '0', budget: 1, fighters: ['beta'] });
+    expect(nodeOf(after, 2)).toMatchObject({ extraTerrain: ['lava'], extraTerrainBy: '0' });
+    expect(after.combat ?? null).toBeNull();
+    expect(after.movement ?? null).toBeNull();
+
+    const enemiesTurnOver = endTurn(after);
+
+    expect(nodeOf(enemiesTurnOver, 2).extraTerrain).toEqual(['lava']);
+
+    // ход Ифрита кончился — огонь снят, базовая стихия клетки на месте
+    enemiesTurnOver.turn = { ...enemiesTurnOver.turn, playerId: '0' };
+    const ownTurnOver = endTurn(enemiesTurnOver);
+
+    expect(nodeOf(ownTurnOver, 2).extraTerrain).toBeUndefined();
+    expect(nodeOf(ownTurnOver, 2).terrain).toBe('ice');
   });
 });

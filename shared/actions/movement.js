@@ -290,7 +290,7 @@ const stepMovement = (partyState, action) => {
 
   // клетка, на которую ступили, получает временную стихию: телепорт — не шаг
   if (movement.terrainOnStep != null && movement.teleport !== true) {
-    state = addTemporaryTerrain(state, action.cellId, movement.terrainOnStep);
+    state = addTemporaryTerrain(state, action.cellId, movement.terrainOnStep, playerId);
   }
 
   const move = { fighterId, from, to: action.cellId };

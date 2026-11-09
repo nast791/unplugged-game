@@ -6,28 +6,29 @@
  * Третья ось — **суд весов**: карты с меткой `scales` получают Помилование или Наказание, пока
  * пелена активна; их правила сравнивают усиления карт боя (`COMBAT { bonus, max|over }`).
  * Весы — только у карт, на которые оппонент отвечает картой из боя; на эффекте весов не бывает:
- * сравнивать усиления не с чем, поэтому «Зал суда» просто переносит бойца на три клетки.
+ * сравнивать усиления не с чем, поэтому «Зал суда» сжигает улики — урон в лицо по числу карт
+ * эффектов в сбросе, и сама в сбросе остаётся навсегда (`noReturn`).
  * Пелену выключает умение «Суд Осириса» (`index.js`), а судят карты.
  */
 export default [
   {
-    // главный удар: существует только у стоящего — шагнул, и карта снова 4
+    // главный удар: существует только у стоящего — шагнул, и карта снова 3
     id: 'anubis_01',
     title: 'Погребальный звон',
     type: 'attack',
-    value: 4,
+    value: 3,
     bonus: 1,
     quantity: 3,
     fighter: 'anubis',
-    text: 'ВО ВРЕМЯ БИТВЫ: Если Анубис не двигался в этом ходу, значение карты становится 6.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если Анубис не двигался в этом ходу, значение карты становится 5.',
     rules: [
       {
         moment: 'duringCombat',
         when: [
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
         ],
-        // `to`, а не `delta`: значение ровно 6, его нельзя случайно сложить с чужими прибавками
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 6 }],
+        // `to`, а не `delta`: значение ровно 5, его нельзя случайно сложить с чужими прибавками
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 5 }],
       },
     ],
   },
@@ -38,7 +39,7 @@ export default [
     type: 'attack',
     value: 5,
     bonus: 3,
-    quantity: 2,
+    quantity: 3,
     fighter: 'anubis',
     text: 'МГНОВЕННО: Если боец оппонента в этой битве стоит на клетке со стихией пустыни, он получает дополнительно 2 урона.',
     rules: [
@@ -149,7 +150,7 @@ export default [
     quantity: 2,
     fighter: 'anubis',
     tags: ['scales'],
-    text: 'ПОСЛЕ БИТВЫ: Если вы победили, можете поместить бойца оппонента из этой битвы на свободную клетку пустыни. Помилование. ВО ВРЕМЯ БИТВЫ: Значение этой карты +1. Наказание. ВО ВРЕМЯ БИТВЫ: Значение атакующей карты оппонента становится равным 0.',
+    text: 'ПОСЛЕ БИТВЫ: Если вы победили, можете поместить бойца оппонента из этой битвы на свободную клетку пустыни. Помилование. ВО ВРЕМЯ БИТВЫ: Значение карты оппонента становится равным 0. Наказание. ВО ВРЕМЯ БИТВЫ: Свойства карты оппонента не действуют.',
     rules: [
       {
         moment: 'afterCombat',
@@ -185,26 +186,24 @@ export default [
         ],
       },
       {
-        // защищаемся от чужой карты не сильнее своей — суд милует и укрепляет врата
+        // помилование обнуляет чужую карту: враг защищается не сильнее нашей — его число становится 0
         moment: 'duringCombat',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
           { fact: 'COMBAT', params: { bonus: 'opponent', max: '$mine' } },
         ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 }],
+        then: [{ action: 'SET_COMBAT', op: 'value', side: 'opponent', to: 0 }],
       },
       {
-        // тяжёлая атака врага объявляется незаконной: его карта обнуляется
+        // наказание отменяет свойства чужой карты: тяжёлая атака объявляется незаконной
         moment: 'duringCombat',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
           { fact: 'COMBAT', params: { bonus: 'opponent', over: '$mine' } },
-          // обнуляем именно атакующую карту — значит работаем в защиту
-          { fact: 'COMBAT', params: { role: 'defender' } },
         ],
-        then: [{ action: 'SET_COMBAT', op: 'value', side: 'attack', to: 0 }],
+        then: [{ action: 'SET_COMBAT', op: 'cancelEffects', side: 'opponent' }],
       },
     ],
   },
@@ -219,13 +218,13 @@ export default [
     quantity: 2,
     fighter: 'anubis',
     tags: ['scales'],
-    text: 'ПОСЛЕ БИТВЫ: Если в руке оппонента нет карт, нанесите герою оппонента 4 урона. Помилование. ВО ВРЕМЯ БИТВЫ: Если вы защищаетесь, уменьшите боевой урон на 1. ПОСЛЕ БИТВЫ: Переместите Анубиса или Амат на расстояние до 2 клеток (без прохода). Наказание. ПОСЛЕ БИТВЫ: Нанесите участвовавшему в битве бойцу оппонента 3 урона.',
+    text: 'ПОСЛЕ БИТВЫ: Если в руке оппонента 1 карта или меньше, нанесите герою оппонента 4 урона. Помилование. ВО ВРЕМЯ БИТВЫ: Если вы защищаетесь, уменьшите боевой урон на 1. ПОСЛЕ БИТВЫ: Переместите Анубиса или Амат на расстояние до 2 клеток (без прохода). Наказание. ПОСЛЕ БИТВЫ: Нанесите участвовавшему в битве бойцу оппонента 2 урона.',
     rules: [
       {
         moment: 'afterCombat',
         when: [
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
-          { fact: 'HAND', params: { of: '$enemy', max: 0 } },
+          { fact: 'HAND', params: { of: '$enemy', max: 1 } },
           // герой противника мог уже погибнуть — тогда судить некого
           {
             fact: 'FIGHTERS',
@@ -281,7 +280,7 @@ export default [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
           { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1 },
         ],
-        then: [{ action: 'SET_HEALTH', fighterIds: '$foe', delta: -3 }],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$foe', delta: -2 }],
       },
     ],
   },
@@ -290,19 +289,20 @@ export default [
     id: 'anubis_07',
     title: 'Тайна бальзамирования',
     type: 'hybrid',
-    value: 4,
+    value: 3,
     bonus: 3,
-    quantity: 1,
+    quantity: 2,
     fighter: 'any',
     text: 'ПОСЛЕ БИТВЫ: Можете вернуть 1 карту эффекта из вашего сброса в руку.',
     rules: [
       {
         moment: 'afterCombat',
-        // в сбросе нет карт эффекта — возвращать нечего, свойства нет и окна нет
+        // в сбросе нет карт эффекта — возвращать нечего, свойства нет и окна нет;
+        // `returnable` отсекает карты, которые не возвращаются в руку никогда («Зал суда»)
         when: [
           {
             fact: 'CARDS',
-            params: { zone: 'discard', type: 'effect', min: 1 },
+            params: { zone: 'discard', type: 'effect', returnable: true, min: 1 },
             var: 'spells',
           },
         ],
@@ -388,7 +388,7 @@ export default [
     ],
   },
   {
-    // покой как ресурс: карта за розыгрыш, здоровье — только за тихий ход без шага
+    // покой как ресурс: карта за розыгрыш, а тихий ход даёт выбор из двух верхних
     id: 'anubis_09',
     title: 'Суд молчит',
     type: 'effect',
@@ -396,18 +396,48 @@ export default [
     bonus: 2,
     quantity: 3,
     fighter: 'anubis',
-    text: 'Возьмите 1 карту. Если Анубис не двигался в этом ходу, также восстановите ему 2 здоровья.',
+    text: 'Возьмите 1 карту. Если Анубис не двигался в этом ходу, посмотрите 2 верхние карты колоды, возьмите 1 из них, а вторую положите под низ колоды.',
     rules: [
       {
         moment: 'effect',
         then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
       {
+        // окно выбора открывается само: кандидаты — две верхние карты колоды (колода-верх = конец массива)
         moment: 'effect',
         when: [
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
+          { fact: 'CARDS', params: { zone: 'deck', limit: 2, min: 1 }, var: 'top' },
         ],
-        then: [{ action: 'SET_HEALTH', fighterIds: ['anubis'], delta: 2 }],
+        then: [
+          {
+            action: 'SET_TARGETING',
+            op: 'open',
+            kind: 'options',
+            candidates: '$top',
+            count: 1,
+            required: true,
+            auto: true,
+          },
+        ],
+      },
+      {
+        moment: 'picked',
+        when: [{ fact: 'PICKED', var: 'picked' }],
+        then: [{ action: 'SET_CARDS', op: 'move', from: 'deck', to: 'hand', cardIds: '$picked' }],
+      },
+      {
+        // вторая из двух верхних уходит под низ; её ключ — верх колоды без выбранной карты
+        moment: 'picked',
+        when: [
+          { fact: 'PICKED', var: 'picked' },
+          {
+            fact: 'CARDS',
+            params: { zone: 'deck', exclude: '$picked', limit: 1, min: 1 },
+            var: 'rest',
+          },
+        ],
+        then: [{ action: 'SET_CARDS', op: 'bottom', from: 'deck', cardIds: '$rest' }],
       },
     ],
   },
@@ -418,20 +448,25 @@ export default [
     type: 'effect',
     value: null,
     bonus: 1,
-    quantity: 3,
+    quantity: 1,
     fighter: 'anubis',
-    text: 'Если Амат убита, возьмите 2 карты.',
+    text: 'Если Амат убита, возьмите 2 карты и сделайте Пелену активной до начала вашего следующего хода.',
     rules: [
       {
         moment: 'effect',
         when: [{ fact: 'LOST', params: { type: 'assistant' }, min: 1 }],
-        then: [{ action: 'SET_CARDS', op: 'draw', count: 2 }],
+        then: [
+          { action: 'SET_CARDS', op: 'draw', count: 2 },
+          // пелена поднимается временно: к началу своего следующего хода вернётся в прежнее состояние
+          { action: 'SET_ITEM', group: 'shroud', to: 'active', until: 'turnStart' },
+        ],
       },
     ],
   },
   {
-    // зал, где судят стоя: постановка одного из двоих без шага (до трёх клеток).
-    // весов на карте нет: на эффект оппонент не отвечает картой, сравнивать усиления не с чем
+    // сожжение улик: удар в лицо за каждую карту эффекта, уже ушедшую в сброс.
+    // `noReturn` — карта остаётся в сбросе навсегда: «Тайна бальзамирования» её не вернёт
+    // (факт `CARDS { returnable: true }`), поэтому петли «вернул → сжёг снова» нет
     id: 'anubis_11',
     title: 'Зал суда',
     type: 'effect',
@@ -439,30 +474,29 @@ export default [
     bonus: 3,
     quantity: 1,
     fighter: 'anubis',
-    text: 'Поставьте Анубиса или Амат на любую свободную клетку на расстоянии до 3 клеток (не считается движением).',
+    noReturn: true,
+    text: 'Если Анубис не двигался в этом ходу, нанесите герою оппонента урон, равный количеству карт эффектов в вашем сбросе. Когда эта карта уходит в сброс, она навсегда остаётся там и не может быть возвращена в руку владельца никаким способом.',
     rules: [
       {
-        // окно перемещения выбирает, кого вести; `teleport` — без шага, `once` — один перенос
         moment: 'effect',
         when: [
-          {
-            fact: 'FIGHTERS',
-            params: { fighterIds: ['anubis', 'amat'], frozen: false },
-            min: 1,
-            var: 'movers',
-          },
+          // сжигать можно только стоя: шаг гасит приговор, как и у «Погребального звона»
+          { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
+          // карта уже в сбросе, когда разыгрываются её правила, — минимум 1 урона
+          { fact: 'CARDS', params: { zone: 'discard', type: 'effect', count: true }, min: 1, var: 'n' },
+          { fact: 'FIGHTERS', params: { of: 'opponent', type: 'hero' }, min: 1, var: 'hero' },
         ],
-        then: [
-          {
-            action: 'SET_MOVEMENT',
-            op: 'open',
-            fighters: '$movers',
-            budget: 3,
-            optional: true,
-            once: true,
-            teleport: true,
-          },
+        then: [{ action: 'SET_HEALTH', fighterIds: '$hero', damage: '$n' }],
+      },
+      {
+        // проба «сработает ли эффект» считает сброс без самой карты: тогда бьём ровно на 1
+        moment: 'effect',
+        when: [
+          { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
+          { fact: 'CARDS', params: { zone: 'discard', type: 'effect', count: true }, max: 0 },
+          { fact: 'FIGHTERS', params: { of: 'opponent', type: 'hero' }, min: 1, var: 'hero' },
         ],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$hero', damage: 1 }],
       },
     ],
   },

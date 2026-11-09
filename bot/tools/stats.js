@@ -10,10 +10,9 @@
  * сила героя остаётся в обеих половинах одинаковой, поэтому разница винрейтов — это вклад политики.
  *
  * Запуск:
- *   node bot/tools/stats.js --games=60 --workers=12 --policy=qvalue --policy-b=greedy
- *   node bot/tools/stats.js --games=60 --workers=12 --policy=qthink --policy-b=greedy --depth=0,1,2,3
- * `--depth` задаёт `QVALUE_DEPTH` (через запятую — несколько глубин подряд; `QVALUE_TOP` — `--top`):
- * так «думанье» меряется на тех же сидах и в тот же день, что и прямая модель. `--max-steps` режет
+ *   node bot/tools/stats.js --games=60 --workers=12 --policy=net --policy-b=plain
+ *   node bot/tools/stats.js --games=60 --workers=12 --policy=search --policy-b=trade
+ * `--max-steps` режет
  * длинные партии: у затянувшихся замер стоит вчетверо дороже, а в винрейт они всё равно не попадают.
  *
  * Зеркало (один и тот же герой с двух сторон) движок собрать не даёт — id игрока это id героя, —
@@ -21,7 +20,6 @@
  * ровно то, что решает приёмку.
  */
 import { runMatrixParallel } from '../learn/parallel.js';
-import { artifactName } from '../play/artifact.js';
 import { heroIds as poolHeroIds, heroName } from '../play/pool.js';
 import { percent } from '../play/metrics.js';
 import { failuresOf, groupByReason, plural, showReport } from './sweep.js';
@@ -45,18 +43,8 @@ const from = numberArg('from', 1);
 const workers = numberArg('workers', 1);
 const maxSteps = numberArg('max-steps', null);
 const mapId = stringArg('map', 'generated');
-const policy = stringArg('policy', 'qvalue');
+const policy = stringArg('policy', 'trade');
 const policyB = stringArg('policy-b', 'greedy');
-// Артефакты сторон: `--artifact` — держатель `--policy`, `--artifact-b` — держатель `--policy-b`.
-// Пусто — вшитый в бандл (`bot/play/artifact.js`). Так меряется «новая версия против старой» и
-// «ученик за одного героя против ученика за другого»: одна и та же политика, разные модели.
-const artifact = stringArg('artifact', '') || null;
-const artifactB = stringArg('artifact-b', '') || null;
-const top = stringArg('top', null);
-const depths = (stringArg('depth', '') ?? '')
-  .split(',')
-  .map(value => value.trim())
-  .filter(value => value !== '');
 const requested = (stringArg('heroes') ?? '')
   .split(',')
   .map(value => value.trim())
@@ -126,7 +114,7 @@ const sumOf = table => {
 };
 
 /** Одна серия: политика `side` ходит первой, `other` — второй (и наоборот во встречной). */
-const measure = async (label, side, other, artifacts = {}) => {
+const measure = async (label, side, other) => {
   const started = Date.now();
   const { pairResults, mirrorPairs } = await runMatrixParallel({
     heroes,
@@ -136,8 +124,6 @@ const measure = async (label, side, other, artifacts = {}) => {
     policyB: other,
     maxSteps: maxSteps ?? undefined,
     workers,
-    artifact: artifacts.a ?? null,
-    artifactB: artifacts.b ?? null,
   });
   const reports = [
     ...pairResults.flatMap(pair => pair.reports),
@@ -175,22 +161,13 @@ const diffOf = (measured, baseline, heroId) => {
 /** Порог шума разницы двух винрейтов: оба посчитаны по своей серии партий. */
 const deltaNoise = gamesPerHero => 1.96 * Math.sqrt((2 * 0.25) / Math.max(1, gamesPerHero)) * 100;
 
-const runOne = async depth => {
-  if (depth != null) process.env.QVALUE_DEPTH = String(depth);
-  if (top != null) process.env.QVALUE_TOP = String(top);
-  const suffix =
-    artifact == null && artifactB == null
-      ? ''
-      : `, артефакт ${artifactName(artifact)} против ${artifactName(artifactB)}`;
-  const label =
-    depth == null
-      ? `${policy}${suffix}`
-      : `${policy} (глубина ${depth}${top ? `, верхушка ${top}` : ''}${suffix})`;
+const runOne = async () => {
+  const label = policy;
 
   console.log(`\n### ${label} против ${policyB}`);
 
-  const main = await measure(label, policy, policyB, { a: artifact, b: artifactB });
-  const base = await measure(policyB, policyB, policy, { a: artifactB, b: artifact });
+  const main = await measure(label, policy, policyB);
+  const base = await measure(policyB, policyB, policy);
   const perHero = Math.round(main.games / heroes.length);
 
   console.log(
@@ -234,10 +211,7 @@ const runOne = async depth => {
   return { ...main, base, failures, label };
 };
 
-const results = [];
-for (const depth of depths.length === 0 ? [null] : depths) {
-  results.push(await runOne(depth));
-}
+const results = [await runOne()];
 
 // сводка «герой × глубина»: по ней видно, где думанье добавляет, а где нет
 if (results.length > 1) {

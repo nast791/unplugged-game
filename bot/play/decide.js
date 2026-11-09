@@ -22,8 +22,6 @@ import {
   weightsFor,
   gene,
 } from './policy.js';
-import { PRIOR_MIX, SELECTION_TEMPERATURE, rankOptions, scoreOptions, valueOf } from './qvalue.js';
-import { featuresOf } from './value.js';
 
 /**
  * Выбор хода — ядро решений бота, **без серверных зависимостей**: здесь только то, что нужно, чтобы по
@@ -574,9 +572,7 @@ const movementActions = (state, playerId, movement, weights, { afterCard = false
 
 /**
  * Политики, которые выбирают действие **поиском** (`bot/play/search.js`): варианты перечисляются жадно,
- * а решение принимает поиск. Отличаются оценкой листа (`net`, `matchup`, `plain`) и приором корня
- * (`qprior` — подсказка от ученика, `bot/play/qvalue.js`). Список один на всех потребителей: по нему же
- * `bot/learn/export.js` решает, писать ли в дневник доли доигрываний.
+ * а решение принимает поиск. Отличаются оценкой листа (`net`, `matchup`, `plain`, `position`).
  */
 export const SEARCH_POLICIES = new Set([
   'search',
@@ -588,8 +584,6 @@ export const SEARCH_POLICIES = new Set([
   'matchup',
   'plain',
   'position',
-  'qleaf',
-  'qprior',
   'turn',
 ]);
 
@@ -602,316 +596,37 @@ export const PLAN_POLICIES = new Set(['chain']);
 
 /**
  * Политика, которой **перечисляются** варианты игры: она расставляет веса, а решение потом принимает
- * модель (`qvalue`), поиск или планировщик. Одна на рантайм и дневник — это не удобство, а условие
- * честности: признак 19 вектора варианта («мнение политики») считается по **этим** весам
- * (`bot/play/actionFeatures.js`), поэтому модель, которую учили на весах одного предлагателя, а играют
- * на весах другого, видит на входе чужие числа. Так уже случалось: в дневник уезжали веса жадного
- * (`§23`), а живой ход в браузере с §36 перечисляет `trade`.
- *
- * Менять значение можно, но **только вместе с дневником**: старый дневник после смены недействителен
- * (числа признака 19 в нём другие), его пересобирают, а модель переучивают.
+ * поиск или планировщик. Одна на рантайм и замеры — это условие честности: вес варианта и его порядок
+ * должны быть одни и те же в браузере (`bot/play/ai.js`) и в прогонах (`bot/play/duel.js`).
  */
 export const PROPOSER_POLICY = 'trade';
 
 /**
  * Кем перечисляются варианты для политики `policy`: своя политика, если она сама расставляет веса
- * (`greedy`, `trade`, …), иначе — предлагатель рантайма. Так дневник партий ученика и живого режима
- * собирается по одному и тому же мнению политики (`bot/learn/export.js`, `bot/play/ai.js`).
+ * (`greedy`, `trade`, …), иначе — предлагатель рантайма. Так перечисление в браузере и в прогонах
+ * совпадает.
  */
 export const proposalPolicy = policy =>
-  SEARCH_POLICIES.has(policy) || PLAN_POLICIES.has(policy) || policy === 'qvalue'
+  SEARCH_POLICIES.has(policy) || PLAN_POLICIES.has(policy)
     ? PROPOSER_POLICY
     : policy;
-
-/**
- * Все действия, которые движок сейчас принимает от игрока (по данным `runUi`), с весами от политики.
- *
- * `search` — особая политика: она не расставляет веса, а перебирает действия поиском по детерминизациям
- * (`bot/play/search.js`). Поэтому перечисление идёт весами предлагателя рантайма (`proposalPolicy`: они
- * задают порядок и запреты вариантов), а выбор остаётся за поиском: выбранному действию вес 1,
- * остальным 0.
- *
- * `qvalue` — политика обученного тренера (`bot/learn/export.js` → `trainer/` → `bot/play/qvalue.js`):
- * варианты перечисляются предлагателем рантайма, а веса переставляет модель, которая оценивает **пару**
- * «состояние + действие». Так играет то, что раньше жило только в замерах: ценность действия, а не
- * позиции.
- */
-/**
- * Продолжение глазами **самого ученика**: он смотрит на позицию после своего хода и отвечает на вопрос
- * «что я тут смогу» — мягкий максимум собственных оценок по своим же вариантам, а если ход уже не мой
- * (или вариантов нет) — его голова оценки позиции `V(s)`. Никакого поиска и никакого оракула: это его
- * собственный пересчёт на шаг вперёд, тот же, каким `bot/play/search.js: qvalueLeaf` пользуется на листе.
- */
-const continuationValue = (state, playerId, artifact = null) => {
-  let offered = [];
-  try {
-    // перечисление — предлагателем рантайма (`proposalPolicy`), а не жадным: иначе оценки продолжения
-    // считались бы на другом списке вариантов, чем тот, которым играет рантайм
-    offered = enumerateActions(state, playerId, { policy: proposalPolicy('qvalue') }).filter(
-      entry => Number(entry.weight) > 0,
-    );
-  } catch {
-    offered = [];
-  }
-
-  const scores = offered.length > 0 ? scoreOptions(state, playerId, offered, { artifact }) : null;
-  if (scores != null) {
-    const values = offered.map(entry => scores.get(JSON.stringify(entry.action)) ?? 0);
-    const best = Math.max(...values);
-    const exp = values.map(value =>
-      Math.exp((value - best) / Math.max(0.05, SELECTION_TEMPERATURE)),
-    );
-    const total = exp.reduce((sum, value) => sum + value, 0) || 1;
-    return values.reduce((sum, value, index) => sum + value * (exp[index] / total), 0);
-  }
-
-  return valueOf(undefined, featuresOf(state, playerId));
-};
-
-/**
- * Во сколько раз пересчёт вперёд весомее прямой оценки действия (`QVALUE_LOOKAHEAD`).
- *
- * **Замер §31: своему же ученику пересчёт вперёд вредит.** `qdeep` против `greedy` при разном весе:
- * 0 — **54%** (это просто `qvalue` с примесью политики), 0,25 — 50%, 0,5 — 50%, 1 — 46%: монотонно хуже.
- * Причина: `Q(s, a)` различает варианты **внутри** решения, но будущую позицию оценивать не обучен —
- * там другое распределение, и подмешивание его головы `V(s)` портит уже настроенный выбор. По умолчанию 0;
- * механизм остаётся опцией для будущих проб, когда появится честная цель для оценки последствий.
- */
-const LOOKAHEAD = 0;
-
-const envLookahead = () => {
-  const raw = typeof process !== 'undefined' ? process?.env?.QVALUE_LOOKAHEAD : null;
-  const value = Number(raw);
-  return raw == null || raw === '' || !Number.isFinite(value) ? null : value;
-};
-
-/**
- * Решение ученика **с пересчётом вперёд** (политика `qdeep`): прямая оценка действия плюс λ · «что я
- * получу после него» — тем же способом, что и на листе поиска. Это и есть «ученик сам считает наперёд и
- * думает»: без поиска, без оракула, только своими `Q(s, a)` и своей головой оценки позиции.
- */
-const deepOptions = (state, playerId, options, artifact = null) => {
-  const ranked = rankOptions(state, playerId, options, { artifact });
-  const look = envLookahead() ?? LOOKAHEAD;
-  if (look <= 0) return ranked;
-
-  const offered = ranked.filter(entry => Number(entry.weight) > 0);
-  if (offered.length === 0) return ranked;
-
-  const scores = new Map();
-  for (const entry of offered) {
-    const base = Number(entry.qvalue) || 0;
-    let next = 0;
-    try {
-      next = continuationValue(runAction(state, { ...entry.action, playerId }), playerId, artifact);
-    } catch {
-      next = 0;
-    }
-    scores.set(JSON.stringify(entry.action), base + look * next);
-  }
-
-  const best = Math.max(...scores.values());
-  const scale = Math.max(...offered.map(entry => Number(entry.weight) || 0)) || 1;
-  const exp = offered.map(entry =>
-    Math.exp(
-      ((scores.get(JSON.stringify(entry.action)) ?? 0) - best) /
-        Math.max(0.05, SELECTION_TEMPERATURE),
-    ),
-  );
-  const total = exp.reduce((sum, value) => sum + value, 0) || 1;
-  const byAction = new Map(
-    offered.map((entry, index) => [
-      JSON.stringify(entry.action),
-      { weight: (exp[index] / total) * scale, qvalue: scores.get(JSON.stringify(entry.action)) },
-    ]),
-  );
-
-  return ranked.map(entry => {
-    const found = byAction.get(JSON.stringify(entry.action));
-    return found == null ? { ...entry, weight: 0 } : { ...entry, ...found };
-  });
-};
-
-/** Оценка позиции глазами самого ученика — его голова `V(s)`, в той же шкале, что исход (±1). */
-const valueOfState = (state, playerId) => valueOf(undefined, featuresOf(state, playerId));
-
-const envDepth = () => {
-  const raw = typeof process !== 'undefined' ? process?.env?.QVALUE_DEPTH : null;
-  const value = Number(raw);
-  return raw == null || raw === '' || !Number.isFinite(value)
-    ? null
-    : Math.max(0, Math.trunc(value));
-};
-
-/** Сколько своих вариантов перебирать внутри пересчёта (на корне перебираются все). */
-const THINK_BRANCH = 4;
-
-/** Сколько лучших по модели вариантов уходит в пересчёт (`QVALUE_TOP`; 0 — думать по всем). */
-const THINK_TOP = 3;
-
-const envTop = () => {
-  const raw = typeof process !== 'undefined' ? process?.env?.QVALUE_TOP : null;
-  const value = Number(raw);
-  return raw == null || raw === '' || !Number.isFinite(value)
-    ? null
-    : Math.max(0, Math.trunc(value));
-};
-
-/**
- * **Думанье ученика** (§32): пересчёт вперёд **в одной шкале** — его собственная оценка позиции `V(s)`.
- *
- * Прошлая версия (`qdeep`) складывала ранжирующий счёт `Q(s, a)` с оценкой будущего и от этого только
- * портилась. Здесь шкала одна: свои ходы — максимум, ответы соперника — минимум, лист — `V(s)`.
- * Глубина `depth` — это и есть «сколько он думает»: 0 — просто оценка позиции, 1 — свой ход и оценка
- * получившейся позиции, 2 — свой ход, ответ соперника и оценка, и так далее.
- *
- * Ветвление ограничено (`THINK_BRANCH` на внутренних своих узлах, у соперника берётся его сильнейший по
- * весам ход): без предела перебор растёт как степень и «думать дольше» станет невозможно.
- */
-const thinkValue = (state, playerId, depth, artifact = null) => {
-  if (state.hook === 'gameEnd') return String(state.winner) === String(playerId) ? 1 : -1;
-  if (depth <= 0) return valueOfState(state, playerId);
-
-  const actor = actorOf(state);
-  if (actor == null) return valueOfState(state, playerId);
-  const mine = String(actor) === String(playerId);
-
-  let offered = [];
-  try {
-    // варианты перечисляет предлагатель рантайма: соперник в пересчёте должен ходить тем же списком,
-    // каким ходит в игре, иначе «мой ход, его ответ» считается по чужой политике
-    offered = enumerateActions(state, actor, { policy: proposalPolicy('qvalue') }).filter(
-      entry => Number(entry.weight) > 0,
-    );
-  } catch {
-    return valueOfState(state, playerId);
-  }
-  if (offered.length === 0) return valueOfState(state, playerId);
-
-  // у соперника — его сильнейший по весам ход; у себя — свои сильнейшие, чтобы перебор не взрывался
-  const ordered = offered
-    .slice()
-    .sort((left, right) => (Number(right.weight) || 0) - (Number(left.weight) || 0))
-    .slice(0, mine ? THINK_BRANCH : 1);
-
-  const values = [];
-  for (const entry of ordered) {
-    try {
-      values.push(
-        thinkValue(
-          runAction(state, { ...entry.action, playerId: actor }),
-          playerId,
-          depth - 1,
-          artifact,
-        ),
-      );
-    } catch {
-      /* нелегальный вариант в пересчёте пропускаем */
-    }
-  }
-  if (values.length === 0) return valueOfState(state, playerId);
-  return mine ? Math.max(...values) : Math.min(...values);
-};
-
-/**
- * Решение ученика: **сначала модель, потом думанье** (политика `qthink`).
- *
- * Ступень 1 — дешёвое ранжирование моделью `Q(s, a)` с примесью политики: это то, что уже играет 54%
- * против `greedy` (§29–§31). Ступень 2 — пересчёт вперёд (`thinkValue`) **только по верхушке** этого
- * списка (`QVALUE_TOP`, по умолчанию 3): думанье решает спор между уже хорошими вариантами, а не
- * подменяет выбор — в чистом `qthink` по всем вариантам оно давало 49% (глубже, но слабее).
- */
-const thinkOptions = (state, playerId, options, artifact = null) => {
-  const ranked = rankOptions(state, playerId, options, { artifact });
-  const depth = envDepth() ?? 1;
-  const top = envTop() ?? THINK_TOP;
-  const offered = ranked.filter(entry => Number(entry.weight) > 0);
-  if (offered.length === 0) return ranked;
-
-  const keyOf = entry => JSON.stringify(entry.action);
-  const priorOf = entry => Math.log1p(Math.max(0, Number(entry.weight) || 0));
-
-  // ступень 1: ранжирование моделью — из него берётся шортлист
-  const base = new Map(
-    offered.map(entry => [keyOf(entry), (Number(entry.qvalue) || 0) + PRIOR_MIX * priorOf(entry)]),
-  );
-  const shortlist =
-    top > 0
-      ? offered
-          .slice()
-          .sort((left, right) => base.get(keyOf(right)) - base.get(keyOf(left)))
-          .slice(0, top)
-      : offered;
-  const inShortlist = new Set(shortlist.map(keyOf));
-
-  // ступень 2: пересчёт вперёд только по шортлисту
-  const scores = new Map(base);
-  for (const entry of shortlist) {
-    let value = -1;
-    try {
-      value = thinkValue(
-        runAction(state, { ...entry.action, playerId }),
-        playerId,
-        depth,
-        artifact,
-      );
-    } catch {
-      value = -1;
-    }
-    scores.set(keyOf(entry), value + 0.05 * priorOf(entry));
-  }
-
-  // варианты вне шортлиста выиграть не могут: модель уже сказала, что они хуже
-  if (top > 0 && inShortlist.size < offered.length) {
-    const worst = Math.min(...[...inShortlist].map(key => scores.get(key))) - 1;
-    for (const entry of offered) {
-      if (!inShortlist.has(keyOf(entry))) scores.set(keyOf(entry), worst);
-    }
-  }
-
-  const best = Math.max(...offered.map(entry => scores.get(keyOf(entry))));
-  const scale = Math.max(...offered.map(entry => Number(entry.weight) || 0)) || 1;
-  const exp = offered.map(entry =>
-    Math.exp((scores.get(keyOf(entry)) - best) / Math.max(0.05, SELECTION_TEMPERATURE)),
-  );
-  const total = exp.reduce((sum, value) => sum + value, 0) || 1;
-  const byAction = new Map(
-    offered.map((entry, index) => [
-      keyOf(entry),
-      { weight: (exp[index] / total) * scale, qvalue: scores.get(keyOf(entry)) },
-    ]),
-  );
-
-  return ranked.map(entry => {
-    const found = byAction.get(keyOf(entry));
-    return found == null ? { ...entry, weight: 0 } : { ...entry, ...found };
-  });
-};
 
 export const actionsFor = (
   state,
   playerId,
-  { policy = 'random', style = 2, skipAllowed = false, artifact = null } = {},
+  { policy = 'random', style = 2, skipAllowed = false } = {},
 ) => {
-  // `search`, `net`, `matchup`, `plain` и `qprior` — поиск; отличаются оценкой листа и приором корня.
+  // `search`, `net`, `matchup`, `plain` и `position` — поиск; отличаются оценкой листа.
   // `chain` — планировщик хода (`bot/play/plan.js`): варианты перечисляются так же, а решение — цепочка.
   const planning = PLAN_POLICIES.has(policy);
   const searching = SEARCH_POLICIES.has(policy) || planning;
-  const ranked = policy === 'qvalue';
-  const deep = policy === 'qdeep';
-  const thinking = policy === 'qthink';
-  // Перечисление — **одно на рантайм и дневник** (`proposalPolicy`): у поиска, планировщика и ученика
-  // веса вариантов задаёт предлагатель рантайма (`trade`), а решение принимают они сами. Так признак 19
-  // вектора варианта значится теми же весами, которыми варианты и предложены, — иначе дневник учит на
-  // мнении политики, которого в игре не видно (§23 — уже случалось).
+  // Перечисление — **одно на рантайм и замеры** (`proposalPolicy`): у поиска и планировщика веса
+  // вариантов задаёт предлагатель рантайма (`trade`), а решение принимают они сами.
   const options = enumerateActions(state, playerId, {
     policy: proposalPolicy(policy),
     style,
     skipAllowed,
   });
-  if (ranked) return rankOptions(state, playerId, options, { artifact });
-  if (deep) return deepOptions(state, playerId, options, artifact);
-  if (thinking) return thinkOptions(state, playerId, options, artifact);
   if (!searching) return options;
 
   // поиск перебирает только те действия, которые политика действительно предлагает: вес 0 значит
@@ -942,19 +657,10 @@ export const actionsFor = (
 
   // `net` — тот же поиск, но с оценкой листа из обученной модели (`bot/play/value.js`), `matchup` — её
   // проекцией на пару «мой герой против этого соперника» (`bot/play/matchups.js`), `plain` — прежней
-  // ручной формулой (§16) для замера вклада ресурса, помощников и покоя (§21), `qprior` — ручной лист с
-  // приором корня от ученика (`bot/play/search.js: rootPriors`)
+  // ручной формулой (§16) для замера вклада ресурса, помощников и покоя (§21)
   const budget = { ...searchBudget() };
-  // каким артефактом играет эта сторона: поиск, `qleaf` и `qprior` считают оценки ученика, поэтому
-  // артефакт обязан доехать до листа и приора — иначе обе стороны матча играли бы одной моделью
-  if (artifact != null) budget.artifact = artifact;
   if (policy === 'net' || policy === 'matchup' || policy === 'plain' || policy === 'position')
     budget.evaluation = policy;
-  // `qleaf` — тот же поиск, но лист оценивает **ученик**: он делает в позиции свой лучший ход (1 шаг
-  // пересчёта вперёд собственными `Q(s, a)`), а не считается ручной формулой
-  if (policy === 'qleaf') budget.evaluation = 'qvalue';
-  // `qprior` — ручной лист, но приор корня даёт ученик (`bot/play/search.js: rootPriors`/`rootAdvantages`)
-  if (policy === 'qprior') budget.priorSource = 'qvalue';
   /**
    * `spair` — тот же поиск, но решение корня уточняется **парной переоценкой** (§52): раскрытые варианты
    * считаются в одних и тех же мирах (`bot/play/search.js: paired`). Отдельная политика, а не переменная
@@ -991,11 +697,11 @@ export const actionsFor = (
   if (decision?.action == null) return options;
 
   const chosen = JSON.stringify(decision.action);
-  // доли доигрываний отдаются наружу вместе с вариантами: дневник (`bot/learn/export.js`) пишет по ним
-  // цель политики, и это то же решение, что сыграла партия, а не его повторный пересчёт
+  // доли доигрываний отдаются наружу вместе с вариантами: это то же решение, что сыграла партия,
+  // а не его повторный пересчёт
   const visits = new Map((decision.rows ?? []).map(row => [row.key, row.visits]));
   // средняя оценка варианта у корня поиска (`rows[].mean`) — это **ценность действия**, а не только
-  // «сколько его перебирали»: по ней дневник пишет цель для каждого варианта, а не лишь для сыгранного
+  // «сколько его перебирали»
   const values = new Map((decision.rows ?? []).map(row => [row.key, row.mean]));
   return options.map(entry => {
     const key = JSON.stringify(entry.action);

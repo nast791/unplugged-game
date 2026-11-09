@@ -58,7 +58,7 @@ describe('признаки оценки', () => {
   it('обученная модель отличает выигранные позиции от проигранных на настоящих партиях', () => {
     const scored = [];
 
-    for (const seed of [1, 2, 3, 4]) {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]) {
       let previous = null;
       const report = playDuel({
         seed,
@@ -66,7 +66,7 @@ describe('признаки оценки', () => {
         heroB: 'tesla',
         policy: 'greedy',
         onStep: ({ step, state, playerId }) => {
-          if (step % 25 !== 0) return;
+          if (step % 10 !== 0) return;
           previous = { score: scoreOf(state, playerId), playerId: String(playerId) };
         },
       });
@@ -74,13 +74,13 @@ describe('признаки оценки', () => {
       scored.push({ ...previous, won: previous.playerId === String(report.state.winner) });
     }
 
-    expect(scored.length).toBeGreaterThan(2);
+    expect(scored.length).toBeGreaterThan(8);
     // у победителя средняя оценка выше, чем у проигравшего: модель смотрит в правильную сторону
     const winners = scored.filter(row => row.won).map(row => row.score);
     const losers = scored.filter(row => !row.won).map(row => row.score);
     const mean = list => (list.length === 0 ? 0 : list.reduce((a, b) => a + b, 0) / list.length);
     expect(mean(winners)).toBeGreaterThan(mean(losers));
-  });
+  }, 120000);
 });
 
 /**

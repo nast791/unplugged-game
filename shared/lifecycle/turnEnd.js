@@ -40,8 +40,8 @@ export default {
       ...partyState,
       _enteredHooks: { ...(partyState._enteredHooks ?? {}), turnEnd: false },
     };
-    // временные стихии живут до конца хода: снимаем после его правил, перед передачей хода
-    state = clearTemporaryTerrains(state);
+    // временные стихии живут до конца хода своего владельца: снимаем после его правил, перед передачей хода
+    state = clearTemporaryTerrains(state, state.turn?.playerId);
     for (const player of state.players ?? []) {
       if (player._activePhase) player._activePhase = null;
     }

@@ -177,7 +177,8 @@ export default [
     ],
   },
   {
-    // добор за битву, а победа отодвигает того, кто подошёл в упор (перемещение необязательное)
+    // добор за битву, а победа поджигает клетку под Ифритом: добавка живёт до конца хода
+    // владельца, поэтому годится и в защиту — на свой ход Ифрит уже стоит на лаве
     id: 'ifrit_08',
     title: 'Стена огня',
     type: 'hybrid',
@@ -185,7 +186,7 @@ export default [
     bonus: 2,
     quantity: 2,
     fighter: 'any',
-    text: 'ПОСЛЕ БИТВЫ: Доберите 1 карту. Если вы победили, можете также сдвинуть бойца противника из этой битвы на 1 клетку.',
+    text: 'ПОСЛЕ БИТВЫ: Доберите 1 карту. Если вы победили, клетка Ифрита до конца вашего хода получает дополнительную стихию лавы, если на ней меньше 3 стихий.',
     rules: [
       {
         moment: 'afterCombat',
@@ -195,12 +196,10 @@ export default [
         moment: 'afterCombat',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
-          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foes' },
-          // атакующий мог погибнуть в бою — тогда двигать некого
-          { fact: 'FIGHTERS', params: { fighterIds: '$foes' }, min: 1, var: 'alive' },
+          { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'] }, var: 'hero' },
         ],
         then: [
-          { action: 'SET_MOVEMENT', op: 'open', fighters: '$alive', budget: 1, optional: true },
+          { action: 'SET_CELL_TERRAIN', op: 'add', cellId: '$hero', terrain: 'lava' },
         ],
       },
     ],

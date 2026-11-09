@@ -48,6 +48,8 @@ export const RECALL_PLAYED_CARD = (partyState, action = {}) => {
   if (!inCombat && index < 0) return partyState;
 
   const source = inCombat ? combat[slotKey] : discard[index];
+  // карта с пометкой `noReturn` остаётся в сбросе навсегда («Зал суда» Анубиса)
+  if (source?.noReturn === true) return partyState;
   const nextValue = Math.max(0, cardValue(source) + delta);
 
   if (nextValue <= 0) {

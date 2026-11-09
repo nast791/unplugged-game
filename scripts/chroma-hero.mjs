@@ -10,6 +10,7 @@ const UNMIX_CAP = 2;
 const DESPILL = 6;
 const HOLE_MAX = 4000;
 const PAD = 1.12;
+const BG_TOL = 60;
 
 const args = process.argv.slice(2);
 const flag = name => {
@@ -54,7 +55,13 @@ for (let p = 0; p < total; p++) {
   const i = p * 4;
   const g = rgb[i + 1] - Math.max(rgb[i], rgb[i + 2]);
   green[p] = g;
-  alpha[p] = Math.min(1, Math.max(0, (T_HI - g) / (T_HI - T_LO)));
+  // заливка Шедеврума по краям темнее и остаётся в полупрозрачной кайме: опознаём её по близости
+  // к цвету фона, а не по порогу зелени, иначе на прозрачный кадр ложится еле видная рамка
+  const bgLike =
+    Math.abs(rgb[i] - bg[0]) <= BG_TOL &&
+    Math.abs(rgb[i + 1] - bg[1]) <= BG_TOL &&
+    Math.abs(rgb[i + 2] - bg[2]) <= BG_TOL;
+  alpha[p] = bgLike ? 0 : Math.min(1, Math.max(0, (T_HI - g) / (T_HI - T_LO)));
 }
 
 // дырки в силуэте (просветы между пальцами, в волосах) — не фон, их возвращаем фигуре

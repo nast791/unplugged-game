@@ -14,9 +14,7 @@ import { cardById } from './pool.js';
 import { resourceOf, resourceProgress, resourceReady } from './resources.js';
 import { scoreOf, stillHero } from './value.js';
 import { pairScore } from './matchups.js';
-import { SELECTION_TEMPERATURE, scoreOptions } from './qvalue.js';
 import trainedWeights from './value-weights.js';
-
 /**
  * Поиск по дереву с детерминизацией (SO-ISMCTS): бот доигрывает партию в нескольких **возможных мирах**
  * и выбирает ход по их исходам. Три части:
@@ -39,7 +37,6 @@ const shuffle = (list, rng) => {
   }
   return list;
 };
-
 /** Свой ГПСЧ поиска выводится из состояния: повтор партии по сиду даёт тот же поиск. */
 const rngOf = state => ({
   value:
@@ -48,11 +45,8 @@ const rngOf = state => ({
       (Number(state.round ?? 0) * 3266489917)) >>>
     0,
 });
-
 const zoneCards = zone => zone?.cards ?? [];
-
 const playerIdOf = player => String(player?.id ?? '');
-
 /**
  * Фабрика возможных миров глазами `viewerId`. Остаток считается один раз по настоящему состоянию, а
  * каждый мир — это **поверхностная** копия с новыми объектами зон: глубокая копия на каждое доигрывание
@@ -67,7 +61,6 @@ export const worldFactory = (state, viewerId) => {
       id: playerIdOf(player),
       unseen: unseenOf(state, player.heroId, viewerId),
     }));
-
   return rng => {
     let sequence = 0;
     const take = pool => {
@@ -76,14 +69,12 @@ export const worldFactory = (state, viewerId) => {
       // номер копии уникален в мире: движок различает карты по `instanceId`
       return card == null ? null : { ...card, instanceId: `${cardId}_w${sequence++}` };
     };
-
     const players = (state.players ?? []).map(player => {
       if (playerIdOf(player) === viewerKey) {
         return { ...player, deck: { ...player.deck, cards: shuffle([...ownDeck], rng) } };
       }
       const known = others.find(entry => entry.id === playerIdOf(player));
       if (!known) return player;
-
       const pool = [];
       for (const [cardId, copies] of known.unseen.pooled) {
         for (let copy = 0; copy < copies; copy += 1) pool.push(cardId);
@@ -101,33 +92,26 @@ export const worldFactory = (state, viewerId) => {
         },
       };
     });
-
     return { ...state, players };
   };
 };
-
 /** Один мир — для тестов и отладки: та же сборка, что и в поиске. */
 export const determinize = (state, viewerId, rng) => worldFactory(state, viewerId)(rng);
-
 const hpSum = player =>
   (player?.fighters ?? []).reduce(
     (sum, fighter) => sum + Math.max(0, Number(fighter.currentHp) || 0),
     0,
   );
-
 const heroHp = player =>
   (player?.fighters ?? [])
     .filter(fighter => fighter.type === 'hero')
     .reduce((sum, fighter) => sum + Math.max(0, Number(fighter.currentHp) || 0), 0);
-
 const clamp = value => Math.max(-0.95, Math.min(0.95, value));
-
 /** Герой игрока, если он жив: позиционные признаки считаются вокруг него, а не вокруг абстракции. */
 const heroOfPlayer = player =>
   (player?.fighters ?? []).find(
     fighter => fighter.type === 'hero' && Number(fighter.currentHp) > 0,
   ) ?? null;
-
 const attackersOf = (state, target, attackers) => {
   if (target?.currentPosition == null) return 0;
   const distances = cellDistances(state, target.currentPosition);
@@ -137,7 +121,6 @@ const attackersOf = (state, target, attackers) => {
     return distance != null && distance <= (Number(enemy.attackRange) || 1);
   }).length;
 };
-
 /** Прикрытие: свои бойцы в одном шаге от героя (щит из помощников вокруг того, кого берегут). */
 const supportOf = (state, hero, allies) => {
   if (hero?.currentPosition == null) return 0;
@@ -149,7 +132,6 @@ const supportOf = (state, hero, allies) => {
     return distance != null && distance <= 2;
   }).length;
 };
-
 /**
  * Геометрия позиции — то, чего у листа не было вовсе (§29). Замер показал, что оракул **сам себе**
  * противоречит на решениях-клетках (56% согласия двух прогонов на одной позиции, и рост бюджета до 96
@@ -167,11 +149,9 @@ const positionScore = (state, viewerId) => {
     (player?.fighters ?? []).filter(
       fighter => Number(fighter.currentHp) > 0 && fighter.currentPosition != null,
     );
-
   const myHero = heroOfPlayer(mine);
   const foeHeroes = others.map(heroOfPlayer).filter(Boolean);
   if (myHero == null && foeHeroes.length === 0) return 0;
-
   const myFighters = live(mine);
   const foeFighters = others.flatMap(player => live(player));
   const myThreat = attackersOf(state, myHero, foeFighters) / 3;
@@ -184,11 +164,9 @@ const positionScore = (state, viewerId) => {
     (foeHeroes.length === 0
       ? 0
       : Math.max(...foeHeroes.map(hero => supportOf(state, hero, foeFighters)))) / 3;
-
   // угроза герою весит больше прикрытия: подставленный помощник полезен, но не равен спасённому здоровью
   return (foeThreat - myThreat) * 0.25 + (mySupport - foeSupport) * 0.1;
 };
-
 /** Сумма признаков позиции без обрезки — чтобы позиционная добавка не терялась в `clamp`. */
 const leafRaw = (mine, others) => {
   const sum = pick => others.reduce((total, player) => total + pick(player), 0);
@@ -202,7 +180,6 @@ const leafRaw = (mine, others) => {
   const ready = player => resourceReady(resourceOf(player));
   const still = player => (stillHero(player) ? 1 : 0);
   const stillness = stillnessWeight(mine?.heroId);
-
   return (
     (heroHp(mine) - sum(heroHp)) / 8 +
     (hpSum(mine) - sum(hpSum)) / 24 +
@@ -214,7 +191,6 @@ const leafRaw = (mine, others) => {
     (still(mine) - sum(still)) * stillness
   );
 };
-
 /**
  * Оценка позиции глазами `viewerId`: терминал — победа или поражение, иначе здоровье героя (оно решает
  * партию), суммарное здоровье команды и запас колоды с наказанием за тонкую (истощение стоит 2 здоровья
@@ -226,37 +202,30 @@ const leafRaw = (mine, others) => {
  */
 export const leafScore = (state, viewerId) => {
   if (state.hook === 'gameEnd') return String(state.winner) === String(viewerId) ? 1 : -1;
-
   const players = state.players ?? [];
   const key = String(viewerId);
   const mine = players.find(player => playerIdOf(player) === key) ?? null;
   const others = players.filter(player => playerIdOf(player) !== key);
-
   return clamp(leafRaw(mine, others));
 };
-
 /**
  * Та же оценка плюс **геометрия** (§29): `SEARCH_EVAL=position` включает её в поиске и в оракуле. Нужна
  * потому, что без неё лист не различает шаги, и цель обучения по клеткам оказывается шумом.
  */
 export const leafScorePosition = (state, viewerId) => {
   if (state.hook === 'gameEnd') return String(state.winner) === String(viewerId) ? 1 : -1;
-
   const players = state.players ?? [];
   const key = String(viewerId);
   const mine = players.find(player => playerIdOf(player) === key) ?? null;
   const others = players.filter(player => playerIdOf(player) !== key);
-
   return clamp(leafRaw(mine, others) + positionScore(state, viewerId));
 };
-
 /**
  * Прежняя формула §16 — без ресурса, помощников и покоя. Осталась эталоном: замер §21 сравнивает
  * `search` (новая оценка) с `plain` (эта), чтобы видеть вклад именно этих трёх признаков.
  */
 export const leafScorePlain = (state, viewerId) => {
   if (state.hook === 'gameEnd') return String(state.winner) === String(viewerId) ? 1 : -1;
-
   const players = state.players ?? [];
   const key = String(viewerId);
   const mine = players.find(player => playerIdOf(player) === key) ?? null;
@@ -264,24 +233,19 @@ export const leafScorePlain = (state, viewerId) => {
   const sum = pick => others.reduce((total, player) => total + pick(player), 0);
   const deck = player => zoneCards(player?.deck).length;
   const thin = player => Math.max(0, 5 - deck(player));
-
   const raw =
     (heroHp(mine) - sum(heroHp)) / 8 +
     (hpSum(mine) - sum(hpSum)) / 24 +
     (deck(mine) - sum(deck)) * 0.02 +
     (sum(thin) - thin(mine)) * 0.05;
-
   return Math.max(-0.95, Math.min(0.95, raw));
 };
-
 /** Идёт мой ход: окна внутри него (защита соперника, мои цели) ход не заканчивают. */
 export const myTurnOf = (state, viewerId) =>
   state.hook !== 'gameEnd' && String(state.turn?.playerId) === String(viewerId);
-
 /** Мой ход кончился: партия закончилась или активен уже другой игрок. */
 export const turnOver = (state, viewerId) =>
   state.hook === 'gameEnd' || String(state.turn?.playerId) !== String(viewerId);
-
 /**
  * Доигрывание мира роллаутом: агрессивной политикой до победы, до предела шагов или до **границы
  * хода**. Обычный лист — позиция на пределе глубины; с `turnEnd` лист — конец моего хода, а с
@@ -307,7 +271,6 @@ export const rolloutEnd = (state, viewerId, budget) => {
   // 0 — доигрываем мой ход, 1 — доигрываем ответ соперника, 2 — считать оценку (и -1 — обычный режим)
   let stage = turnEnd ? 0 : -1;
   if (stage === 0 && turnOver(current, viewerId)) stage = replyTurn ? 1 : 2;
-
   for (; steps < depth; steps += 1) {
     // Предел времени режется и **внутри** доигрывания: иначе один длинный роллаут (мой ход плюс ответ)
     // пересиживает бюджет, и «лимит на раздумье» держится только между роллаутами.
@@ -326,13 +289,11 @@ export const rolloutEnd = (state, viewerId, budget) => {
       why = 'stage';
       break;
     }
-
     const actor = actorOf(current);
     if (actor == null) {
       why = 'нет действующего';
       break;
     }
-
     let options;
     try {
       options = enumerate(current, actor);
@@ -345,7 +306,6 @@ export const rolloutEnd = (state, viewerId, budget) => {
       why = 'пустой список';
       break;
     }
-
     try {
       current = runAction(current, { ...pickWeighted(rng, options), playerId: actor });
     } catch (error) {
@@ -358,7 +318,6 @@ export const rolloutEnd = (state, viewerId, budget) => {
       break;
     }
   }
-
   if (env.DEBUG_ROLLOUT) {
     console.log(
       `rollout: depth ${depth} шагов ${steps} (${why}) hook ${current.hook} ход за ${String(
@@ -366,18 +325,14 @@ export const rolloutEnd = (state, viewerId, budget) => {
       )}`,
     );
   }
-
   return { state: current, steps, failed, clock };
 };
-
 /** Оценка доигранного мира: то же, что `rolloutScore` до выделения `rolloutEnd`. */
 const rolloutScore = (state, viewerId, budget) => {
   const { state: end, steps, failed, clock } = rolloutEnd(state, viewerId, budget);
   return { score: budget.evaluation(end, viewerId), steps, failed, clock };
 };
-
 const keyOf = action => JSON.stringify(action);
-
 /**
  * Отпечаток позиции: всё **открытое** — чей ход и сколько действий осталось, бойцы с позициями и
  * здоровьем, зоны (рука, колода, сброс), счётчик хода. Нужен, чтобы увидеть варианты корня, ведущие в
@@ -404,7 +359,6 @@ const stateFingerprint = state =>
       player.discard?.cards?.length ?? 0,
     ]),
   });
-
 /**
  * **Схлопывание одинаковых вариантов** (§53): если два предложенных хода приводят к одному состоянию
  * (например, ход одной из трёх одинаковых гарпий на ту же клетку), по последствиям они неразличимы, и
@@ -433,40 +387,21 @@ const dedupeCandidates = (state, viewerId, candidates) => {
   }
   return { kept, deduped };
 };
-
 /**
  * Переменные среды читаются через `typeof`: этот модуль попадает и в браузер (`bot/play/ai.js` → режим
  * `vs_ai`), где `process` нет вовсе. В браузере бюджеты остаются умолчаниями, в Node работают флаги.
  */
 const env = typeof process === 'undefined' ? {} : (process.env ?? {});
-
 const envNumber = name => {
   const value = Number(env[name]);
   return Number.isFinite(value) && value > 0 ? value : null;
 };
-
-/**
- * Коэффициент приора корня: сколько «весит» мнение модели рядом с оценкой доигрываний (`SEARCH_PRIOR`).
- * Отдельно от `prior` (коэффициента весов политики) — это разные сигналы и мерятся они порознь.
- */
-const envPriorMix = () => {
-  const value = Number(env.SEARCH_PRIOR_MIX);
-  return Number.isFinite(value) && value >= 0 && env.SEARCH_PRIOR_MIX != null ? value : null;
-};
-
-/** Уверенность приора: насколько быстро он перестаёт спорить с доигрываниями (`SEARCH_PRIOR_TAU`). */
-const envPriorTau = () => {
-  const value = Number(env.SEARCH_PRIOR_TAU);
-  return Number.isFinite(value) && value > 0 ? value : null;
-};
-
 /** Бюджет поиска: снаружи настраивается переменными среды, чтобы замеры шли без правок кода. */
 export const searchBudget = () => {
   // Бюджет времени главнее лимита доигрываний: если время просили, лимит снимается — иначе он сработает
   // раньше срока (32 доигрывания это ~50 мс, а не секунда) и «бюджет времени» окажется фикцией. Явно
   // заданный `SEARCH_ITERATIONS` по-прежнему сильнее всего.
   const timeMs = envNumber('SEARCH_TIME') ?? 0;
-
   return {
     iterations: envNumber('SEARCH_ITERATIONS') ?? (timeMs > 0 ? 100000 : 32),
     depth: envNumber('SEARCH_DEPTH') ?? 10,
@@ -480,24 +415,13 @@ export const searchBudget = () => {
     exploration: envNumber('SEARCH_EXPLORATION') ?? 1.4,
     // приоритет политики при равных средних: иначе поиск, которому всё равно, выбирает «не проиграть»
     prior: Number(env.SEARCH_PRIOR ?? 0.02),
-    // откуда берётся приор: `weights` — вес варианта у политики, `qvalue` — оценка ученика (`rootPriors`)
-    priorSource: env.SEARCH_PRIOR_FROM ?? 'weights',
-    /**
-     * **Модель как приор решения** (`SEARCH_PRIOR_MIX`): во сколько раз мнение модели весомее оценки
-     * доигрываний у корня; ноль — модель в решении не участвует (прежнее поведение, эталон замеров).
-     * `prior_mix · p_a / (visits + τ)` — приор спорит с доигрыванием только пока визитов мало, то есть
-     * ровно там, где бюджет времени не успел собрать статистику: 30 мс — это ~35 доигрываний на решение
-     * (5–7 на вариант корня, замер `.workbuddy/prior-probe.mjs`), и средние по ним — шум.
-     */
-    priorMix: envPriorMix() ?? 0.8,
-    priorTau: envPriorTau() ?? 4,
-    /**
-     * **Сколько вариантов корня считать** (`SEARCH_TOP`, 0 — все): модель отбирает верхушку по своему
-     * мнению, поиск тратит на неё все доигрывания, а не размазывает бюджет по всем вариантам списка.
-     * Это другое применение модели, чем приор: не «подсказать порядок», а **сузить перебор** — при
-     * бюджете 30 мс доигрываний хватает единицам вариантов, и выбор «на что их потратить» решает исход.
-     */
-    top: Number(env.SEARCH_TOP ?? 0),
+    // вес мнения модели в решении корня: ноль — модель в решение не входит вовсе (прежнее поведение поиска)
+    priorMix: Number(env.SEARCH_PRIOR_MIX ?? 0.8),
+    // уверенность мнения модели: столько визитов варианта нужно, чтобы доигрывания спорили с ним наравне
+    priorTau: Math.max(0, Number(env.SEARCH_PRIOR_TAU ?? 4)),
+    // верхушка модели: сколько сильнейших по её мнению вариантов разворачивать (0 — все)
+    top: Math.max(0, Math.trunc(Number(env.SEARCH_TOP ?? 0))),
+    // приор корня — вес варианта у политики
     /**
      * **Парная переоценка корня** (`SEARCH_PAIRED`, §52): доигрываний на вариант, которые после основного
      * поиска оценивают **все раскрытые варианты в одних и тех же мирах** (`pairedRootValues`). Ноль —
@@ -534,49 +458,11 @@ export const searchBudget = () => {
     // так поиск думает ход целиком, а не первые `depth` шагов (политика `turn`, §25)
     turnEnd: env.SEARCH_TURN_END === '1',
     replyTurn: env.SEARCH_TURN_REPLY === '1',
-    // каким артефактом считает ученик (`bot/play/qvalue.js`): лист `qvalue` и приор корня `qprior`
+    
     // читают его, поэтому в матче «версия против версии» артефакт обязан быть у каждой стороны свой
-    artifact: env.SEARCH_ARTIFACT ?? null,
   };
 };
-
-/**
- * Лист глазами **ученика** (`SEARCH_EVAL=qvalue`, политика `qleaf`): он оценивает не абстрактную позицию,
- * а свой лучший ход в ней — то есть делает один шаг пересчёта вперёд **собственными** оценками
- * (`Q(s, a)` из `bot/play/qvalue.js`). Это и есть «ученик считает вперёд»: раньше он умел только
- * подсказывать корень (`qprior`), а сам оставался оценкой одного действия.
- *
- * Берётся мягкий максимум по вариантам с той же температурой, что у выбора ученика: не «лучший ход», а
- * «чем это кончится, если он сыграет здесь». Нет вариантов или артефакта — падаем на ручную формулу,
- * чтобы поиск не зависел от наличия модели.
- */
-const qvalueLeaf = (state, viewerId, artifact = null) => {
-  let options = [];
-  try {
-    // перечисление — предлагателем рантайма (`proposalPolicy`): лист ученика обязан смотреть на тот же
-    // список вариантов, каким играет рантайм, иначе он оценивает не ту игру
-    options = actionsFor(state, viewerId, {
-      policy: proposalPolicy('qvalue'),
-      artifact,
-    }).filter(entry => Number(entry.weight) > 0);
-  } catch {
-    return leafScore(state, viewerId);
-  }
-  if (options.length === 0) return leafScore(state, viewerId);
-
-  const scores = scoreOptions(state, viewerId, options, { artifact });
-  if (scores == null) return leafScore(state, viewerId);
-
-  const values = options.map(entry => scores.get(keyOf(entry.action)) ?? 0);
-  const best = Math.max(...values);
-  const exp = values.map(value => Math.exp((value - best) / Math.max(0.05, SELECTION_TEMPERATURE)));
-  const total = exp.reduce((sum, value) => sum + value, 0) || 1;
-  const expected = values.reduce((sum, value, index) => sum + value * (exp[index] / total), 0);
-
-  return clamp(expected);
-};
-
-/** Оценка листа: ручная формула (`leafScore`), она же с геометрией (`position`), оценки ученика (`qvalue`), линейная модель или её проекция. */
+/** Оценка листа: ручная формула (`leafScore`), она же с геометрией (`position`), линейная модель (`net`) или её проекция (`matchup`). */
 const evaluate = (state, viewerId, budget) => {
   if (budget.evaluation === 'net') return scoreOf(state, viewerId, trainedWeights);
   if (budget.evaluation === 'matchup') {
@@ -585,10 +471,8 @@ const evaluate = (state, viewerId, budget) => {
   }
   if (budget.evaluation === 'plain') return leafScorePlain(state, viewerId);
   if (budget.evaluation === 'position') return leafScorePosition(state, viewerId);
-  if (budget.evaluation === 'qvalue') return qvalueLeaf(state, viewerId, budget.artifact ?? null);
   return leafScore(state, viewerId);
 };
-
 /**
  * **Парная** оценка вариантов корня: все варианты оцениваются в **одних и тех же** мирах, по одному
  * доигрыванию на вариант в каждом мире.
@@ -607,13 +491,11 @@ const evaluate = (state, viewerId, budget) => {
 export const pairedRootValues = (state, viewerId, entries, rawBudget = searchBudget()) => {
   const candidates = (entries ?? []).filter(entry => entry?.action != null);
   if (candidates.length === 0) return null;
-
   // как и в `searchAction`: лист на границе хода имеет смысл только в свой ход (в чужом бою границы нет)
   const budget =
     rawBudget.turnEnd && !myTurnOf(state, viewerId)
       ? { ...rawBudget, turnEnd: false, replyTurn: false }
       : rawBudget;
-
   const rng = rngOf(state);
   const makeWorld = worldFactory(state, viewerId);
   const started = Date.now();
@@ -628,12 +510,10 @@ export const pairedRootValues = (state, viewerId, entries, rawBudget = searchBud
   let rounds = 0;
   let broken = 0;
   let timedOut = 0;
-
   for (let round = 0; round < budget.iterations; round += 1) {
     if (deadline > 0 && Date.now() >= deadline) break;
     const world = makeWorld(rng);
     let counted = 0;
-
     for (const row of rows) {
       let after;
       try {
@@ -655,11 +535,9 @@ export const pairedRootValues = (state, viewerId, entries, rawBudget = searchBud
       row.visits += 1;
       counted += 1;
     }
-
     if (counted === 0) break;
     rounds += 1;
   }
-
   const scored = rows.map(row => ({
     key: row.key,
     action: row.action,
@@ -670,7 +548,6 @@ export const pairedRootValues = (state, viewerId, entries, rawBudget = searchBud
     (leader, row) => (leader == null || row.mean > leader.mean ? row : leader),
     null,
   );
-
   return {
     action: best?.action ?? null,
     iterations: rounds,
@@ -680,83 +557,55 @@ export const pairedRootValues = (state, viewerId, entries, rawBudget = searchBud
     rows: scored,
   };
 };
-
 /**
  * Приор корня: подсказка «какой вариант вероятнее» — она входит и в выбор ребёнка по UCB, и в итоговое
- * решение, но **не заменяет** доигрывания: оценка по-прежнему приходит из роллаутов.
- *
- * - `weights` (по умолчанию) — вес варианта у политики (`log1p`): «жадная политика считает его важнее»;
- * - `qvalue` — оценка **ученика** (`bot/play/qvalue.js`): её числа переводятся в лог-вероятности тем же
- *   softmax с температурой выбора, каким играет сам ученик, — то есть поиск получает ровно то мнение о
- *   вариантах, которое ученик выразил бы без поиска, и проверяет его доигрываниями.
- *
- * Артефакта нет (`scoreOptions` вернул `null`) — приор считается по весам: политика не должна падать
- * из-за отсутствия модели.
+ * решение, но **не заменяет** доигрывания: оценка по-прежнему приходит из роллаутов. Число — вес
+ * варианта у политики (`log1p`): «жадная политика считает его важнее».
  */
-export const rootPriors = (state, viewerId, candidates, budget = searchBudget()) => {
-  const byWeights = () =>
-    new Map(
-      candidates.map(entry => [
-        keyOf(entry.action),
-        budget.prior * Math.log1p(Math.max(0, Number(entry.weight) || 0)),
-      ]),
-    );
-
-  if (budget.priorSource !== 'qvalue') return byWeights();
-
-  const scores = scoreOptions(state, viewerId, candidates, { artifact: budget.artifact ?? null });
-  if (scores == null) return byWeights();
-
-  const values = candidates.map(entry => scores.get(keyOf(entry.action)) ?? 0);
-  const best = Math.max(...values);
-  const exp = values.map(value => Math.exp((value - best) / Math.max(0.05, SELECTION_TEMPERATURE)));
-  const total = exp.reduce((sum, value) => sum + value, 0) || 1;
-
-  return new Map(
-    candidates.map((entry, index) => [
+export const rootPriors = (state, viewerId, candidates, budget = searchBudget()) =>
+  new Map(
+    candidates.map(entry => [
       keyOf(entry.action),
-      budget.prior * Math.log(exp[index] / total),
+      budget.prior * Math.log1p(Math.max(0, Number(entry.weight) || 0)),
     ]),
   );
-};
-
 /**
- * **Мнение модели в единицах оценки** (`rootAdvantages`): та же мысль, что играет ученик (`qvalue`),
- * только приором, а не решением. Свип §47 показал, почему прежний приор корня не работал: он входил
- * добавкой `prior · log p` к среднему по визитам. При бюджете времени (30 мс ≈ 35 доигрываний, 5–7 на
- * вариант) средние — шум, и коэффициент приора на них не влияет: 22–26 побед из 48 при приоре от 0 до 30
- * (`.workbuddy/prior-sweep.mjs`). То есть модель **не отвергалась** — её просто не было в решении.
- *
- * Здесь она в решении есть, и в том же виде, в каком играет сама: `−(Q(s, a) + 0,8 · log1p(вес))`, то
- * есть «насколько вариант хуже сильнейшего по мнению модели» (у лучшего нуль, у остальных минус). Число
- * кладётся рядом со средней доигрываний, а вес приора падает с числом визитов (`mix / (visits + τ)`):
- * пока статистики нет — решает модель, как только доигрываний накопилось — решает поиск. Это и есть
- * «поиск решает, модель — приор», а не «модель вместо поиска».
+ * **Мнение модели о вариантах корня** (`SEARCH_PRIOR_MIX`): каждый вариант применяется к одному
+ * детерминированному миру, и получившаяся позиция оценивается выученным листом (`scoreOf`). Шкала та же,
+ * что у средних доигрываний (−1…1), поэтому мнение можно подмешать к ним, не выдумывая единиц. Отсчёт от
+ * сильнейшего варианта: приор **не поднимает весь корень**, а расставляет варианты между собой. Ноль —
+ * модель в решение не входит вовсе (прежнее поведение поиска).
  */
 export const rootAdvantages = (state, viewerId, candidates, budget = searchBudget()) => {
   const zeros = new Map(candidates.map(entry => [keyOf(entry.action), 0]));
-  if (!(Number(budget.priorMix) > 0) || candidates.length === 0) return zeros;
-
-  const scores = scoreOptions(state, viewerId, candidates, { artifact: budget.artifact ?? null });
-  if (scores == null) return zeros;
-
-  const mix = Number(budget.priorMix);
+  const mix = Number(budget.priorMix) || 0;
+  if (!(mix > 0) || candidates.length === 0) return zeros;
+  const world = determinize(state, viewerId, rngOf(state));
+  const actor = String(placementActorOf(state) ?? viewerId);
+  const scores = new Map();
+  for (const entry of candidates) {
+    let next;
+    try {
+      next = runAction(world, { ...entry.action, playerId: actor });
+    } catch {
+      continue;
+    }
+    scores.set(keyOf(entry.action), evaluate(next, viewerId, budget));
+  }
+  if (scores.size === 0) return zeros;
+  // вес варианта у политики — в той же мере, что и оценка: модель не должна спорить с политикой зря
   const scale = Math.max(...candidates.map(entry => Number(entry.weight) || 0)) || 1;
   const logScale = Math.log1p(scale) || 1;
   const mixedOf = entry =>
     (scores.get(keyOf(entry.action)) ?? 0) +
     mix * (Math.log1p(Math.max(0, Number(entry.weight) || 0)) / logScale);
-
-  // отсчёт от сильнейшего варианта: приор не поднимает весь корень, а расставляет варианты между собой
   const best = Math.max(...candidates.map(mixedOf));
   return new Map(candidates.map(entry => [keyOf(entry.action), mixedOf(entry) - best]));
 };
-
 /** Выбор ребёнка узла по UCB. Свои узлы максимизируют оценку, чужие — минимизируют. */
 const ucbChild = (node, legal, { rootKey, priorByKey, exploration }) => {
   const total = Math.max(1, node.visits);
   let best = null;
-
   for (const option of legal) {
     const child = node.children.get(keyOf(option.action));
     if (!child) continue;
@@ -767,10 +616,8 @@ const ucbChild = (node, legal, { rootKey, priorByKey, exploration }) => {
     const ucb = exploit + exploration * Math.sqrt(Math.log(total) / Math.max(1, child.visits));
     if (best == null || ucb > best.ucb) best = { child, ucb };
   }
-
   return best?.child ?? null;
 };
-
 /**
  * Выбор действия поиском среди уже перечисленных легальных действий. На входе — пары
  * `{ action, weight }`: вес политики нужен как приоритет при равных средних.
@@ -784,7 +631,6 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
   // один вариант — решать нечего, и это не «нулевое доигрывание»: ответ совпадает с предложенным
   if (offeredCandidates.length === 1)
     return { action: offeredCandidates[0].action, iterations: 0, rows: [] };
-
   /**
    * «Думать свой ход целиком» имеет смысл только **внутри** своего хода. В чужом бою (защита, ответное
    * окно) границы моего хода нет: первый же шаг доигрывания упирается в неё, лист вырождается в оценку
@@ -795,7 +641,6 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
     rawBudget.turnEnd && !myTurnOf(state, viewerId)
       ? { ...rawBudget, turnEnd: false, replyTurn: false }
       : rawBudget;
-
   /**
    * Схлопывание вариантов, ведущих в одно состояние (§53): это не «ускорение», а **честная статистика**.
    * Замер показал цену ошибки: если вместо схлопывания переиспользовать оценку повторного мира (кэш),
@@ -813,7 +658,6 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
   if (candidates.length === 1) {
     return { action: candidates[0].action, iterations: 0, deduped, rows: [] };
   }
-
   const rng = rngOf(state);
   const makeWorld = worldFactory(state, viewerId);
   const started = Date.now();
@@ -839,15 +683,13 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
     for (let index = 0; index < poolSize; index += 1) worldPool.push(makeWorld(rng));
   }
   const poolWorld = round => worldPool[round % worldPool.length];
-  // приоры: `priorByKey` — тихий сигнал UCB (как было), `advantageByKey` — мнение модели в единицах оценки
+  // приор корня: `priorByKey` — тихий сигнал UCB, `advantageByKey` — мнение модели. Оно входит и в порядок
+  // развёртывания (при жёстком бюджете доигрываний хватает не на все варианты), и в итоговое решение
   const priorByKey = rootPriors(state, viewerId, candidates, budget);
   const advantageByKey = rootAdvantages(state, viewerId, candidates, budget);
-  // вес мнения модели в решении: ноль — модель в решение не входит вовсе (прежнее поведение поиска)
   const mix = Number(budget.priorMix) || 0;
   const tau = Math.max(0, Number(budget.priorTau) || 0);
-  // **порядок развёртывания**: нераскрытые варианты берутся по мнению модели, а не по порядку весов
-  // политики. При жёстком бюджете времени доигрываний хватает на первые варианты списка, и без этого
-  // «модель как приор» до них просто не доходит: у корня оставались недоисследованные варианты.
+  // нераскрытые варианты корня берутся по мнению модели: иначе «модель как приор» до них не доходит
   const ranked =
     mix > 0
       ? candidates
@@ -858,16 +700,17 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
               (advantageByKey.get(keyOf(left.action)) ?? 0),
           )
       : candidates;
-  /**
-   * **Верхушка модели** (`SEARCH_TOP`, 0 — все варианты): считать только сильнейшие по её мнению
-   * варианты. Так модель тратит бюджет поиска туда, где видит игру, — и это **не** замена решения
-   * моделью: из верхушки выбирает доигрывание. Варианты с весом 0 (шаг в никуда) исключены ещё
-   * вызывающим (`bot/play/decide.js`), поэтому верхушка — отбор «куда смотреть», а не veto.
-   */
+  // верхушка модели (`SEARCH_TOP`, 0 — все): считать только сильнейшие по её мнению варианты
   const order = budget.top > 0 ? ranked.slice(0, Math.max(1, Math.trunc(budget.top))) : ranked;
   if (order.length <= 1)
-    return { action: order[0]?.action ?? null, iterations: 0, broken: 0, timedOut: 0, rows: [] };
-
+    return {
+      action: order[0]?.action ?? null,
+      iterations: 0,
+      broken: 0,
+      timedOut: 0,
+      rows: [],
+      deduped,
+    };
   /**
    * Перечисление действий: миры отличаются скрытым, а список наших ходов от него не зависит. Кэш по
    * подписи позиции здесь пробовали — он не дал ничего (0,99×): время уходило не на перечисление как
@@ -875,28 +718,23 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
    */
   const enumerate = (current, actor) => actionsFor(current, actor, { policy: budget.policy });
   const evaluation = (current, viewer) => evaluate(current, viewer, budget);
-
   let iterations = 0;
   let finished = 0;
   // сорванные доигрывания: их считаем и отдаём наружу, чтобы «поиск без роллаутов» не прятался
   let broken = 0;
   // доигрывания, срезанные пределом времени: по счётчику видно, держал ли бюджет ход или нет
   let timedOut = 0;
-
   for (let round = 0; round < budget.iterations; round += 1) {
     if (deadline > 0 && Date.now() >= deadline) break;
-
     let current = worldPool == null ? makeWorld(rng) : poolWorld(round);
     let node = root;
     const path = [node];
     let steps = 0;
-
     // спуск по дереву: за доигрывание расширяем ровно один узел, дальше — роллаут
     while (steps < budget.treeDepth) {
       // на корне действующий — тот, чьё решение считаем; глубже ход переходит по очереди движка
       const actor = node === root ? rootActorId : placementActorOf(current);
       if (actor == null) break;
-
       let options;
       try {
         options = enumerate(current, actor);
@@ -906,9 +744,7 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
       const offered = options.filter(entry => entry.weight > 0);
       const legal = offered.length > 0 ? offered : options;
       if (legal.length === 0) break;
-
-      // у корня нераскрытые варианты берутся **по мнению модели** (`order`: верхушка, если она задана),
-      // внутри ветки — по порядку политики
+      // у корня нераскрытые варианты берутся по мнению модели (`order`), внутри ветки — по порядку политики
       const untried =
         node === root
           ? (order.find(entry => !node.children.has(keyOf(entry.action))) ?? null)
@@ -923,7 +759,6 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
           }
         : ucbChild(node, legal, { rootKey, priorByKey, exploration: budget.exploration });
       if (child == null) break;
-
       if (untried) node.children.set(keyOf(untried.action), child);
       try {
         current = runAction(current, { ...child.action, playerId: actor });
@@ -935,7 +770,6 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
       steps += 1;
       if (untried) break;
     }
-
     const {
       score,
       steps: rolled,
@@ -954,7 +788,6 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
     if (clock) timedOut += 1;
     // нетерпение: быстрый выигрыш дороже медленного, проигрыш не дисконтируется
     const impatient = score > 0 ? score * budget.gamma ** (steps + rolled) : score;
-
     for (const visited of path) {
       visited.visits += 1;
       visited.value += impatient;
@@ -962,9 +795,7 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
     iterations += 1;
     if (current.hook === 'gameEnd') finished += 1;
   }
-
   if (iterations === 0) return null;
-
   const rows = [...root.children.values()].filter(child => child.visits > 0);
   /**
    * **Парная переоценка раскрытых вариантов** (§52): все варианты корня считаются **в одних и тех же**
@@ -987,17 +818,8 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
       broken += paired.broken;
     }
   }
-
   /**
-   * Итоговое решение корня: средняя доигрываний плюс мнение модели, **убывающее с числом визитов**
-   * (`mix / (visits + τ)`). Так приор не «перебивает» поиск, а закрывает его слабое место — мало
-   * доигрываний на вариант при жёстком бюджете времени. Прежний приор (`priorByKey`) остаётся тихим
-   * сигналом UCB и в решении не участвует: он в тех же единицах, что и средние, и на 5–7 визитах тонет
-   * в их шуме (свип §47: приор 0 против приора 30 — 22–26 побед из 48).
-   *
-   * Если посчитана парная оценка (`pairedByKey`), она **заменяет** средние UCT с весом `pairedMix`:
-   * у неё та же шкала (те же доигрывания и тот же лист), но меньше разброс — ровно то, чего не хватало
-   * при 35 доигрываниях.
+   * Итоговое решение корня: средняя доигрываний, парная оценка (если считалась) и тихий приор весов.
    */
   const meanOf = child => {
     const mean = child.value / Math.max(1, child.visits);
@@ -1008,13 +830,13 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
   };
   const scoreOf = child =>
     meanOf(child) +
+    // мнение модели гаснет с визитами: на пяти-семи доигрываниях оно ещё спорит со средними, дальше молчит
     (mix > 0 ? (mix * (advantageByKey.get(keyOf(child.action)) ?? 0)) / (child.visits + tau) : 0) +
     (priorByKey.get(keyOf(child.action)) ?? 0);
   const best = rows.reduce(
     (leader, child) => (leader == null || scoreOf(child) > scoreOf(leader) ? child : leader),
     null,
   );
-
   return {
     action: best?.action ?? null,
     iterations,

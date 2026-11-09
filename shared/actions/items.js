@@ -19,6 +19,9 @@ export const playerItems = (partyState, playerId) => {
  * (без `count` — все такие): «активируйте 1 катушку» берёт именно разряженную, а повторный вызов
  * ничего не ломает (перевести уже переведённое — не ошибка). Так работает золотое правило
  * «выполняй ту часть свойства, которую можно выполнить».
+ * `until` — имя хука, к началу которого состояние вернётся в `restore` (или в прежнее): так «Зал суда»
+ * поднимает пелену «до начала вашего следующего хода». Восстанавливает `shared/lifecycle/turnStart.js`
+ * у того, чей ход начинается.
  */
 export const SET_ITEM = (partyState, action = {}) => {
   const to = action.to;
@@ -31,9 +34,6 @@ export const SET_ITEM = (partyState, action = {}) => {
   const groupItems = items.filter(
     item => String(item.id) === String(group) || String(item.group) === String(group),
   );
-  if (groupItems.length === 0) {
-    throw new Error(`SET_ITEM: у игрока нет предметов "${group}"`);
-  }
 
   const strict = action.from != null;
   const candidates = strict
@@ -49,7 +49,16 @@ export const SET_ITEM = (partyState, action = {}) => {
       ? candidates.length
       : Math.max(0, Math.min(candidates.length, Number(action.count) || 0));
 
-  for (const item of candidates.slice(0, count)) item.state = to;
+  const until = action.until == null ? null : String(action.until);
+  for (const item of candidates.slice(0, count)) {
+    if (until == null) {
+      item.state = to;
+      continue;
+    }
+    // временное состояние: к началу хука `until` вернётся в `restore` (или в прежнее состояние)
+    item.temporary = { until, restore: action.restore ?? item.state };
+    item.state = to;
+  }
   return partyState;
 };
 

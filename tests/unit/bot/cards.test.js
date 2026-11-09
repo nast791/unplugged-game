@@ -162,14 +162,14 @@ describe('обещание карты: условия её же правил', (
   };
   const target = { fighterId: 'beta', playerId: '1' };
 
-  it('Анубис: «Погребальный звон» — 6 в покое и 4 после шага', () => {
+  it('Анубис: «Погребальный звон» — 5 в покое и 3 после шага', () => {
     const state = stateOf();
     const card = cardById('anubis_01');
-    expect(card.value).toBe(4);
-    expect(cardPromise(card, state, '0').strength).toBe(6);
+    expect(card.value).toBe(3);
+    expect(cardPromise(card, state, '0').strength).toBe(5);
 
     player(state, '0').fighters[0].movedThisTurn = true;
-    expect(cardPromise(card, state, '0').strength).toBe(4);
+    expect(cardPromise(card, state, '0').strength).toBe(3);
   });
 
   it('Анубис: «Печать Маат» дороже, когда у врага 4 карты и больше', () => {
@@ -206,9 +206,9 @@ describe('обещание карты: условия её же правил', (
     const state = stateOf();
     const card = cardById('anubis_07'); // карта без привязки: играется и за Анубиса, и за Амат
     expect(card.title).toBe('Тайна бальзамирования');
-    expect(card.value).toBe(4);
+    expect(card.value).toBe(3);
     // возврат карты из сброса числа боя не меняет: обещание равно напечатанному значению
-    expect(cardPromise(card, state, '0').strength).toBe(4);
+    expect(cardPromise(card, state, '0').strength).toBe(3);
 
     // карта эффекта в сбросе — свойство срабатывает: это и есть «не впустую» (`effectWorth.fires`)
     const dry = effectWorth(card, state, '0', { target });

@@ -81,18 +81,18 @@ describe('признаки листа про поле', () => {
         })),
       });
 
-    // ступени Снежной королевы — 4/5/6/7: до первой четыре осколка
+    // ступени Снежной королевы — 4/5/6: до первой четыре осколка
     shards(0);
     expect(feature(state, '0', 'resourceShare')).toBeCloseTo(0);
-    expect(feature(state, '0', 'resourceStep')).toBeCloseTo(4 / 7);
+    expect(feature(state, '0', 'resourceStep')).toBeCloseTo(4 / 6);
 
     // четыре собраны — следующая ступень в одном осколке
     shards(4);
-    expect(feature(state, '0', 'resourceStep')).toBeCloseTo(1 / 7);
-    expect(feature(state, '0', 'resourceShare')).toBeCloseTo(4 / 7);
+    expect(feature(state, '0', 'resourceStep')).toBeCloseTo(1 / 6);
+    expect(feature(state, '0', 'resourceShare')).toBeCloseTo(4 / 6);
 
     // верхняя ступень взята — идти некуда
-    shards(7);
+    shards(6);
     expect(feature(state, '0', 'resourceStep')).toBeCloseTo(0);
     expect(feature(state, '0', 'resourceShare')).toBeCloseTo(1);
   });

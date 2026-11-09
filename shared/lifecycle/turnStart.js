@@ -23,12 +23,24 @@ export default {
     // «двигался в этом ходу» — флаг живёт ровно один ход: в начале хода он снят у всех бойцов.
     // Вместе с ним снимается «наносил урон в этом ходу» (`shared/helpers/damage.js`): у умения
     // Анубиса «Взвешивание сердца» условие про урон, а не про шаг.
-    state.players = (state.players ?? []).map(player => ({
-      ...player,
-      fighters: (player.fighters ?? []).map(fighter =>
-        fighter.movedThisTurn ? { ...fighter, movedThisTurn: false } : fighter,
-      ),
-    }));
+    state.players = (state.players ?? []).map(player => {
+      // временное состояние предмета живёт до начала хода своего владельца («Пелена» после «Зала суда»)
+      const items =
+        String(player.id) === playerId
+          ? (player.items ?? []).map(item => {
+              if (item.temporary?.until !== 'turnStart') return item;
+              const { temporary, ...rest } = item;
+              return { ...rest, state: temporary.restore ?? rest.state };
+            })
+          : player.items;
+      return {
+        ...player,
+        ...(items == null ? {} : { items }),
+        fighters: (player.fighters ?? []).map(fighter =>
+          fighter.movedThisTurn ? { ...fighter, movedThisTurn: false } : fighter,
+        ),
+      };
+    });
     clearDamageDealt(state);
 
     const alivePlayers = queryPlayers(state, { alive: true }, {});

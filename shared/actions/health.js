@@ -42,9 +42,12 @@ export const SET_HEALTH = (partyState, action = {}) => {
     throw new Error('SET_HEALTH: нужны fighterId или fighterIds');
   }
 
-  const delta = Number(action.delta);
+  // `damage` — урон положительным числом: «урон, равный числу карт эффектов в сбросе».
+  // DSL не умеет арифметику, поэтому знак ставит действие, а не текст правила.
+  const delta =
+    action.delta != null ? Number(action.delta) : -Math.abs(Number(action.damage ?? 0));
   if (!Number.isFinite(delta) || delta === 0) {
-    throw new Error('SET_HEALTH: нужен ненулевой delta');
+    throw new Error('SET_HEALTH: нужен ненулевой delta (или damage)');
   }
 
   if (delta < 0) noteDamageDealt(partyState, { ...action, fighterIds: ids });

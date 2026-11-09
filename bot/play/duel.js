@@ -1,9 +1,6 @@
 import { runAction, runUi } from '#shared/publicApi.js';
 import { createGame } from '../../server/create.js';
 import { load } from '../../server/party.js';
-// чтение артефакта по пути — только на node: подключает загрузчик `bot/play/artifact-file.js`
-// (`node:fs` не имеет права попасть в клиентский бандл, а `duel.js` — общий вход всех прогонов и замеров)
-import './artifact-file.js';
 import { actionsFor, actorOf, pickWeighted } from './decide.js';
 import { createMetrics, noteAction, noteTransition, snapshotHp } from './metrics.js';
 
@@ -136,8 +133,6 @@ export const playDuel = ({
   heroB = 'tesla',
   policy = 'random',
   policyB = null,
-  artifact = null,
-  artifactB = null,
   onStep = null,
 } = {}) => {
   // предел шагов приходит и снаружи, и флагами CLI: `null`/0 значит «по умолчанию», иначе цикл ниже
@@ -163,14 +158,6 @@ export const playDuel = ({
     .sort((left, right) => Number(left.order) - Number(right.order))[0]?.heroId;
   const policyOf = playerId =>
     policyB != null && String(playerId) !== String(firstHeroId) ? policyB : policy;
-  /**
-   * Каким артефактом играет сторона: у первой — `artifact`, у второй — `artifactB` (или тот же).
-   * Это то, что делает возможным матч **версия против версии**: без него обе стороны брали бы вшитую
-   * в бандл модель, и «новая версия против старой» была бы невыразима (`bot/play/artifact.js`).
-   */
-  const artifactOf = playerId =>
-    artifactB != null && String(playerId) !== String(firstHeroId) ? artifactB : artifact;
-
   /** Отчёт с метриками: у всех исходов одна форма, поэтому собирается в одном месте. */
   const report = (status, steps, extra = {}) => ({
     status,
@@ -204,7 +191,6 @@ export const playDuel = ({
       policy: policyOf(playerId),
       style,
       skipAllowed,
-      artifact: artifactOf(playerId),
     });
     if (options.length === 0) {
       return report('deadlock', step, {

@@ -16,9 +16,9 @@ const iceMap = {
 };
 
 /**
- * Бой закрыт: королева (игрок 0) выиграла его «Зеркальным сколом», у неё осталась колода,
- * боец противника жив и стоит на льду. Регрессия: замороженному телепорт закрыт движком,
- * поэтому окно не должно открываться вовсе (иначе клик падал бы с «боец … заморожен»).
+ * Бой закрыт: королева (игрок 0) выиграла его «Зеркальным сколом», боец противника жив и стоит
+ * на льду. Регрессия: замороженному телепорт закрыт движком, поэтому окно не должно открываться
+ * вовсе (иначе клик падал бы с «боец … заморожен»).
  */
 const closedBattle = ({ frozen = false, map = iceMap } = {}) => {
   const state = createState({ map });
@@ -56,15 +56,15 @@ const fighterOf = (state, id) =>
   player(state, '0').fighters.find(entry => entry.id === id);
 
 describe('карта snow-queen_01 «Зеркальный скол»', () => {
-  it('выигранная битва: карта уходит в сброс, окно открывается на свободном льду', () => {
+  it('выигранная битва: колода цела, окно открывается на свободном льду', () => {
     const state = closedBattle();
-    // верх колоды — последний элемент списка: карты тянутся с конца
-    const top = deck(player(state, '0')).at(-1);
+    const before = deck(player(state, '0')).length;
 
     const next = run(state, 'afterCombat');
 
-    expect(discard(player(next, '0')).map(entry => entry.id)).toEqual([top.id]);
-    expect(deck(player(next, '0')).map(entry => entry.id)).not.toContain(top.id);
+    // победа больше не стоит игроку карты колоды: сброса верхней карты нет
+    expect(deck(player(next, '0'))).toHaveLength(before);
+    expect(discard(player(next, '0'))).toHaveLength(0);
     expect(next.targeting?.kind).toBe('cells');
     expect(next.targeting?.playerId).toBe('0');
     // свободен только третий лёд: клетки 1 и 2 заняты участниками боя

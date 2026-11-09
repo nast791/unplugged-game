@@ -18,11 +18,11 @@ describe('замер политики по героям', () => {
       '--heroes=anubis,dorothy',
       '--games=2',
       '--workers=2',
-      '--policy=qvalue',
+      '--policy=net',
       '--policy-b=greedy',
     ]);
 
-    expect(out).toContain('держатель qvalue');
+    expect(out).toContain('держатель net');
     expect(out).toContain('держатель greedy');
     expect(out).toContain('шум разницы');
 

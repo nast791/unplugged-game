@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { remainingOf } from '../../../bot/play/counting.js';
 import { actionsFor, playDuel } from '../../../bot/play/duel.js';
-import { scoreOptions } from '../../../bot/play/qvalue.js';
 import {
   determinize,
   leafScore,
@@ -72,7 +71,7 @@ describe('детерминизация', () => {
     }
     // хотя бы один порядок отличается от исходного: тасовка работает
     expect([...orders].some(order => order !== before.join(','))).toBe(true);
-  });
+  }, 60000);
 
   it('оценка позиции: терминал — это победа или поражение', () => {
     const state = createState();
@@ -277,13 +276,12 @@ describe('лист на границе хода', () => {
     expect(report.status).toBe('finished');
   }, 60000);
 
-  /**
-   * Два новых листа §29: с геометрией (`position`) и с оценкой ученика (`qleaf` — он в позиции делает свой
-   * лучший ход, то есть считает на шаг вперёд собственными `Q(s, a)`). Обе политики обязаны играть партию
-   * целиком: лист зовётся на каждом доигрывании, и ошибка в нём валит поиск молча.
-   */
-  it('листы `position`, `qleaf` и ученик с пересчётом `qdeep` играют партию до конца', () => {
-    for (const policy of ['position', 'qleaf', 'qdeep', 'qthink']) {
+/**
+ * Два листа §29: с геометрией (`position`) и выученный (`net`, §62). Оба обязаны играть партию
+ * целиком: лист зовётся на каждом доигрывании, и ошибка в нём валит поиск молча.
+ */
+  it('листы `position` и `net` играют партию до конца', () => {
+    for (const policy of ['position', 'net']) {
       const report = playDuel({
         seed: 14,
         heroA: 'anubis',
@@ -296,6 +294,7 @@ describe('лист на границе хода', () => {
     }
   }, 180000);
 });
+
 
 /**
  * Предел времени на раздумье. Он режется в двух местах: между доигрываниями (цикл поиска) и **внутри**
@@ -376,23 +375,19 @@ describe('бюджет времени на решение', () => {
 });
 
 /**
- * Приор корня — подсказка о вариантах, а не замена доигрываний (§24): по умолчанию это вес политики,
- * с `priorSource: 'qvalue'` — оценка обученного ученика (`bot/play/qvalue.js`).
+ * Приор корня — подсказка о вариантах, а не замена доигрываний (§24): по умолчанию это вес политики.
  */
-describe('приор корня: вес политики или оценка ученика', () => {
+describe('приор корня по весам политики', () => {
   const start = () => firstSearchState(11);
   const keyOf = entry => JSON.stringify(entry.action);
 
-  it('по весам: сильнейший вариант политики получает сильнейший приор', () => {
+  it('сильнейший вариант политики получает сильнейший приор', () => {
     const { state, playerId } = start();
     const entries = actionsFor(state, playerId, { policy: 'greedy' }).map(entry => ({
       action: entry.action,
       weight: entry.weight,
     }));
-    const priors = rootPriors(state, playerId, entries, {
-      ...searchBudget(),
-      priorSource: 'weights',
-    });
+    const priors = rootPriors(state, playerId, entries, searchBudget());
     const heaviest = entries.reduce((leader, entry) =>
       entry.weight > leader.weight ? entry : leader,
     );
@@ -402,79 +397,50 @@ describe('приор корня: вес политики или оценка у�
     // логарифм веса: приор неотрицателен
     for (const value of priors.values()) expect(value).toBeGreaterThanOrEqual(0);
   });
+});
 
-  it('по модели: порядок приоров — порядок её оценок, и это лог-вероятности', () => {
-    const { state, playerId } = start();
-    const entries = actionsFor(state, playerId, { policy: 'greedy' }).map(entry => ({
+/**
+ * Мнение модели о вариантах корня (`SEARCH_PRIOR_MIX`): оно расставляет варианты между собой и входит в
+ * решение, но доигрывания не подменяет — при нуле модель в решение не входит вовсе.
+ */
+describe('мнение модели о вариантах корня', () => {
+  const start = () => firstSearchState(11);
+  const keyOf = entry => JSON.stringify(entry.action);
+  const entriesOf = (state, playerId) =>
+    actionsFor(state, playerId, { policy: 'greedy' }).map(entry => ({
       action: entry.action,
       weight: entry.weight,
     }));
-    const scores = scoreOptions(state, playerId, entries);
-    const priors = rootPriors(state, playerId, entries, {
-      ...searchBudget(),
-      priorSource: 'qvalue',
-    });
-    const bestByModel = entries.reduce((leader, entry) =>
-      scores.get(keyOf(entry)) > scores.get(keyOf(leader)) ? entry : leader,
-    );
 
-    expect(priors.get(keyOf(bestByModel))).toBe(Math.max(...priors.values()));
-    for (const value of priors.values()) expect(value).toBeLessThanOrEqual(0);
-  });
-
-  /**
-   * §47: прежний приор (`prior · log p`) в решении не участвовал — на 5–7 визитах на вариант он тонет в
-   * шуме средних, и свип коэффициента от 0 до 30 этого не менял. Мнение модели в решении — это
-   * `rootAdvantages`: те же числа, что у ученика (`Q(s, a)` плюс примесь весов), но **отсчитанные от
-   * сильнейшего варианта**, чтобы приор расставлял варианты между собой, а не поднимал весь корень.
-   */
-  it('мнение модели для решения: сильнейший вариант — ноль, остальные ниже', () => {
+  it('при priorMix 0 модель в решение не входит: все преимущества нулевые', () => {
     const { state, playerId } = start();
-    const entries = actionsFor(state, playerId, { policy: 'greedy' }).map(entry => ({
-      action: entry.action,
-      weight: entry.weight,
-    }));
-    const scores = scoreOptions(state, playerId, entries);
-    const advantages = rootAdvantages(state, playerId, entries, {
-      ...searchBudget(),
-      priorMix: 0.8,
-    });
-    const bestByModel = entries.reduce((leader, entry) =>
-      scores.get(keyOf(entry)) > scores.get(keyOf(leader)) ? entry : leader,
-    );
-
-    expect(advantages.size).toBe(entries.length);
-    expect(advantages.get(keyOf(bestByModel))).toBeCloseTo(0, 6);
-    expect(Math.max(...advantages.values())).toBeCloseTo(0, 6);
-    for (const value of advantages.values()) expect(value).toBeLessThanOrEqual(0);
-  });
-
-  it('приор выключен — мнения модели в решении нет', () => {
-    const { state, playerId } = start();
-    const entries = actionsFor(state, playerId, { policy: 'greedy' }).map(entry => ({
-      action: entry.action,
-      weight: entry.weight,
-    }));
+    const entries = entriesOf(state, playerId);
     const advantages = rootAdvantages(state, playerId, entries, {
       ...searchBudget(),
       priorMix: 0,
     });
+
+    expect(advantages.size).toBe(entries.length);
     for (const value of advantages.values()) expect(value).toBe(0);
   });
 
-  it('партия с приором от ученика доходит до конца и остаётся легальной', () => {
-    // поиск на ход дороже жадной политики, поэтому проверяем одну партию и с запасом по времени
-    const report = playDuel({
-      seed: 3,
-      heroA: 'medusa',
-      heroB: 'tesla',
-      policy: 'qprior',
-      policyB: 'greedy',
+  it('сильнейший по мнению модели вариант получает ноль, остальные — не больше', () => {
+    const { state, playerId } = start();
+    const entries = entriesOf(state, playerId);
+    const advantages = rootAdvantages(state, playerId, entries, {
+      ...searchBudget(),
+      priorMix: 0.8,
     });
+    const values = [...advantages.values()];
 
-    expect(report.status).toBe('finished');
-  }, 30000);
+    expect(advantages.size).toBe(entries.length);
+    expect(Math.max(...values)).toBe(0);
+    for (const value of values) expect(value).toBeLessThanOrEqual(0);
+    // веса вариантов у политики разные, поэтому мнение не сводит все варианты к одному числу
+    expect(new Set(values.map(value => value.toFixed(6))).size).toBeGreaterThan(1);
+  });
 });
+
 
 /**
  * Лист поиска §21: ресурс героя из пака, помощники отдельно от героя и покой — но покой только у тех

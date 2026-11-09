@@ -2,7 +2,9 @@
 import sharp from 'sharp';
 import { readFile, writeFile } from 'node:fs/promises';
 
-const BOTTOM_SIZE = 512;
+// 512 — размер аватара; базовые кадры героев режутся крупнее: --size=1024.
+const DEFAULT_SIZE = 512;
+const SIZE_LIMIT = { min: 64, max: 4096 };
 const GREEN_STRONG = 40;
 const GREEN_SOFT = 8;
 const GREEN_EDGE = 32;
@@ -18,7 +20,7 @@ const option = name => {
 };
 const [sourcePath, outputPath] = paths;
 if (!sourcePath || !outputPath) {
-  console.error('использование: node scripts/chroma-avatar.mjs <источник> <результат.webp>');
+  console.error('использование: node scripts/chroma-avatar.mjs <источник> <результат.webp> [--size=1024]');
   process.exit(1);
 }
 const margin = option('margin') ?? 0;
@@ -26,6 +28,7 @@ const zoom = option('zoom') ?? 1;
 const lift = option('lift') ?? 0;
 const maskTop = option('mask-top') === 1;
 const bottomShare = option('bottom') ?? 1;
+const size = Math.min(SIZE_LIMIT.max, Math.max(SIZE_LIMIT.min, Math.round(option('size') ?? DEFAULT_SIZE)));
 
 const { data, info } = await sharp(await readFile(sourcePath))
   .ensureAlpha()
@@ -286,9 +289,10 @@ const baseRadius = discFits
   ? (discRight - discLeft + 1) / 2
   : Math.max(right - left + 1, bottom - top + 1) / 2;
 const radius = (baseRadius / zoom) * (1 + margin);
-const side = Math.round(radius * 2);
-const originX = Math.round(centerX - radius);
-const originY = Math.round(centerY - radius + radius * lift);
+/** Маска «как у Тото» держит кадр целиком: уши выходят выше диска, и срез квадрата по диску срезал бы их верхушки. */
+const side = maskTop ? Math.max(width, height) : Math.round(radius * 2);
+const originX = maskTop ? Math.round((width - side) / 2) : Math.round(centerX - radius);
+const originY = maskTop ? Math.round((height - side) / 2) : Math.round(centerY - radius + radius * lift);
 
 const fromX = Math.max(0, originX);
 const fromY = Math.max(0, originY);
@@ -313,9 +317,10 @@ const canvas = await sharp({
 const maskShape = Buffer.from(
   maskTop
     ? (() => {
-        const cx = side / 2;
-        const rb = (side / 2) * bottomShare;
-        const path = `M0 0 H${side} V${cx} L${cx + rb} ${cx} A${rb} ${rb} 0 0 1 ${cx - rb} ${cx} L0 ${cx} Z`;
+        const cx = centerX - originX;
+        const cy = centerY - originY;
+        const rb = radius * bottomShare;
+        const path = `M0 0 H${side} V${cy} L${cx + rb} ${cy} A${rb} ${rb} 0 0 1 ${cx - rb} ${cy} L0 ${cy} Z`;
         return `<svg width="${side}" height="${side}"><path d="${path}" fill="#fff"/></svg>`;
       })()
     : `<svg width="${side}" height="${side}"><circle cx="${side / 2}" cy="${side / 2}" r="${side / 2 - 1}" fill="#fff"/></svg>`,
@@ -326,7 +331,7 @@ const masked = await sharp(canvas)
   .toBuffer();
 
 const output = await sharp(masked)
-  .resize(BOTTOM_SIZE, BOTTOM_SIZE, { kernel: 'lanczos3' })
+  .resize(size, size, { kernel: 'lanczos3' })
   .webp({ quality: 92, effort: 6 })
   .toBuffer();
 await writeFile(outputPath, output);
@@ -335,5 +340,5 @@ console.log(
   `${outputPath}: зелёного снято — ${greenCut}, белого — ${whiteCut}, мягких кромок — ${soft}, ` +
     `зелёный оттенок убран — ${despilled}, кромка диска — ${rim}, кайма шерсти — ${fringe}, пунктир — ${dashed}, ` +
     `карманов фона — ${island}, круг ${Math.round(baseRadius * 2)} ` +
-    `(${discFits ? 'по зелёному диску' : 'по силуэту'}) → ${BOTTOM_SIZE}`,
+    `(${discFits ? 'по зелёному диску' : 'по силуэту'}) → ${size}`,
 );

@@ -66,7 +66,7 @@ describe('ресурс героя из пака', () => {
   it('незнакомый герой не ломает оценку', () => {
     const state = stateOf('unknown-hero', 'dorothy');
     expect(() => featuresOf(state, '0')).not.toThrow();
-    expect(resourceOf(player(state, '0'))).toEqual({ ready: 0, need: 0, fuel: 0 });
+    expect(resourceOf(player(state, '0'))).toEqual({ ready: 0, need: 0, fuel: 0, steps: [] });
   });
 });
 

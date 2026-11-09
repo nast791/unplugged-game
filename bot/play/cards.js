@@ -136,6 +136,11 @@ const actionWorth = (action, sides, resolved = action) => {
       value += 1 * Math.max(0, num(action.healOnPass));
       return { value };
     }
+    // временная стихия клетки: лава под своим героем кормит пакет Ифрита, остальное — мелочь
+    case 'SET_CELL_TERRAIN': {
+      if (action.op === 'clear') return {};
+      return String(action.terrain ?? '') === 'lava' ? { value: 1.2 } : { value: 0.4 };
+    }
     case 'REVIVE_FIGHTER':
       return { value: 4 };
     case 'SET_FIGHTER_CELL':

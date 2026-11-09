@@ -114,18 +114,12 @@ export const runMatrixParallel = async ({
   policyB = null,
   maxSteps = undefined,
   workers = 0,
-  artifact = null,
-  artifactB = null,
 } = {}) => {
   const pairs = matchups(heroes);
   const jobs = [];
-  // артефакты сторон: в зеркальной партии они меняются местами вместе с политиками — иначе «новая версия
-  // против старой» мерилась бы как «новая против новой» на одном месте (`bot/play/artifact.js`)
   const specOf = (pair, mirror) => {
     const base = { seed: pair.seed, heroA: pair.heroA, heroB: pair.heroB, mapId, maxSteps };
-    return mirror
-      ? { ...base, policy: policyB, policyB: policy, artifact: artifactB, artifactB: artifact }
-      : { ...base, policy, policyB, artifact, artifactB };
+    return mirror ? { ...base, policy: policyB, policyB: policy } : { ...base, policy, policyB };
   };
 
   pairs.forEach((pair, index) => {

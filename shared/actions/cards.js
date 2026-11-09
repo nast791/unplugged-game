@@ -84,7 +84,7 @@ const exhaust = (partyState, player) => {
 
 /**
  * SET_CARDS — карты игрока: добор, сброс, перенос между зонами и запись готовых карт в зону.
- * params: { playerId | of, op: 'draw' | 'discard' | 'move' | 'put' | 'shuffle', count?, cardId?, cardIds?,
+ * params: { playerId | of, op: 'draw' | 'discard' | 'move' | 'bottom' | 'put' | 'shuffle', count?, cardId?, cardIds?,
  *           cards?, from?, to?, zone?, random?, remember? }
  * `of` — чей зоной распоряжаемся: нужно эффектам вида «противник сбрасывает карту» (у действия уже есть
  * свой `playerId` — владелец правила). Кроме id игрока `of` понимает роль (`'opponent'`, `'enemy'`,
@@ -157,7 +157,30 @@ export const SET_CARDS = (partyState, action = {}) => {
     if (cardIds.length === 0) throw new Error('SET_CARDS: move требует cardIds');
     // count ограничивает перенос: «замешайте 3 карты с осколком» берёт первые три из списка
     const limit = action.count == null ? cardIds.length : Math.max(0, Number(action.count) || 0);
-    putCards(player, to, takeCards(player, from, cardIds.slice(0, limit)));
+    const moving = cardIds.slice(0, limit);
+    if (to === 'hand' && from === 'discard') {
+      // карту с пометкой `noReturn` сброс не отдаёт назад («Зал суда» Анубиса): из колоды её
+      // взять можно (это не возврат), а из сброса — уже нет
+      const locked = moving.find(key => {
+        const card = zoneCards(player[from]).find(entry => cardKey(entry) === String(key));
+        return card?.noReturn === true;
+      });
+      if (locked != null) {
+        throw new Error(`SET_CARDS: карту ${locked} нельзя вернуть в руку — она остаётся в сбросе навсегда`);
+      }
+    }
+    putCards(player, to, takeCards(player, from, moving));
+    return partyState;
+  }
+
+  if (action.op === 'bottom') {
+    // «под низ колоды»: у колоды низ — начало массива, верх — конец (`SET_REVEAL { op: 'bottom' }`)
+    const from = zoneName(action.from ?? 'deck');
+    const to = zoneName(action.to ?? from);
+    const cardIds = cardIdsOf(action);
+    if (cardIds.length === 0) throw new Error('SET_CARDS: bottom требует cardIds');
+    const moving = takeCards(player, from, cardIds);
+    if (moving.length > 0) setZoneCards(player, to, [...moving, ...zoneCards(player[to])]);
     return partyState;
   }
 

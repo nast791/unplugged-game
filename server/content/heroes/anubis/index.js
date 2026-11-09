@@ -7,7 +7,7 @@ export default {
       id: 'anubis',
       name: 'Анубис',
       type: 'hero',
-      hp: 16,
+      hp: 15,
       move: 2,
       attackRange: 2,
       size: 1,
