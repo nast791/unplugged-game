@@ -16,9 +16,10 @@ import {
  * Экран партии держится на трёх правилах чтения партии, которые стерегутся здесь:
  * 1) **свой ход виден на гексе героя**, чужой — нет: акцентная рамка стоит только у того, чей ход, иначе
  *    за столом на четверых непонятно, кто сейчас играет;
- * 2) **у гекса две тройки карт-кнопок**: на верхней грани — «о герое / о помощниках / о предметах»
- *    (открывают панель `HeroInfo` вверх над гексом, открыта всегда одна), на верхней левой грани —
- *    «рука / колода / сброс» (рука и сброс открывают большие окна с картами, колода закрыта);
+ * 2) **у гекса две карты-кнопки над верхней гранью**: «i» (открывает панель `HeroInfo` вверх над
+ *    гексом; разделы «герой / помощники / предметы» переключаются вкладками уже внутри панели) и карта
+ *    стопок с числом карт в руке (открывает окно `PilesInfo` с рукой, колодой и сбросом, откуда большие
+ *    окна стопок открываются по одной) — нажатость у каждой своя;
  * 3) **гекс несёт аватар героя** — портрет берётся из вида партии, а не из пака героя.
  *
  * `HeroRail.vue`/`TopRail.vue`/`HandFan.vue` — SFC приложения: `ref`/`computed`/`watch`/`onMounted`
@@ -169,7 +170,7 @@ vi.mock('~/components/molecules/game/HeroHex.vue', async () => {
         color: { type: String, default: '' },
         hp: { type: [Number, String], default: null },
         actions: { type: String, default: '' },
-        actionNow: { type: Number, default: null },
+        actionLeft: { type: Number, default: null },
         actionTotal: { type: Number, default: null },
         active: { type: Boolean, default: false },
         dead: { type: Boolean, default: false },
@@ -187,7 +188,7 @@ vi.mock('~/components/molecules/game/HeroHex.vue', async () => {
             'data-color': props.color,
             'data-hp': String(props.hp ?? ''),
             'data-actions': props.actions,
-            'data-action-now': props.actionNow == null ? '' : String(props.actionNow),
+            'data-action-left': props.actionLeft == null ? '' : String(props.actionLeft),
             'data-action-total': props.actionTotal == null ? '' : String(props.actionTotal),
             'data-portrait': props.portrait,
           });
@@ -242,13 +243,47 @@ vi.mock('~/components/molecules/game/HeroInfo.vue', async () => {
         player: { type: Object, default: () => ({}) },
         moveBonus: { type: Number, default: 0 },
       },
-      setup(props) {
+      emits: ['switch'],
+      setup(props, { emit }) {
         return () =>
-          h('div', {
-            'data-info': props.mode,
-            'data-info-player': props.player?.id,
-            'data-move-bonus': String(props.moveBonus),
-          });
+          h(
+            'div',
+            {
+              'data-info': props.mode,
+              'data-info-player': props.player?.id,
+              'data-move-bonus': String(props.moveBonus),
+            },
+            [
+              h('button', {
+                'type': 'button',
+                'data-info-switch': 'fighters',
+                'onClick': () => emit('switch', 'fighters'),
+              }),
+            ],
+          );
+      },
+    }),
+  };
+});
+
+vi.mock('~/components/molecules/game/PilesInfo.vue', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    default: defineComponent({
+      name: 'PilesInfo',
+      props: { player: { type: Object, default: () => ({}) } },
+      emits: ['open'],
+      setup(props, { emit }) {
+        return () =>
+          h('div', { 'data-piles': props.player?.id }, [
+            ...['hand', 'deck', 'discard'].map(key =>
+              h('button', {
+                'type': 'button',
+                'data-piles-open': key,
+                'onClick': () => emit('open', key),
+              }),
+            ),
+          ]);
       },
     }),
   };
@@ -275,7 +310,6 @@ const { default: HeroRail } = await import('../../../app/components/organisms/ga
 const { default: TopRail } = await import('../../../app/components/organisms/game/TopRail.vue');
 const { default: HandFan } = await import('../../../app/components/organisms/game/HandFan.vue');
 const { session } = await import('~/composables/game/useGameSession.js');
-
 const IconStub = defineComponent({
   name: 'Icon',
   props: { name: { type: String, default: '' } },
@@ -308,12 +342,11 @@ afterEach(() => {
 const slotsOf = wrapper => wrapper.findAll('[data-slot]');
 const slotByLabel = (wrapper, label) =>
   slotsOf(wrapper).find(node => node.attributes('data-slot') === label);
-const slotsByIcon = (wrapper, icon) =>
-  wrapper.findAll('[data-icon]').filter(node => node.attributes('data-icon') === icon);
 
-const INFO_HERO = 'Информация о герое';
-const INFO_FIGHTERS = 'Информация о помощниках';
-const INFO_ITEMS = 'Информация о предметах';
+const INFO = 'Сведения о герое, помощниках и предметах';
+
+const pilesLabel = player =>
+  `Карты: в руке ${player.handCount}, в колоде ${player.deckCount}, в сбросе ${player.discardCount}. Клик — окно карт`;
 
 describe('рельс героев', () => {
   it('рисует по гексу на каждого героя, активный — крайним справа', () => {
@@ -339,8 +372,10 @@ describe('рельс героев', () => {
   it('держит гексы внизу слева экрана', () => {
     const wrapper = mountRail();
     const rail = wrapper.find('section');
+    const classes = rail.classes();
 
-    expect(rail.classes()).toEqual(expect.arrayContaining(['absolute', 'bottom-14', 'left-34']));
+    expect(classes).toEqual(expect.arrayContaining(['absolute', 'bottom-14']));
+    expect(classes.some(name => name.startsWith('left-'))).toBe(true);
   });
 
   it('подсвечивает гекс героя, чей ход, и гасит остальные', () => {
@@ -370,7 +405,7 @@ describe('рельс героев', () => {
     const wrapper = mountRail();
     const [medusa, anubis] = rowsOf(wrapper);
 
-    expect(anubis.attributes('data-actions')).toBe('Действие 1 из 2');
+    expect(anubis.attributes('data-actions')).toBe('Осталось действий: 2 из 2');
     expect(medusa.attributes('data-actions')).toBe('');
   });
 
@@ -378,10 +413,22 @@ describe('рельс героев', () => {
     const wrapper = mountRail();
     const [medusa, anubis] = rowsOf(wrapper);
 
-    expect(anubis.attributes('data-action-now')).toBe('1');
+    expect(anubis.attributes('data-action-left')).toBe('2');
     expect(anubis.attributes('data-action-total')).toBe('2');
-    expect(medusa.attributes('data-action-now')).toBe('');
+    expect(medusa.attributes('data-action-left')).toBe('');
     expect(medusa.attributes('data-action-total')).toBe('');
+  });
+
+  it('показывает остаток действий: потратил действие — пузырёк стал 1/2', async () => {
+    const wrapper = mountRail();
+
+    session.actionsLeft.value = 1;
+    await nextTick();
+
+    const [medusa, anubis] = rowsOf(wrapper);
+    expect(anubis.attributes('data-action-left')).toBe('1');
+    expect(anubis.attributes('data-actions')).toBe('Осталось действий: 1 из 2');
+    expect(medusa.attributes('data-actions')).toBe('');
   });
 
   it('отмечает убитого героя', () => {
@@ -394,62 +441,68 @@ describe('рельс героев', () => {
     expect(rowsOf(wrapper)[1].attributes('data-dead')).toBe('true');
   });
 
-  it('держит по три карты-кнопки на верхней и на верхней левой грани гекса', () => {
+  it('держит над гексом две карты-кнопки: сведения и стопки', () => {
     const wrapper = mountRail();
     const top = wrapper.findAll('.-top-31');
-    const side = wrapper.findAll('.-rotate-60');
 
     expect(top).toHaveLength(2);
-    expect(side).toHaveLength(2);
-    expect(top[0].findAll('[data-slot]')).toHaveLength(3);
-    expect(side[0].findAll('[data-slot]')).toHaveLength(3);
+    expect(wrapper.findAll('.-rotate-60')).toHaveLength(0);
     expect(top[0].findAll('[data-slot]').map(node => node.attributes('data-slot'))).toEqual([
-      INFO_HERO,
-      INFO_FIGHTERS,
-      INFO_ITEMS,
+      INFO,
+      pilesLabel(players[1]),
     ]);
   });
 
-  it('держит карты-кнопки левой грани под своим гексом, но над гексом соседа', () => {
+  it('держит карты-кнопки над гексом, а не на его грани', () => {
     const wrapper = mountRail();
-    const side = wrapper.findAll('.-rotate-60');
-    const cells = wrapper.findAll('.relative.z-0, .relative.z-40');
+    const top = wrapper.findAll('.-top-31');
 
-    expect(cells).toHaveLength(2);
-    expect(side[0].classes()).toContain('z-10');
-    expect(side[1].classes()).toContain('z-10');
+    expect(top[0].classes()).toEqual(expect.arrayContaining(['absolute', '-top-31', 'left-1/2']));
     expect(rowsOf(wrapper)[0].classes()).toContain('z-20');
     expect(rowsOf(wrapper)[1].classes()).toContain('z-20');
   });
 
-  it('открывает окно о герое вверх над гексом и закрывает его той же картой', async () => {
+  it('не нажимает карту сведений, когда открыто окно стопок', async () => {
+    const wrapper = mountRail();
+
+    await slotByLabel(wrapper, pilesLabel(players[1])).trigger('click');
+
+    expect(wrapper.findAll('[data-piles]')).toHaveLength(1);
+    expect(slotByLabel(wrapper, pilesLabel(players[1])).attributes('data-out')).toBe('true');
+    expect(slotByLabel(wrapper, INFO).attributes('data-out')).toBe('false');
+  });
+
+  it('открывает сводку о герое вверх над гексом и закрывает её той же картой', async () => {
     const wrapper = mountRail();
 
     expect(wrapper.findAll('[data-info]')).toHaveLength(0);
 
-    await slotByLabel(wrapper, INFO_HERO).trigger('click');
+    await slotByLabel(wrapper, INFO).trigger('click');
 
     const opened = wrapper.findAll('[data-info]');
     expect(opened).toHaveLength(1);
     expect(opened[0].attributes('data-info')).toBe('hero');
     expect(opened[0].attributes('data-info-player')).toBe('medusa');
-    expect(slotByLabel(wrapper, INFO_HERO).attributes('data-out')).toBe('true');
+    expect(slotByLabel(wrapper, INFO).attributes('data-out')).toBe('true');
 
-    await slotByLabel(wrapper, INFO_HERO).trigger('click');
+    await slotByLabel(wrapper, INFO).trigger('click');
 
     expect(wrapper.findAll('[data-info]')).toHaveLength(0);
-    expect(slotByLabel(wrapper, INFO_HERO).attributes('data-out')).toBe('false');
+    expect(slotByLabel(wrapper, INFO).attributes('data-out')).toBe('false');
   });
 
-  it('держит открытым только одно окно из трёх', async () => {
+  it('переключает разделы сводки вкладкой внутри неё, не открывая второе окно', async () => {
     const wrapper = mountRail();
 
-    await slotByLabel(wrapper, INFO_HERO).trigger('click');
-    await slotByLabel(wrapper, INFO_FIGHTERS).trigger('click');
+    await slotByLabel(wrapper, INFO).trigger('click');
+    expect(wrapper.find('[data-info]').attributes('data-info')).toBe('hero');
+
+    await wrapper.find('[data-info-switch]').trigger('click');
 
     const opened = wrapper.findAll('[data-info]');
     expect(opened).toHaveLength(1);
     expect(opened[0].attributes('data-info')).toBe('fighters');
+    expect(opened[0].attributes('data-info-player')).toBe('medusa');
   });
 
   it('молчит подсказкой, пока над гексом открыто окно', async () => {
@@ -458,17 +511,17 @@ describe('рельс героев', () => {
 
     expect(hexOf()).toBe('false');
 
-    await slotByLabel(wrapper, INFO_HERO).trigger('click');
+    await slotByLabel(wrapper, INFO).trigger('click');
     expect(hexOf()).toBe('true');
 
-    await slotByLabel(wrapper, INFO_HERO).trigger('click');
+    await slotByLabel(wrapper, INFO).trigger('click');
     expect(hexOf()).toBe('false');
   });
 
   it('переносит открытое окно вместе с гексом, когда ход переходит дальше', async () => {
     const wrapper = mountRail();
 
-    await slotByLabel(wrapper, INFO_HERO).trigger('click');
+    await slotByLabel(wrapper, INFO).trigger('click');
     session.currentPlayerId.value = 'medusa';
     await nextTick();
 
@@ -478,18 +531,19 @@ describe('рельс героев', () => {
     expect(wrapper.findAll('[data-info]')).toHaveLength(1);
   });
 
-  it('гасит карты помощников и предметов, когда их нет', () => {
+  it('держит карту сведений нажатой у любого героя — пустые разделы гасятся вкладками', () => {
     const wrapper = mountRail();
-    const anubis = slotsOf(wrapper).slice(6, 9);
+    const anubis = slotsOf(wrapper).slice(2, 3);
 
-    expect(anubis.map(node => node.attributes('data-disabled'))).toEqual(['false', 'true', 'true']);
+    expect(anubis.map(node => node.attributes('data-disabled'))).toEqual(['false']);
+    expect(anubis.map(node => node.attributes('data-icon'))).toEqual(['lucide:info']);
   });
 
-  it('отдаёт бонус шага окну о герое того, чей ход', async () => {
+  it('отдаёт бонус шага окну того гекса, чья карта сведений нажата', async () => {
     session.movementBonus.value = 3;
     const wrapper = mountRail();
 
-    await slotsOf(wrapper)[6].trigger('click');
+    await slotsOf(wrapper)[2].trigger('click');
     expect(wrapper.find('[data-info-player="anubis"]').attributes('data-move-bonus')).toBe('3');
 
     await slotsOf(wrapper)[0].trigger('click');
@@ -497,98 +551,87 @@ describe('рельс героев', () => {
   });
 });
 
-describe('стеки героя', () => {
-  it('открывает руку героя окном', async () => {
+describe('стопки героя', () => {
+  it('держит карту-кнопку с числом карт в руке', () => {
     const wrapper = mountRail();
+    const piles = slotByLabel(wrapper, pilesLabel(players[0]));
 
-    await slotByLabel(wrapper, 'Карт в руке: 2').trigger('click');
-
-    expect(openModal).toHaveBeenCalledWith('hand', { playerId: 'medusa' });
+    expect(piles.attributes('data-count')).toBe(String(players[0].handCount));
+    expect(piles.attributes('data-count-class')).toBe('text-18');
   });
 
-  it('открывает сброс героя окном', async () => {
+  it('называет все три стопки в подсказке одной карты', () => {
     const wrapper = mountRail();
+    const labels = slotsOf(wrapper).map(node => node.attributes('data-slot'));
 
-    await slotByLabel(wrapper, 'Карт в сбросе: 1. Клик — открыть сброс').trigger('click');
-
-    expect(openModal).toHaveBeenCalledWith('discard', { playerId: 'anubis' });
+    expect(labels).toEqual([INFO, pilesLabel(players[1]), INFO, pilesLabel(players[0])]);
   });
 
-  it('открывает колоду героя окном, когда её карты видны', async () => {
-    session.players.value = players.map(player => ({ ...player, deckVisible: true }));
+  it('помечает карту пустой руки своей подложкой', () => {
+    session.players.value = players.map(player => ({ ...player, hand: [], handCount: 0 }));
     const wrapper = mountRail();
+    const empties = slotsOf(wrapper)
+      .filter(node => node.attributes('data-slot').startsWith('Карты:'))
+      .map(node => node.attributes('data-empty'));
 
-    await slotsByIcon(wrapper, 'lucide:layers')[0].trigger('click');
-
-    expect(openModal).toHaveBeenCalledWith('deck', { playerId: expect.any(String) });
+    expect(empties).toEqual(['true', 'true']);
   });
 
-  it('гасит пустой сброс и закрытую колоду', () => {
+  it('открывает окно стопок той же картой и закрывает его повторным кликом', async () => {
     const wrapper = mountRail();
 
-    expect(slotsByIcon(wrapper, 'lucide:layers')[0].attributes('data-disabled')).toBe('true');
-    expect(slotByLabel(wrapper, 'Сброс пуст').attributes('data-disabled')).toBe('true');
+    expect(wrapper.findAll('[data-piles]')).toHaveLength(0);
+
+    await slotByLabel(wrapper, pilesLabel(players[0])).trigger('click');
+
+    const opened = wrapper.findAll('[data-piles]');
+    expect(opened).toHaveLength(1);
+    expect(opened[0].attributes('data-piles')).toBe('anubis');
+    expect(slotByLabel(wrapper, pilesLabel(players[0])).attributes('data-out')).toBe('true');
+
+    await slotByLabel(wrapper, pilesLabel(players[0])).trigger('click');
+
+    expect(wrapper.findAll('[data-piles]')).toHaveLength(0);
+    expect(slotByLabel(wrapper, pilesLabel(players[0])).attributes('data-out')).toBe('false');
   });
 
-  it('оставляет цифру только у руки, у сброса и колоды она в подсказке', () => {
+  it('держит открытым одно окно над гексом: сведения и стопки сменяют друг друга', async () => {
     const wrapper = mountRail();
-    const [hand, deck, discard] = slotsOf(wrapper).slice(9, 12);
 
-    expect(hand.attributes('data-count')).toBe(String(players[0].handCount));
-    expect(deck.attributes('data-count')).toBe('');
-    expect(discard.attributes('data-count')).toBe('');
-    expect(deck.attributes('data-slot')).toBe(`Карт в колоде: ${players[0].deckCount}`);
-    expect(discard.attributes('data-slot')).toContain('Карт в сбросе');
+    await slotByLabel(wrapper, INFO).trigger('click');
+    await slotByLabel(wrapper, pilesLabel(players[0])).trigger('click');
+
+    expect(wrapper.findAll('[data-info]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-piles]')).toHaveLength(1);
+    expect(slotByLabel(wrapper, INFO).attributes('data-out')).toBe('false');
   });
 
-  it('оставляет у кнопки руки одну цифру без иконки', () => {
+  it('открывает большую руку из окна стопок и закрывает само окно', async () => {
     const wrapper = mountRail();
-    const hand = slotsOf(wrapper)[9];
 
-    expect(hand.attributes('data-icon')).toBe('');
-    expect(hand.attributes('data-count')).toBe('1');
-    expect(hand.attributes('data-count-class')).toBe('text-18');
+    await slotByLabel(wrapper, pilesLabel(players[0])).trigger('click');
+    await wrapper.find('[data-piles-open="hand"]').trigger('click');
+
+    expect(openModal).toHaveBeenCalledWith('hand', { playerId: 'anubis' });
+    expect(wrapper.findAll('[data-piles]')).toHaveLength(0);
   });
 
-  it('гасит руку, когда карты скрыты от игрока', () => {
-    session.players.value = [players[0], { ...players[1], hand: [], handCount: 3 }];
+  it('открывает сброс того героя, чья карта стопок нажата', async () => {
     const wrapper = mountRail();
-    const hand = slotByLabel(wrapper, 'Карт в руке: 3');
 
-    expect(hand.attributes('data-disabled')).toBe('true');
-    expect(hand.attributes('data-count')).toBe('3');
+    await slotByLabel(wrapper, pilesLabel(players[1])).trigger('click');
+    await wrapper.find('[data-piles-open="discard"]').trigger('click');
+
+    expect(openModal).toHaveBeenCalledWith('discard', { playerId: 'medusa' });
   });
 
-  it('помечает пустые стопки, чтобы у них был свой фон', () => {
+  it('молчит подсказкой под открытым окном стопок', async () => {
     const wrapper = mountRail();
-    const medusa = slotsOf(wrapper).slice(3, 6);
-    const anubis = slotsOf(wrapper).slice(9, 12);
+    const hexOf = () => wrapper.findAll('[data-hex]')[0].attributes('data-silent');
 
-    expect(medusa.map(node => node.attributes('data-empty'))).toEqual(['false', 'false', 'true']);
-    expect(anubis.map(node => node.attributes('data-empty'))).toEqual(['false', 'false', 'false']);
-  });
+    await slotByLabel(wrapper, pilesLabel(players[1])).trigger('click');
 
-  it('называет пустые руку и колоду', () => {
-    session.players.value = players.map(player => ({
-      ...player,
-      hand: [],
-      handCount: 0,
-      deckCount: 0,
-      discardCount: 0,
-    }));
-    const wrapper = mountRail();
-    const [hand, deck, discard] = slotsOf(wrapper).slice(3, 6);
-
-    expect([hand, deck, discard].map(node => node.attributes('data-slot'))).toEqual([
-      'Рука пуста',
-      'Колода пуста',
-      'Сброс пуст',
-    ]);
-    expect([hand, deck, discard].map(node => node.attributes('data-empty'))).toEqual([
-      'true',
-      'true',
-      'true',
-    ]);
+    expect(hexOf()).toBe('true');
   });
 
   it('открывает модалку героя по клику на гекс', async () => {

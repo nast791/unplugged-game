@@ -76,6 +76,29 @@ const players = [
 
 const konvaNode = attrs => ({ getAttr: key => attrs[key], getParent: () => null });
 
+describe('useBoardMap: подсказка бойца', () => {
+  const tokenWith = fighter => ({ x: 120, y: 340, fighter });
+
+  it('называет бойца, здоровье, удар и шаг', () => {
+    const { board } = mountMap();
+    const tip = board.fighterTipTextConfig(
+      tokenWith({ id: 'amat', name: 'Амат', currentHp: 4, startHp: 6, attackRange: 1, move: 3 }),
+    );
+
+    expect(tip.text).toBe('Амат\nЗдоровье 4/6 · Удар 1 · Шаг 3');
+    expect(tip.listening).toBe(false);
+  });
+
+  it('встаёт над фишкой, а не поверх неё, и указывает вниз', () => {
+    const { board } = mountMap();
+    const anchor = board.fighterTipAnchorConfig(tokenWith({ id: 'amat', name: 'Амат' }));
+
+    expect(anchor.x).toBe(120);
+    expect(anchor.y).toBeLessThan(340);
+    expect(board.fighterTipTagConfig().pointerDirection).toBe('down');
+  });
+});
+
 describe('useBoardMap: что рисуется', () => {
   it('клетки берутся из карты, радиус — из размера узла', () => {
     const { board } = mountMap();
@@ -712,5 +735,59 @@ describe('useBoardMap: здоровье бойца — сердце, а не к�
     expect(label.fill).toBe('#ffffff');
     expect(label.fontStyle).toBe('bold');
     expect(label.x + label.width / 2).toBeCloseTo(heart.x, 6);
+  });
+});
+
+describe('useBoardMap: ключ кэша статики доски', () => {
+  const shift = async (key, mutate) => {
+    const map = {
+      id: 'test',
+      name: 'test',
+      settings: { nodeSize: 72 },
+      nodes: [
+        { id: 1, x: 100, y: 100, terrain: 'ice', neighbors: [2], heroStart: true, position: 1 },
+        { id: 2, x: 200, y: 100, terrain: 'desert', neighbors: [1] },
+      ],
+    };
+    mutate?.(map);
+    const { wrapper, board } = mountMap({ map });
+    const before = value(board.boardKey);
+    const after = await key({ wrapper, board, map });
+    return [before, after];
+  };
+
+  it('не сбрасывается подсветкой и выбором: статика от них не зависит', async () => {
+    const { wrapper, board } = mountMap();
+    const before = value(board.boardKey);
+
+    await wrapper.setProps({ highlightedCellIds: [1], selectedFighterId: 'anubis' });
+
+    expect(value(board.boardKey)).toBe(before);
+  });
+
+  it('сбрасывается сменой стихии клетки: временный сектор — уже другая картинка', async () => {
+    const [before, after] = await shift(async ({ wrapper, map }) => {
+      const next = { ...map, nodes: map.nodes.map(node => ({ ...node })) };
+      next.nodes[1].terrain = ['desert', 'water'];
+      await wrapper.setProps({ map: next });
+      return value(wrapper.vm.board.boardKey);
+    });
+
+    expect(after).not.toBe(before);
+  });
+
+  it('сбрасывается переездом клетки: статика не может остаться на старом месте', async () => {
+    const { wrapper, board } = mountMap();
+    const before = value(board.boardKey);
+
+    const map = {
+      ...wrapper.props('map'),
+      nodes: wrapper
+        .props('map')
+        .nodes.map(node => (node.id === 2 ? { ...node, x: 220 } : { ...node })),
+    };
+    await wrapper.setProps({ map });
+
+    expect(value(board.boardKey)).not.toBe(before);
   });
 });

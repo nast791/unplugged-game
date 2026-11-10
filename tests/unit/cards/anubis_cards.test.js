@@ -335,6 +335,33 @@ describe('карты Анубиса: позиция и контроль', () => 
     expect(ids(discard(player(after, '0')))).toEqual(['anubis_05']);
   });
 
+  it('«Врата»: свободного песка несколько — окно необязательное, от переноса можно отказаться', () => {
+    // песок 1 и 4 свободны (Анубис и Амат стоят на 2, Бета — на льду 3)
+    const map = {
+      nodes: [
+        { id: 1, neighbors: [2], terrain: 'desert' },
+        { id: 2, neighbors: [1, 3], terrain: 'desert' },
+        { id: 3, neighbors: [2, 4], terrain: 'ice' },
+        { id: 4, neighbors: [3], terrain: 'desert' },
+      ],
+    };
+    const after = passDefense(
+      attackWith(buildState({ cardInHand: 'anubis_05', map }), 'anubis_05_1'),
+    );
+
+    // «можете поместить»: текст карты разрешает не помещать — окно закрывается общей кнопкой
+    expect(after.targeting).toMatchObject({ kind: 'cells', required: false });
+    expect(after.targeting.candidates.map(entry => String(entry.cellId)).sort()).toEqual([
+      '1',
+      '4',
+    ]);
+    expect(runUi(after, '0').controls.ok).toMatchObject({ visible: true, enabled: true });
+
+    const declined = runAction(after, { type: 'UI_OK', playerId: '0' });
+    expect(declined.targeting ?? null).toBeNull();
+    expect(String(fighterOf(declined, '1', 'beta').currentPosition)).toBe('3');
+  });
+
   it('«Врата»: песка на карте нет — свойства нет', () => {
     const after = passDefense(
       attackWith(
@@ -592,7 +619,13 @@ describe('карты Анубиса: эффекты', () => {
       withAmat: true,
       shroudState: 'active',
       discardCards: [
-        { id: 'anubis_09', instanceId: 'anubis_09_1', title: 'Суд молчит', type: 'effect', bonus: 2 },
+        {
+          id: 'anubis_09',
+          instanceId: 'anubis_09_1',
+          title: 'Суд молчит',
+          type: 'effect',
+          bonus: 2,
+        },
       ],
     });
 
@@ -610,7 +643,13 @@ describe('карты Анубиса: эффекты', () => {
       shroudState: 'active',
       moved: true,
       discardCards: [
-        { id: 'anubis_09', instanceId: 'anubis_09_1', title: 'Суд молчит', type: 'effect', bonus: 2 },
+        {
+          id: 'anubis_09',
+          instanceId: 'anubis_09_1',
+          title: 'Суд молчит',
+          type: 'effect',
+          bonus: 2,
+        },
       ],
     });
 

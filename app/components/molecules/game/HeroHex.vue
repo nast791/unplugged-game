@@ -62,7 +62,7 @@
       <span
         class="text-17 absolute inset-0 flex items-center justify-center font-bold text-white lining-nums"
       >
-        {{ props.actionNow }}/{{ props.actionTotal }}
+        {{ props.actionLeft }}/{{ props.actionTotal }}
       </span>
     </span>
 
@@ -95,7 +95,7 @@ const props = defineProps({
   color: { type: String, default: '' },
   hp: { type: [Number, String], default: null },
   actions: { type: String, default: '' },
-  actionNow: { type: Number, default: null },
+  actionLeft: { type: Number, default: null },
   actionTotal: { type: Number, default: null },
   active: { type: Boolean, default: false },
   dead: { type: Boolean, default: false },

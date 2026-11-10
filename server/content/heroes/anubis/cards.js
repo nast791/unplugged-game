@@ -169,7 +169,8 @@ export default [
             kind: 'cells',
             candidates: '$cells',
             count: 1,
-            required: true,
+            // «можете поместить»: окно необязательное, кнопка «Закончить эффект» — отказ от переноса
+            required: false,
             // свободный песок может быть один: тогда движок отмечает его сам
             auto: true,
           },
@@ -483,7 +484,12 @@ export default [
           // сжигать можно только стоя: шаг гасит приговор, как и у «Погребального звона»
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
           // карта уже в сбросе, когда разыгрываются её правила, — минимум 1 урона
-          { fact: 'CARDS', params: { zone: 'discard', type: 'effect', count: true }, min: 1, var: 'n' },
+          {
+            fact: 'CARDS',
+            params: { zone: 'discard', type: 'effect', count: true },
+            min: 1,
+            var: 'n',
+          },
           { fact: 'FIGHTERS', params: { of: 'opponent', type: 'hero' }, min: 1, var: 'hero' },
         ],
         then: [{ action: 'SET_HEALTH', fighterIds: '$hero', damage: '$n' }],

@@ -64,11 +64,6 @@ describe('словарь подсказок интерфейса', () => {
   it('каждая подсказка — непустая строка, подстановки заполнены', () => {
     const sample = {
       'playerCard.health': { hp: '15/16' },
-      'playerCard.handCount': { count: 5 },
-      'playerCard.handEmpty': {},
-      'playerCard.deckCount': { count: 25 },
-      'playerCard.deckEmpty': {},
-      'playerCard.discardCount': { count: 3 },
       'card.type': { label: 'Атака' },
       'card.bonus': { bonus: 2 },
       'card.fighter': { name: 'Гарпия' },
@@ -79,7 +74,8 @@ describe('словарь подсказок интерфейса', () => {
       'placementTray.moveFighter': { name: 'Амат' },
       'rail.ok': { label: 'Завершить действие' },
       'rail.heroHex': { name: 'Медуза', hp: '15/16' },
-      'rail.heroActions': { action: 2, total: 3 },
+      'rail.heroActions': { left: 2, total: 3 },
+      'rail.piles': { hand: 5, deck: 25, discard: 3 },
     };
 
     const broken = [];
@@ -97,10 +93,8 @@ describe('словарь подсказок интерфейса', () => {
   });
 
   it('подсказки с ветками не оставляют пустого хвоста', () => {
-    // пустой сброс говорит об этом словами, а не нулём
-    expect(TOOLTIPS.playerCard.discardCount({ count: 0 })).toBe('Сброс пуст');
-    expect(TOOLTIPS.playerCard.discardCount({ count: 3 })).toContain('Клик — открыть сброс');
     // у кнопки без подписи остаётся действие по умолчанию
     expect(TOOLTIPS.rail.ok({ label: null })).toBe('Завершить действие');
+    expect(TOOLTIPS.rail.piles({ hand: 0, deck: 0, discard: 0 })).toContain('в руке 0');
   });
 });

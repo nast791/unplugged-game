@@ -33,7 +33,6 @@ export default {
   // только сборка пути в `server/utils.js: heroImageUrl`.
   images: {
     hero: 'hero.webp',
-    promo: 'promo.webp',
     back: 'card-back.webp',
   },
   skill: {

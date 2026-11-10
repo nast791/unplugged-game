@@ -39,6 +39,16 @@
       />
 
       <div
+        v-else-if="side.cardState === 'hidden'"
+        data-battle-back
+        class="rounded-8 relative h-295 w-200 overflow-hidden border-2"
+        :class="back ? 'border-line' : 'bg-surface-3 border-transparent'"
+        :style="!back && side.color ? { backgroundColor: side.color } : null"
+      >
+        <APicture v-if="back" :src="back" alt="" class="size-full" />
+      </div>
+
+      <div
         v-else
         class="rounded-8 flex h-295 w-200 items-center justify-center border-2 border-dashed px-12 text-center"
         :class="waiting ? 'border-info/60 text-info' : 'border-line text-dim'"
@@ -78,6 +88,7 @@
 
 <script setup>
 import AAvatar from '~/components/atoms/AAvatar.vue';
+import APicture from '~/components/atoms/APicture.vue';
 import Card from '~/components/molecules/game/Card.vue';
 
 const props = defineProps({
@@ -88,6 +99,8 @@ const props = defineProps({
   boost: { type: Object, default: null },
 
   damage: { type: Number, default: 0 },
+
+  back: { type: String, default: '' },
 });
 
 const boostFront = ref(false);
@@ -99,8 +112,7 @@ const hpStyle = computed(() => (props.side.dead ? null : { color: props.side.hpC
 const SLOTS = {
   waiting: 'Ждём карту защиты',
   empty: 'Без защиты',
-  hidden: 'Карта закрыта',
 };
 
-const slotLabel = computed(() => SLOTS[props.side.cardState] ?? 'Карта закрыта');
+const slotLabel = computed(() => SLOTS[props.side.cardState] ?? '');
 </script>

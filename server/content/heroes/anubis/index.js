@@ -11,6 +11,7 @@ export default {
       move: 2,
       attackRange: 2,
       size: 1,
+      image: 'avatar-anubis.webp',
     },
   ],
   assistants: [
@@ -23,6 +24,7 @@ export default {
       move: 2,
       attackRange: 1,
       size: 1,
+      image: 'avatar-amat.webp',
     },
   ],
   items: [
@@ -38,6 +40,11 @@ export default {
       icon: 'bx:wind',
     },
   ],
+  // Арты лежат рядом с паком (`images/`), а наружу отдаются маршрутом
+  // `/api/content/heroes/anubis/images/{файл}` — путь собирает `server/utils.js: heroImageUrl`.
+  images: {
+    hero: 'hero.webp',
+  },
   tags: ['scales'],
   terrainAffinity: ['desert'],
   skill: {

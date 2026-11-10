@@ -272,3 +272,56 @@ describe('расстановка: выставленного бойца можн
     expect(String(useGameView().sendAction.mock.calls[0][0].id)).toBe(String(target));
   });
 });
+
+/**
+ * Окно клеток, открытое картой («Врата» Анубиса: «можете поместить бойца оппонента на свободную клетку
+ * пустыни»), бойца не ждёт: кого переносить, решает само правило. Раньше клик по подсвеченной клетке
+ * падал в ветку «Сначала выберите бойца», и свойство карты сыграть было нельзя — партия вставала.
+ */
+describe('окно клеток от карты: клик по подсвеченной клетке — это весь выбор', () => {
+  /** Партия в окне клеток: кандидаты объявлены картой, свой боец не выбран. */
+  const cardWindow = () => {
+    const host = myTurnParty('choose');
+    host.turn.playerId = 'medusa';
+    const cell = host.map.nodes.find(node => node.heroStart !== true);
+    host.targeting = {
+      kind: 'cells',
+      playerId: 'medusa',
+      source: 'anubis_08',
+      candidates: [{ cellId: String(cell.id) }],
+      count: 1,
+      required: false,
+      picked: [],
+      complete: false,
+    };
+    return { host, cellId: String(cell.id) };
+  };
+
+  it('клик по подсвеченной клетке уходит без выбранного бойца', () => {
+    const { host, cellId } = cardWindow();
+    useGameView().__seed(host, 'medusa');
+    const session = useGameSession();
+    useGameView().sendAction.mockClear();
+
+    expect(session.selectedFighterId.value).toBe(null);
+    expect(session.highlightedCellIds.value).toContain(cellId);
+
+    session.onCellClick(cellId);
+
+    expect(useGameView().sendAction).toHaveBeenCalledTimes(1);
+    expect(useGameView().sendAction.mock.calls[0][0]).toMatchObject({ type: 'PICK', kind: 'cell' });
+    expect(String(useGameView().sendAction.mock.calls[0][0].id)).toBe(cellId);
+  });
+
+  it('клетка вне окна по-прежнему просит выбрать бойца', () => {
+    const { host } = cardWindow();
+    useGameView().__seed(host, 'medusa');
+    const session = useGameSession();
+    useGameView().sendAction.mockClear();
+
+    session.onCellClick('999');
+
+    expect(useGameView().sendAction).not.toHaveBeenCalled();
+    expect(session.selectedFighterId.value).toBe(null);
+  });
+});

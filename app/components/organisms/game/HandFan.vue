@@ -40,7 +40,27 @@
         @contextmenu.prevent="closeZoom"
         @keydown.escape="closeZoom"
       >
-        <Card :card="zoomed" class="origin-center scale-220" />
+        <div class="flex items-center justify-center gap-32">
+          <div
+            data-zoom-card
+            class="h-649 w-440 cursor-auto"
+            @click.stop
+            @contextmenu.prevent.stop
+            @mouseenter="zoomTextOpen = true"
+            @mouseleave="zoomTextOpen = false"
+          >
+            <Card :card="zoomed" class="origin-top-left scale-220" />
+          </div>
+
+          <div
+            v-if="zoomTextOpen"
+            data-zoom-text
+            class="border-line bg-surface text-ink rounded-4 text-26 pointer-events-none max-w-460 border-2 px-16 py-12 shadow-2xl"
+          >
+            <span class="block font-semibold">{{ zoomed.title }}</span>
+            <CardText class="mt-6" :text="zoomed.text" tone="zoom" />
+          </div>
+        </div>
       </div>
     </Teleport>
   </section>
@@ -50,6 +70,7 @@
 import { cardBonus } from '#shared/helpers/cards.js';
 import ATooltip from '~/components/atoms/ATooltip.vue';
 import Card from '~/components/molecules/game/Card.vue';
+import CardText from '~/components/molecules/game/CardText.vue';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 import { useCardDrag } from '~/composables/ui/useCardDrag.js';
 import { sortHandCards } from '~/composables/game/useGameHelpers.js';
@@ -86,6 +107,7 @@ const expose = ref(0);
 
 const frontKey = ref('');
 const zoomed = ref(null);
+const zoomTextOpen = ref(false);
 const dragging = ref(false);
 
 const cardKeyOf = card => String(card?.instanceId ?? card?.id ?? '');
@@ -205,11 +227,13 @@ const onCardPointerDown = (card, event) => {
 };
 
 const zoom = card => {
+  zoomTextOpen.value = false;
   zoomed.value = card;
 };
 
 const closeZoom = () => {
   zoomed.value = null;
+  zoomTextOpen.value = false;
   frontKey.value = '';
 };
 

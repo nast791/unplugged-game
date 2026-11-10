@@ -33,9 +33,19 @@ describe('CardText: опции свойства', () => {
   });
 
   it('между ярлыком опции и текстом свойства есть отступ', () => {
-    const label = mountText().find('[data-option] span');
+    const head = mountText().find('[data-option] [data-option-head]');
 
-    expect(label.classes()).toContain('mb-4');
+    expect(head.classes()).toContain('mb-4');
+  });
+
+  it('ставит точку слева от ярлыка, чтобы строки опций читались', () => {
+    const dots = mountText().findAll('[data-option] [data-option-dot]');
+
+    expect(dots).toHaveLength(2);
+    for (const dot of dots) {
+      expect(dot.classes()).toContain('rounded-full');
+      expect(dot.classes()).toContain('bg-accent');
+    }
   });
 
   it('строки опций без плашки и вертикальной полосы', () => {

@@ -1,12 +1,23 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { computed, defineComponent, h, ref, watch } from 'vue';
+import {
+  computed,
+  defineComponent,
+  h,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 
 /**
- * Окно информации о герое (`HeroInfo`) — три режима в одной панели. В режиме «о помощниках» рисуем
- * круглый аватар выбранного помощника и рядом его характеристики — теми же строками, что у героя
- * («Здоровье», «Удар», «Шаг»); общее число помощников живёт в заголовке «о помощниках (N)».
+ * Окно информации о герое (`HeroInfo`) — одна панель с переключателем разделов внутри: «Герой»,
+ * «Помощники (живых из всех)», «Предметы». В режиме «о помощниках» рисуем круглый аватар выбранного
+ * помощника и рядом его характеристики — теми же строками, что у героя («Здоровье», «Удар», «Шаг»).
+ * Число живых помощников живёт в самой вкладке, а не отдельной строкой: панель одна, и заголовку
+ * незачем повторять раздел.
  *
  * Аватар помощника — адрес вида `/api/content/heroes/{id}/images/{file}`: он отдаётся готовым файлом,
  * поэтому картинка идёт мимо ipx (`provider="none"`), иначе прокси-сжатие отдаёт 404.
@@ -14,6 +25,9 @@ import { computed, defineComponent, h, ref, watch } from 'vue';
 globalThis.computed = computed;
 globalThis.ref = ref;
 globalThis.watch = watch;
+globalThis.nextTick = nextTick;
+globalThis.onMounted = onMounted;
+globalThis.onBeforeUnmount = onBeforeUnmount;
 
 vi.mock('~/components/atoms/APicture.vue', async () => {
   const { defineComponent, h } = await import('vue');
@@ -115,11 +129,67 @@ const rowsOf = wrapper =>
     .map(row => row.findAll('span').map(span => span.text()));
 
 describe('окно информации о герое', () => {
-  it('держит число живых помощников из общего в заголовке, а не строкой ниже', () => {
+  it('держит число живых помощников во вкладке, а не строкой ниже', () => {
     const wrapper = mountInfo();
 
-    expect(wrapper.text().toUpperCase()).toContain('О ПОМОЩНИКАХ (1/2)');
+    expect(wrapper.text().toUpperCase()).toContain('ПОМОЩНИКИ (1/2)');
     expect(rowsOf(wrapper).some(([label]) => label === 'Помощников')).toBe(false);
+  });
+
+  it('держит имя героя в разделе «Герой», а не шапкой окна', () => {
+    const heroTab = mountInfo('hero');
+    const fightersTab = mountInfo('fighters');
+
+    expect(heroTab.text()).toContain('Дороти');
+    expect(fightersTab.text()).not.toContain('Дороти');
+    expect(heroTab.text().indexOf('Дороти')).toBeGreaterThan(
+      heroTab.text().toUpperCase().indexOf('ПРЕДМЕТЫ'),
+    );
+  });
+
+  it('переключает разделы вкладками внутри панели и говорит, какой открыт', async () => {
+    const wrapper = mountInfo('hero');
+    const tabs = wrapper.findAll('[role="tab"]');
+
+    expect(tabs.map(tab => tab.text())).toEqual(['Герой', 'Помощники (1/2)', 'Предметы']);
+    expect(tabs.map(tab => tab.attributes('aria-selected'))).toEqual(['true', 'false', 'false']);
+
+    await tabs[1].trigger('click');
+
+    expect(wrapper.emitted('switch')).toEqual([['fighters']]);
+  });
+
+  it('гасит вкладку раздела, которого у героя нет', () => {
+    const wrapper = mountInfo('hero');
+    const tabs = wrapper.findAll('[role="tab"]');
+
+    expect(tabs.map(tab => tab.attributes('disabled'))).toEqual([undefined, undefined, '']);
+  });
+
+  it('ставит полоску по границам открытой вкладки, а не третью ряда', async () => {
+    const wrapper = mountInfo('hero');
+    const geometry = [
+      { left: 0, width: 118 },
+      { left: 118, width: 156 },
+      { left: 274, width: 66 },
+    ];
+
+    wrapper.findAll('[role="tab"]').forEach((tab, index) => {
+      Object.defineProperty(tab.element, 'offsetLeft', { value: geometry[index].left });
+      Object.defineProperty(tab.element, 'offsetWidth', { value: geometry[index].width });
+    });
+
+    await wrapper.setProps({ mode: 'fighters' });
+    await nextTick();
+    await nextTick();
+
+    const bar = wrapper.find('[data-tab-indicator]');
+
+    expect(wrapper.findAll('[data-tab-indicator]')).toHaveLength(1);
+    expect(bar.attributes('style')).toContain('translateX(118px)');
+    expect(bar.attributes('style')).toContain('width: 156px');
+    expect(bar.classes()).toContain('transition-[transform,opacity]');
+    expect(bar.classes()).not.toContain('transition-[width,transform,opacity]');
   });
 
   it('рисует круглый аватар помощника мимо ipx-прокси', () => {
@@ -169,7 +239,7 @@ describe('окно информации о герое', () => {
     const wrapper = mountInfo('hero');
     const rows = rowsOf(wrapper);
 
-    expect(wrapper.text().toUpperCase()).toContain('О ГЕРОЕ');
+    expect(wrapper.find('[role="tab"][aria-selected="true"]').text()).toBe('Герой');
     expect(rows).toEqual(
       expect.arrayContaining([
         ['Здоровье', '13/13'],
@@ -191,7 +261,7 @@ describe('окно информации о герое', () => {
       { id: 'coil', name: 'Катушка', state: 'inactive' },
     ];
     const wrapper = mountInfo('items', { player: { ...player, items } });
-    const labels = wrapper.findAll('.text-12.text-dim').map(span => span.text());
+    const labels = wrapper.findAll('[data-item-state]').map(span => span.text());
 
     expect(wrapper.text()).toContain('Пелена');
     expect(labels).toEqual(['активна', 'не активна']);

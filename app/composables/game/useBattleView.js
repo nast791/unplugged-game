@@ -91,6 +91,7 @@ export const battleSide = ({ combat, players = [], side } = {}) => {
     dead,
     deadLabel: dead ? (isAttacker ? 'Боец убит' : 'Цель убита') : '',
     color: holder?.player?.color ?? null,
+    heroId: holder?.player?.heroId == null ? null : String(holder.player.heroId),
     fighterId: holder?.fighter?.id == null ? null : String(holder.fighter.id),
     fighterName,
     hpLabel: holder ? hpLabel(holder.fighter) : '',
@@ -375,6 +376,29 @@ export const useBattleView = () => {
     };
   });
 
+  // кто кого ударил: урон карт получает проигравшая сторона, урон свойств — та, чей шаг сработал
+  const result = computed(() => {
+    const nums = numbers.value;
+    const outcomeValue = outcome.value;
+    if (!nums || !outcomeValue) return null;
+
+    const bySide = { attacker: 0, defender: 0 };
+    for (const step of steps.value) bySide[step.side] += step.damage;
+
+    const loser = outcomeValue.winner === 'attacker' ? 'defender' : 'attacker';
+    const list = sides.value.map(side => {
+      const card = side.side === loser ? outcomeValue.combatDamage : 0;
+      const effect = bySide[side.side] ?? 0;
+      return { key: side.side, name: side.fighterName, card, effect, damage: card + effect };
+    });
+
+    return {
+      line: `битва ${outcomeValue.attack} − ${outcomeValue.defense} = ${outcomeValue.combatDamage}`,
+      damage: list.reduce((total, side) => total + side.damage, 0),
+      sides: list,
+    };
+  });
+
   const damage = computed(() => {
     if (replay.value) return damageShown.value ? replay.value.damage : null;
     return settled.value?.damage ?? null;
@@ -461,6 +485,7 @@ export const useBattleView = () => {
     stageLabel: computed(() => battleStageLabel(model.value?.combat?.stage)),
     outcome,
     numbers,
+    result,
     damage,
     showSwords,
     boost,

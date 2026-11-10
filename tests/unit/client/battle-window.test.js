@@ -150,6 +150,30 @@ vi.mock('~/components/molecules/game/Card.vue', async () => {
   };
 });
 
+/**
+ * Рубашка колоды — та же молекула картинки: в тесте окна важно, что она получила адрес,
+ * а не как рисует провайдер картинок.
+ */
+vi.mock('~/components/atoms/APicture.vue', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    default: defineComponent({
+      name: 'APicture',
+      props: { src: { type: String, default: '' }, alt: { type: String, default: '' } },
+      setup(props) {
+        return () => h('img', { 'data-picture': props.src, 'src': props.src, 'alt': props.alt });
+      },
+    }),
+  };
+});
+
+/** Рубашка колоды приезжает из пака героя: тесту хватает одного пака с рубашкой. */
+vi.mock('~/composables/api/heroes.js', async () => ({
+  useHeroPacks: () => ({
+    heroPack: id => (String(id) === 'dorothy' ? { cardBack: '/images/card-back.webp' } : null),
+  }),
+}));
+
 const IconStub = defineComponent({
   name: 'NuxtIcon',
   props: { name: { type: String, default: '' } },
@@ -203,6 +227,7 @@ const playersFixture = () => [
     name: 'Элизиф',
     control: 'human',
     color: '#22d3ee',
+    heroId: 'dorothy',
     fighters: [
       { id: 'f1', name: 'Амат', type: 'hero', currentHp: 9, startHp: 12, currentPosition: 'c1' },
     ],
@@ -212,6 +237,7 @@ const playersFixture = () => [
     name: '',
     control: 'ai',
     color: '#ff7f50',
+    heroId: 'ifrit',
     fighters: [
       {
         id: 'f2',
@@ -462,7 +488,7 @@ describe('окно битвы: стороны и карты', () => {
     expect(wrapper.find('[data-side="defender"]').text()).toContain('Без защиты');
   });
 
-  it('чужую карту до вскрытия проекция прячет — окно говорит «Карта закрыта»', async () => {
+  it('чужую карту до вскрытия проекция прячет — в слоте лежит рубашка колоды', async () => {
     openBattle();
     // проекция не отдаёт карту вовсе: ключа нет, а не «карта равна null»
     delete session.combat.value.attackCard;
@@ -470,8 +496,26 @@ describe('окно битвы: стороны и карты', () => {
     const wrapper = mountWindow();
     await nextTick();
 
-    expect(wrapper.find('[data-side="attacker"]').text()).toContain('Карта закрыта');
+    const slot = wrapper.find('[data-side="attacker"] [data-battle-back]');
+    expect(slot.exists()).toBe(true);
+    expect(slot.find('img').attributes('src')).toContain('card-back');
+    expect(wrapper.find('[data-side="attacker"]').text()).not.toContain('Карта закрыта');
     expect(wrapper.text()).not.toContain('урон');
+  });
+
+  it('нет рубашки в паке — слот залит цветом героя, без надписи', async () => {
+    openBattle();
+    delete session.combat.value.attackCard;
+    delete session.combat.value.attackValue;
+    session.players.value[0].heroId = 'ifrit';
+    const wrapper = mountWindow();
+    await nextTick();
+
+    const slot = wrapper.find('[data-side="attacker"] [data-battle-back]');
+    expect(slot.exists()).toBe(true);
+    expect(slot.find('img').exists()).toBe(false);
+    expect(slot.attributes('style')).toContain('#22d3ee');
+    expect(wrapper.text()).not.toContain('Карта закрыта');
   });
 
   it('мечи появляются, когда защита решена', async () => {
@@ -532,9 +576,7 @@ describe('окно битвы: стороны и карты', () => {
     const attacker = wrapper.find('[data-side="attacker"]');
     expect(attacker.find('[data-battle-boost]').exists()).toBe(true);
     expect(attacker.find('[data-battle-boost]').text()).toContain('Тихий шаг');
-    expect(wrapper.find('[data-side="defender"]').find('[data-battle-boost]').exists()).toBe(
-      false,
-    );
+    expect(wrapper.find('[data-side="defender"]').find('[data-battle-boost]').exists()).toBe(false);
   });
 });
 
@@ -576,6 +618,28 @@ describe('окно битвы: лента шагов с паузами', () => {
 
     await wrapper.find('[data-battle-close]').trigger('click');
     expect(wrapper.find('[data-battle-window]').exists()).toBe(false);
+  });
+
+  it('показывает итог битвы: числа, урон и по кому он пришёлся', async () => {
+    openBattle();
+    const wrapper = mountWindow();
+    await nextTick();
+
+    await finishBattle();
+    await passTime(ANIMATION_DURATIONS.battleReveal);
+    await passTime(ANIMATION_DURATIONS.battleStep);
+    await passTime(ANIMATION_DURATIONS.battleStep);
+    await passTime(ANIMATION_DURATIONS.battleDamage);
+
+    expect(wrapper.find('[data-battle-done]').exists()).toBe(true);
+    expect(wrapper.find('[data-battle-totals]').text()).toBe('битва 5 − 2 = 3');
+
+    // урон карт получает проигравшая сторона — защитник-помощник
+    const hits = wrapper.findAll('[data-battle-result]');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].text()).toContain('Тото');
+    expect(hits[0].text()).toContain('урон 3');
+    expect(hits[0].text()).toContain('карты 3');
   });
 
   it('вскрытие берёт карты из записи боя: в снимке их нет, сброс ещё пуст', async () => {
@@ -823,6 +887,30 @@ describe('окно битвы: окна выбора сворачивают ег
     expect(wrapper.find('[data-battle-body]').exists()).toBe(false);
     expect(wrapper.text()).toContain('Битва');
     expect(wrapper.text()).toContain('защита');
+
+    await wrapper.find('[data-battle-mini]').trigger('click');
+    expect(wrapper.find('[data-battle-body]').exists()).toBe(true);
+  });
+
+  it('не отбирает указатель на кнопках: свёрнуть и развернуть можно обычным кликом', async () => {
+    openBattle();
+    const wrapper = mountWindow();
+    await nextTick();
+
+    // захват указателя на шапке увёл бы клик с кнопки на саму шапку — кнопки перестали бы работать
+    const capture = vi.fn();
+    wrapper.find('header').element.setPointerCapture = capture;
+    const minimize = wrapper.find(`[aria-label="${TOOLTIPS.battle.minimize()}"]`);
+    minimize.element.dispatchEvent(pointerEvent('pointerdown'));
+    expect(capture).not.toHaveBeenCalled();
+
+    await minimize.trigger('click');
+    expect(wrapper.find('[data-battle-mini]').exists()).toBe(true);
+
+    const mini = wrapper.find('[data-battle-mini]').element;
+    mini.setPointerCapture = capture;
+    mini.dispatchEvent(pointerEvent('pointerdown'));
+    expect(capture).not.toHaveBeenCalled();
 
     await wrapper.find('[data-battle-mini]').trigger('click');
     expect(wrapper.find('[data-battle-body]').exists()).toBe(true);

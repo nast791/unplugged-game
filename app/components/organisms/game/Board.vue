@@ -12,7 +12,7 @@
   >
     <ClientOnly>
       <v-stage v-if="stageReady" ref="stageRef" :config="stageConfig">
-        <v-layer>
+        <v-layer ref="boardRef">
           <v-rect v-if="mapFrame" :config="paperConfig" />
 
           <v-line v-for="(line, index) in edgeLines" :key="`e-${index}`" :config="line" />
@@ -23,7 +23,7 @@
             :config="{
               x: node.x,
               y: node.y,
-              listening: interactive,
+              listening: true,
               cellName: 'cell',
               cellId: node.id,
             }"
@@ -57,39 +57,62 @@
               :config="mark"
             />
 
-            <v-circle v-if="isActiveCell(node)" :config="cellGlowConfig(node)" />
-            <v-circle
-              v-if="isDropCell(node) || isPulsingCell(node)"
-              :config="cellPulseConfig(node)"
-            />
-            <v-circle v-if="isActiveCell(node)" :config="cellRingConfig(node)" />
-
             <v-text v-if="showCellIds" :config="cellLabelConfig(node)" />
-          </v-group>
-
-          <v-group :config="{ listening: false }">
-            <template v-for="marker in startMarkersOf" :key="`m-${marker.id}`">
-              <v-circle :config="marker.disc" />
-              <v-text :config="marker.label" />
-            </template>
           </v-group>
 
           <template v-if="mapFrame">
             <v-rect :config="vignetteConfig" />
             <v-line :config="frameConfig" />
           </template>
+        </v-layer>
 
+        <v-layer :config="{ listening: false }">
+          <v-group
+            v-for="node in nodes"
+            :key="`g-${node.id}`"
+            :config="{ x: node.x, y: node.y, listening: false }"
+          >
+            <v-circle v-if="isActiveCell(node)" :config="cellGlowConfig(node)" />
+            <v-circle v-if="isActiveCell(node)" :config="cellRingConfig(node)" />
+          </v-group>
+        </v-layer>
+
+        <v-layer :config="{ listening: false }">
+          <v-group
+            v-for="node in nodes"
+            :key="`p-${node.id}`"
+            :config="{ x: node.x, y: node.y, listening: false }"
+          >
+            <v-circle
+              v-if="isDropCell(node) || isPulsingCell(node)"
+              :config="cellPulseConfig(node)"
+            />
+          </v-group>
+        </v-layer>
+
+        <v-layer :config="{ listening: false }" name="start-marker">
+          <v-group :config="{ listening: false }">
+            <template v-for="marker in startMarkersOf" :key="`m-${marker.id}`">
+              <v-circle :config="marker.disc" />
+              <v-text :config="marker.label" />
+            </template>
+          </v-group>
+        </v-layer>
+
+        <v-layer>
           <v-group
             v-for="token in placedFighters"
             :key="`f-${token.playerId}-${token.fighter.id}`"
             :config="{
               x: token.x,
               y: token.y,
-              listening: interactive,
+              listening: true,
               cellName: 'fighter',
               fighterId: token.fighter.id,
               ownerId: token.playerId,
             }"
+            @mouseenter="hoverFighter(token)"
+            @mouseleave="clearHoveredFighter"
           >
             <v-circle v-if="isPulsingFighter(token)" :config="fighterPulseConfig(token)" />
             <v-ellipse :config="fighterShadowConfig(token)" />
@@ -113,6 +136,13 @@
               <v-text :config="fighterHpLabelConfig(token)" />
             </template>
           </v-group>
+        </v-layer>
+
+        <v-layer :config="{ listening: false }">
+          <v-label v-if="hoveredFighter" :config="fighterTipAnchorConfig(hoveredFighter)">
+            <v-tag :config="fighterTipTagConfig()" />
+            <v-text :config="fighterTipTextConfig(hoveredFighter)" />
+          </v-label>
         </v-layer>
       </v-stage>
 
@@ -159,6 +189,7 @@ const map = computed(() => view.value?.map ?? null);
 
 const wrapRef = ref(null);
 const stageRef = ref(null);
+const boardRef = ref(null);
 const stageReady = ref(false);
 const size = ref({ width: 720, height: 480 });
 
@@ -167,6 +198,7 @@ const {
   bounds,
   radius,
   showCellIds,
+  boardKey,
   sectorsOf,
   sectorConfig,
   temporaryMarksOf,
@@ -199,6 +231,9 @@ const {
   fighterHpHeartConfig,
   fighterHpGlossConfig,
   fighterHpLabelConfig,
+  fighterTipAnchorConfig,
+  fighterTipTagConfig,
+  fighterTipTextConfig,
   frameConfig,
   paperConfig,
   vignetteConfig,
@@ -262,6 +297,16 @@ const fighterAvatarConfig = token => {
   };
 };
 
+const hoveredFighter = ref(null);
+
+const hoverFighter = token => {
+  hoveredFighter.value = token;
+};
+
+const clearHoveredFighter = () => {
+  hoveredFighter.value = null;
+};
+
 const fitPadUnits = computed(() => {
   const units = Number(props.fitUnits) || 0;
   const width = Number(size.value.width) || 0;
@@ -274,6 +319,44 @@ const { stageConfig, zoomIn, zoomOut, onDragMove } = useBoardView({
   bounds,
   fitPad: computed(() => (Number(props.fitUnits) > 0 ? fitPadUnits.value : fitPad.value)),
 });
+
+const CACHE_DPR_MAX = 2;
+const CACHE_DPR_MIN = 0.5;
+const cachedRatio = ref(0);
+
+const boardNode = () => boardRef.value?.getNode?.() ?? null;
+
+const cachePixelRatio = () => {
+  const scale = Number(stageConfig.value?.scaleX) || 1;
+  const dpr = Number(globalThis.devicePixelRatio) || 1;
+  return Math.min(CACHE_DPR_MAX, Math.max(CACHE_DPR_MIN, dpr * scale));
+};
+
+const syncBoardCache = () => {
+  const layer = boardNode();
+  if (typeof layer?.cache !== 'function') return;
+  const ratio = cachePixelRatio();
+  if (cachedRatio.value && ratio <= cachedRatio.value * 1.2) return;
+  layer.cache({ pixelRatio: ratio });
+  cachedRatio.value = ratio;
+  layer.batchDraw();
+};
+
+let cacheTimer = null;
+
+const scheduleBoardCache = () => {
+  clearTimeout(cacheTimer);
+  cacheTimer = setTimeout(syncBoardCache, 160);
+};
+
+const dropBoardCache = () => {
+  cachedRatio.value = 0;
+  pulseCache = null;
+  scheduleBoardCache();
+};
+
+watch([boardKey, () => props.mapFrame], dropBoardCache, { flush: 'post' });
+watch(() => Number(stageConfig.value?.scaleX) || 1, scheduleBoardCache);
 
 const containerPoint = event => {
   const rect = wrapRef.value?.getBoundingClientRect?.();
@@ -346,16 +429,30 @@ const clearDropCell = () => {
 
 const PULSE_PERIOD = 1500;
 
+let pulseCache = null;
+
+const pulseKey = computed(() =>
+  nodes.value
+    .filter(node => isPulsingCell(node))
+    .map(node => node.id)
+    .join(','),
+);
+
+watch(pulseKey, () => (pulseCache = null), { flush: 'post' });
+
 const pulseRings = () => {
+  if (pulseCache) return pulseCache;
   const stage = stageRef.value?.getNode?.();
   if (typeof stage?.find !== 'function') return [];
-  return stage.find(entry => entry.getAttr?.('pulseRing') === true) ?? [];
+  pulseCache = stage.find(entry => entry.getAttr?.('pulseRing') === true) ?? [];
+  return pulseCache;
 };
 
 const applyPulse = () => {
   const rings = pulseRings();
   if (!rings.length) return;
   const wave = (Date.now() % PULSE_PERIOD) / PULSE_PERIOD;
+  const layers = new Set();
   for (const ring of rings) {
     const base = Number(ring.getAttr('baseRadius')) || 0;
     const near = Number(ring.getAttr('pulseNear')) || 0;
@@ -363,8 +460,9 @@ const applyPulse = () => {
     ring.radius(base + near + (far - near) * wave);
     ring.strokeWidth(Number(ring.getAttr('pulseWidth')) || 0);
     ring.opacity((Number(ring.getAttr('pulsePeak')) || 0) * (1 - wave) ** 1.4);
+    layers.add(ring.getLayer());
   }
-  rings[0].getLayer()?.batchDraw();
+  for (const layer of layers) layer?.batchDraw();
 };
 
 const onDrop = event => {
@@ -383,6 +481,7 @@ watch(
     previous?.getNode?.()?.off('dragmove', onDragMove);
     stage?.getNode?.()?.on('click tap', onStageClick);
     stage?.getNode?.()?.on('dragmove', onDragMove);
+    if (stage) scheduleBoardCache();
   },
   { flush: 'post' },
 );
@@ -415,6 +514,7 @@ onBeforeUnmount(() => {
   stageRef.value?.getNode?.()?.off('click tap', onStageClick);
   stageRef.value?.getNode?.()?.off('dragmove', onDragMove);
   document.removeEventListener('dragend', clearDropCell);
+  clearTimeout(cacheTimer);
   resizeObserver?.disconnect();
 });
 </script>

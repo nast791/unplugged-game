@@ -562,11 +562,23 @@ export const useGameSession = () => {
     placementCells.value.filter(cell => cell.occupied !== true).map(cell => String(cell.id)),
   );
 
+  const cardCellIds = computed(() => {
+    const window = targeting.value;
+    const mine = window && String(window.playerId) === String(you.value);
+    if (!mine || window.kind !== 'cells') return [];
+    return (window.candidates ?? []).map(entry => String(entry.cellId ?? entry.id));
+  });
+
   const onCellClick = cellId => {
     if (cellId == null) {
       // клик мимо клетки снимает активность: подсвеченным остаётся только то, что выбрал игрок
       clearFighterSelection();
       return undefined;
+    }
+
+    // окно клеток от карты: бойца выбирает само правило, поэтому клик по подсвеченной клетке — весь выбор
+    if (!movement.value && cardCellIds.value.includes(String(cellId))) {
+      return pick({ kind: 'cell', id: cellId });
     }
 
     if (selectedFighterId.value == null) {

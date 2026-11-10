@@ -53,6 +53,7 @@ export const useBoardMap = source => {
   const nodeSize = computed(() => Number(read(source.map)?.settings?.nodeSize) || 72);
   const radius = computed(() => nodeRadius(nodeSize.value));
   const showCellIds = SHOW_CELL_IDS;
+  const tileImages = ref({});
 
   const highlightedCells = computed(
     () => new Set((read(source.highlightedCellIds) || []).map(id => String(id))),
@@ -168,6 +169,16 @@ export const useBoardMap = source => {
   const startMarkersOf = computed(() =>
     placementMarkers(nodes.value, radius.value, read(source.players)),
   );
+
+  // Ключ статики: по нему доска заново собирает кэш слоя. Подсветка, выбор и фишки сюда не входят —
+  // они живут в своих слоях, иначе кэш сбрасывался бы на каждый клик.
+  const boardKey = computed(() => {
+    const cells = nodes.value.map(
+      node => `${node.id}@${node.x},${node.y}:${terrainsOf(node).join('+')}`,
+    );
+    const markers = startMarkersOf.value.map(marker => marker.id).join(',');
+    return `${radius.value}|${cells.join('|')}|${markers}|${Object.keys(tileImages.value).length}`;
+  });
 
   const FRAME = { pad: 28, cut: 22, alpha: 0.55 };
 
@@ -384,8 +395,6 @@ export const useBoardMap = source => {
         listening: false,
       }));
   };
-
-  const tileImages = ref({});
 
   onMounted(() => {
     if (pulseActive.value) startPulse();
@@ -786,6 +795,40 @@ export const useBoardMap = source => {
     };
   };
 
+  const fighterTipAnchorConfig = token => ({
+    x: token.x,
+    y: token.y - tokenRadius(radius.value) - 12,
+    listening: false,
+  });
+
+  const fighterTipTagConfig = () => ({
+    fill: '#15151a',
+    stroke: 'rgba(255, 255, 255, 0.16)',
+    strokeWidth: 1,
+    cornerRadius: 6,
+    pointerDirection: 'down',
+    pointerWidth: 14,
+    pointerHeight: 8,
+    shadowColor: 'rgba(0, 0, 0, 0.5)',
+    shadowBlur: 10,
+    shadowOpacity: 0.5,
+    listening: false,
+  });
+
+  const fighterTipTextConfig = token => {
+    const hp = Math.max(0, Number(token.fighter.currentHp ?? 0));
+    const maxHp = Math.max(hp, Number(token.fighter.startHp ?? hp));
+    const stats = `Здоровье ${hp}/${maxHp} · Удар ${Number(token.fighter.attackRange ?? 1)}`;
+    return {
+      text: `${token.fighter.name || token.fighter.id}\n${stats} · Шаг ${Number(token.fighter.move ?? 0)}`,
+      fontSize: 12,
+      lineHeight: 1.35,
+      padding: 9,
+      fill: '#f5f5f7',
+      listening: false,
+    };
+  };
+
   const clickTargetOf = target => clickTarget(target);
 
   const cellAt = (point, transform) =>
@@ -796,6 +839,7 @@ export const useBoardMap = source => {
     radius,
     bounds,
     showCellIds,
+    boardKey,
     inPlacement,
     dropCellId,
     isDropCell,
@@ -836,6 +880,9 @@ export const useBoardMap = source => {
     fighterHpHeartConfig,
     fighterHpGlossConfig,
     fighterHpLabelConfig,
+    fighterTipAnchorConfig,
+    fighterTipTagConfig,
+    fighterTipTextConfig,
     clickTargetOf,
     cellAt,
   };

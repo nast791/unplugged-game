@@ -145,6 +145,8 @@ const mountBoard = async ({ interactive = true, ...state } = {}) => {
         'v-rect': passthrough('VRect'),
         'v-line': passthrough('VLine'),
         'v-text': passthrough('VText'),
+        'v-label': passthrough('VLabel'),
+        'v-tag': passthrough('VTag'),
       },
     },
   });
@@ -185,6 +187,80 @@ describe('доска: клики доходят до движка', () => {
     stageOf(wrapper).fire('click', {});
     expect(wrapper.emitted('select-node')).toEqual([[null]]);
     expect(wrapper.emitted('select-fighter')).toBeUndefined();
+  });
+
+  it('показывает подсказку бойца при наведении и убирает её, когда курсор ушёл', async () => {
+    const fighters = [
+      {
+        id: 'anubis',
+        name: 'Анубис',
+        type: 'hero',
+        currentPosition: 1,
+        currentHp: 6,
+        startHp: 6,
+        attackRange: 1,
+        move: 3,
+      },
+    ];
+    const wrapper = await mountBoard({ players: [{ ...players[0], fighters }] });
+    expect(wrapper.findComponent({ name: 'VLabel' }).exists()).toBe(false);
+
+    const fighter = wrapper
+      .findAllComponents({ name: 'VGroup' })
+      .find(node => node.props('config')?.cellName === 'fighter');
+    await fighter.trigger('mouseenter');
+
+    expect(wrapper.findComponent({ name: 'VLabel' }).exists()).toBe(true);
+    const tip = wrapper
+      .findAllComponents({ name: 'VText' })
+      .map(node => node.props('config')?.text)
+      .filter(Boolean)
+      .join('|');
+    expect(tip).toContain('Анубис');
+    expect(tip).toContain('Здоровье 6/6');
+    expect(tip).toContain('Удар 1');
+    expect(tip).toContain('Шаг 3');
+
+    await fighter.trigger('mouseleave');
+    expect(wrapper.findComponent({ name: 'VLabel' }).exists()).toBe(false);
+  });
+
+  it('подсказка бойца работает и без выбранного действия: кликов нет, а сведения есть', async () => {
+    const fighters = [
+      {
+        id: 'anubis',
+        name: 'Анубис',
+        type: 'hero',
+        currentPosition: 1,
+        currentHp: 6,
+        startHp: 6,
+        attackRange: 1,
+        move: 3,
+      },
+    ];
+    const wrapper = await mountBoard({
+      interactive: false,
+      players: [{ ...players[0], fighters }],
+    });
+
+    const fighter = wrapper
+      .findAllComponents({ name: 'VGroup' })
+      .find(node => node.props('config')?.cellName === 'fighter');
+    expect(fighter.props('config')?.listening).not.toBe(false);
+
+    await fighter.trigger('mouseenter');
+
+    const tip = wrapper
+      .findAllComponents({ name: 'VText' })
+      .map(node => node.props('config')?.text)
+      .filter(Boolean)
+      .join('|');
+    expect(tip).toContain('Анубис');
+    expect(tip).toContain('Здоровье 6/6');
+
+    // подсказка читается, а клик по доске по-прежнему выключен: ход не мой
+    stageOf(wrapper).fire('click', konvaNode({ cellName: 'cell', cellId: 2 }));
+    expect(wrapper.emitted('select-node')).toBeUndefined();
   });
 
   it('выключенная доска кликов не слушает', async () => {
@@ -301,5 +377,118 @@ describe('доска: перетаскивание бойца на клетку'
 
     expect(busy?.shadowBlur).toBe(0);
     expect(busy?.opacity).toBeLessThan(1);
+  });
+});
+
+/**
+ * Кэш статики: поле, связи, клетки и тени рисуются в битмап один раз, а на клик, подсветку и пульс
+ * перерисовываются только слои волн — иначе конва перерисовывает тысячу фигур на каждое действие.
+ */
+describe('доска: статика в кэше, волны отдельным слоем', () => {
+  /** Слой-заглушка: помнит, кэшировался ли он, и отдаёт себя как узел конвы. */
+  const LayerStub = defineComponent({
+    name: 'VLayer',
+    props: { config: { type: Object, default: null } },
+    setup(_props, { slots, expose }) {
+      const calls = { cache: 0, draw: 0 };
+      const node = {
+        cache: () => {
+          calls.cache += 1;
+        },
+        batchDraw: () => {
+          calls.draw += 1;
+        },
+        getLayer: () => node,
+      };
+      expose({ getNode: () => node, calls });
+      return () => h('div', { class: 'layer' }, slots.default?.());
+    },
+  });
+
+  const mountLayered = async () => {
+    session.view.value = { map };
+    session.players.value = players;
+    session.selectedFighterId.value = null;
+    session.highlightedCellIds.value = [];
+    session.highlightedFighterIds.value = [];
+    session.framedFighterIds.value = [];
+    session.placementCells.value = [];
+
+    const wrapper = mount(Board, {
+      props: { interactive: true },
+      global: {
+        components: {
+          'ClientOnly': passthrough('ClientOnly'),
+          'v-stage': StageStub,
+          'v-layer': LayerStub,
+          'v-group': passthrough('VGroup'),
+          'v-circle': passthrough('VCircle'),
+          'v-wedge': passthrough('VWedge'),
+          'v-rect': passthrough('VRect'),
+          'v-line': passthrough('VLine'),
+          'v-text': passthrough('VText'),
+          'v-label': passthrough('VLabel'),
+          'v-tag': passthrough('VTag'),
+        },
+      },
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    // кэш пишется отложенно (после первого вида), поэтому ждём его таймер
+    await new Promise(resolve => setTimeout(resolve, 200));
+    return wrapper;
+  };
+
+  const layersOf = wrapper => wrapper.findAllComponents(LayerStub);
+  const callsOf = node => node.vm.$.exposed.calls;
+
+  it('держит статику на своём слое, а свет и пульс — на отдельных', async () => {
+    const wrapper = await mountLayered();
+    const layers = layersOf(wrapper);
+
+    expect(layers.length).toBeGreaterThan(1);
+    expect(callsOf(layers[0]).cache).toBe(1);
+    expect(layers.slice(1).map(node => callsOf(node).cache)).toEqual(layers.slice(1).map(() => 0));
+    expect(layers[1].props('config')?.listening).toBe(false);
+  });
+
+  it('бросает кэш, когда меняется карта, и пишет его заново', async () => {
+    const wrapper = await mountLayered();
+    const board = layersOf(wrapper)[0];
+
+    session.view.value = {
+      map: {
+        ...map,
+        nodes: map.nodes.map(node =>
+          node.id === 2 ? { ...node, terrain: ['desert', 'water'] } : { ...node },
+        ),
+      },
+    };
+    await nextTick();
+    // пересборка отложена: плитки текстур приходят пачкой, и кэш читается после последней
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    expect(callsOf(board).cache).toBe(2);
+  });
+
+  it('держит номера мест поверх подсветки, чтобы кольцо не закрывало цифру', async () => {
+    const wrapper = await mountLayered();
+    const layers = layersOf(wrapper);
+    const markerAt = layers.findIndex(layer => layer.find('[name="start-marker"]').exists());
+
+    expect(markerAt).toBeGreaterThan(1);
+    expect(callsOf(layers[markerAt]).cache).toBe(0);
+  });
+});
+
+describe('доска: клетки в кэше ловят клик всегда', () => {
+  it('клетки остаются приёмниками клика и при выключенной доске: клик гейтит движок, а не hit-канва', async () => {
+    const wrapper = await mountBoard({ interactive: false });
+    const cells = wrapper
+      .findAllComponents({ name: 'VGroup' })
+      .map(node => node.props('config'))
+      .filter(config => config?.cellName === 'cell');
+
+    expect(cells.length).toBeGreaterThan(0);
+    expect(cells.map(config => config.listening)).toEqual(cells.map(() => true));
   });
 });

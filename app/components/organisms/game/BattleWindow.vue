@@ -88,6 +88,7 @@
           :highlight="activeMoments"
           :boost="boostSide === 'attacker' ? boostCard : null"
           :damage="damageOf(attacker)"
+          :back="backOf(attacker)"
         />
 
         <div v-if="showSwords" class="relative self-center px-6" data-battle-swords>
@@ -108,6 +109,7 @@
           :highlight="activeMoments"
           :boost="boostSide === 'defender' ? boostCard : null"
           :damage="damageOf(defender)"
+          :back="backOf(defender)"
         />
       </div>
 
@@ -183,7 +185,26 @@
         data-battle-done
         class="border-line/60 flex shrink-0 items-center justify-between gap-12 border-t-2 px-12 py-8"
       >
-        <span class="text-13 text-dim min-w-0 truncate">Битва закончена</span>
+        <div class="flex min-w-0 flex-col gap-2">
+          <span class="text-13 text-dim">Битва закончена</span>
+          <span v-if="result" data-battle-totals class="text-14 text-ink min-w-0 truncate">
+            {{ result.line }}
+          </span>
+          <template v-for="side in result?.sides ?? []" :key="side.key">
+            <span
+              v-if="side.damage > 0"
+              data-battle-result
+              class="text-13 text-danger font-semibold lining-nums"
+            >
+              {{ side.name }}: урон {{ side.damage }}
+              <span class="text-dim font-normal">
+                (карты {{ side.card }}
+                <template v-if="side.effect">+ свойства {{ side.effect }}</template
+                >)
+              </span>
+            </span>
+          </template>
+        </div>
 
         <AButton data-battle-close :disabled="pending" @click="dismiss">Закрыть</AButton>
       </div>
@@ -220,6 +241,7 @@ import ATooltip from '~/components/atoms/ATooltip.vue';
 import BattleSide from '~/components/molecules/game/BattleSide.vue';
 import Card from '~/components/molecules/game/Card.vue';
 import { TOOLTIPS } from '~/constants/tooltips.js';
+import { useHeroPacks } from '~/composables/api/heroes.js';
 import { BATTLE_MIN_SIZE, useBattleView } from '~/composables/game/useBattleView.js';
 import { useGameSession } from '~/composables/game/useGameSession.js';
 import { useDraggable } from '~/composables/ui/useDraggable.js';
@@ -239,6 +261,7 @@ const {
   stage,
   stageLabel,
   numbers,
+  result,
   damage,
   showSwords,
   boost,
@@ -249,6 +272,10 @@ const {
   dismiss,
 } = useBattleView();
 const { okControl, onFinishAction, pending } = useGameSession();
+
+const { heroPack } = useHeroPacks();
+
+const backOf = side => heroPack(side?.heroId)?.cardBack ?? '';
 
 const SCREEN_MARGIN = 24;
 const KEY_STEP = 24;
@@ -362,7 +389,7 @@ const beginDrag = event => {
 };
 
 const beginCollapsedDrag = event => {
-  if (event.target?.closest?.('[data-battle-asking-ok]')) return;
+  if (event.target?.closest?.('button')) return;
   wasDragged.value = false;
   pin();
   handlers.onPointerdown(event);

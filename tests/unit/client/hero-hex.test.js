@@ -179,7 +179,7 @@ describe('гекс героя', () => {
   });
 
   it('держит пузырёк счёта действий внизу слева, симметрично сердцу', () => {
-    const wrapper = mountHex({ active: true, actionNow: 1, actionTotal: 2 });
+    const wrapper = mountHex({ active: true, actionLeft: 1, actionTotal: 2 });
     const badge = wrapper.find('[data-action-badge]');
 
     expect(badge.exists()).toBe(true);
@@ -191,12 +191,12 @@ describe('гекс героя', () => {
   });
 
   it('не рисует счёт действий чужому герою и герою без счёта', () => {
-    expect(mountHex({ actionNow: 1, actionTotal: 2 }).find('[data-action-badge]').exists()).toBe(
+    expect(mountHex({ actionLeft: 1, actionTotal: 2 }).find('[data-action-badge]').exists()).toBe(
       false,
     );
     expect(mountHex({ active: true }).find('[data-action-badge]').exists()).toBe(false);
     expect(
-      mountHex({ active: true, actionNow: 1, actionTotal: 0 }).find('[data-action-badge]').exists(),
+      mountHex({ active: true, actionLeft: 1, actionTotal: 0 }).find('[data-action-badge]').exists(),
     ).toBe(false);
   });
 
@@ -212,18 +212,18 @@ describe('гекс героя', () => {
     expect(wrapper.emitted('click')).toHaveLength(1);
   });
 
-  it('подсказывает имя героя капсом и текущее действие, когда ход его', () => {
-    const wrapper = mountHex({ name: 'Анубис', actions: 'Действие 2 из 3' });
+  it('подсказывает имя героя капсом и остаток действий, когда ход его', () => {
+    const wrapper = mountHex({ name: 'Анубис', actions: 'Осталось действий: 2 из 3' });
     const title = wrapper.find('.uppercase');
 
     expect(title.text()).toBe('Анубис');
-    expect(wrapper.text()).toContain('Действие 2 из 3');
+    expect(wrapper.text()).toContain('Осталось действий: 2 из 3');
   });
 
   it('в подсказке чужого героя нет счёта действий', () => {
     const wrapper = mountHex({ name: 'Анубис' });
 
     expect(wrapper.find('.uppercase').text()).toBe('Анубис');
-    expect(wrapper.text()).not.toContain('Действие');
+    expect(wrapper.text()).not.toContain('Осталось действий');
   });
 });

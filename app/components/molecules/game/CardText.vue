@@ -11,13 +11,16 @@
         ]"
         :data-option="line.label || undefined"
       >
-        <span
-          v-if="line.label"
-          class="text-11 mb-4 block font-semibold tracking-[0.08em] uppercase"
-          :class="palette.label"
-        >
-          {{ line.label }}
-        </span>
+        <div v-if="line.label" class="mb-4 flex items-center gap-5" data-option-head>
+          <span class="size-4 shrink-0 rounded-full" :class="palette.dot" data-option-dot />
+          <span
+            class="block font-semibold tracking-[0.08em] uppercase"
+            :class="palette.label"
+            data-option-label
+          >
+            {{ line.label }}
+          </span>
+        </div>
         <span class="block">{{ line.text }}</span>
       </div>
     </div>
@@ -36,11 +39,18 @@ const props = defineProps({
 const TONES = {
   card: {
     text: 'text-13 font-light text-white',
-    label: 'text-accent',
+    label: 'text-11 text-accent',
+    dot: 'bg-accent',
   },
   page: {
     text: 'text-16 text-dim leading-[1.4]',
-    label: 'text-accent',
+    label: 'text-11 text-accent',
+    dot: 'bg-accent',
+  },
+  zoom: {
+    text: 'text-24 font-light text-ink leading-[1.35]',
+    label: 'text-15 text-accent',
+    dot: 'bg-accent',
   },
 };
 

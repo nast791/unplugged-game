@@ -3,19 +3,39 @@
     class="bg-surface/95 border-line rounded-6 backdrop-blur-16 pointer-events-auto absolute bottom-full left-0 z-30 mb-46 flex max-h-[70dvh] w-340 flex-col border-2 shadow-2xl"
     :style="{ '--hero-color': HERO_INFO_TONE }"
   >
-    <div class="border-line/70 flex items-baseline justify-between gap-8 border-b-2 px-12 py-8">
-      <span class="text-15 leading-none font-semibold tracking-[0.02em] uppercase">
-        {{ props.hero?.name || props.player?.name }}
-      </span>
+    <div ref="tabList" class="relative flex" role="tablist">
+      <button
+        v-for="tab in tabs"
+        :key="tab.key"
+        :ref="node => setTabNode(tab.key, node)"
+        type="button"
+        role="tab"
+        :aria-selected="tab.key === props.mode"
+        :aria-label="tab.label"
+        :disabled="tab.disabled"
+        class="transition-colors"
+        :class="[TAB_LABEL, 'border-line/70', tabClass(tab)]"
+        @click="emit('switch', tab.key)"
+      >
+        {{ tab.title }}
+      </button>
 
-      <span class="text-12 tracking-[0.06em] uppercase" :style="{ color: 'var(--hero-color)' }">{{
-        label
-      }}</span>
+      <span
+        data-tab-indicator
+        class="pointer-events-none absolute bottom-0 left-0 h-[2px] bg-[var(--hero-color)] transition-[transform,opacity] duration-300 ease-out"
+        :class="bar.ready ? 'opacity-100' : 'opacity-0'"
+        :style="indicatorStyle"
+        aria-hidden="true"
+      />
     </div>
 
     <AScroll class="min-h-0 flex-1">
       <div class="flex flex-col gap-8 p-12">
         <template v-if="props.mode === 'hero'">
+          <span class="text-15 leading-none font-semibold tracking-[0.02em] uppercase">
+            {{ props.hero?.name || props.player?.name }}
+          </span>
+
           <ATooltip :text="TOOLTIPS.playerCard.health({ hp: hpLabel(props.hero) })">
             <div class="flex items-center justify-between gap-8">
               <span class="text-14 text-dim">Здоровье</span>
@@ -123,7 +143,9 @@
 
             <span class="text-14 min-w-0 flex-1 truncate">{{ item.name || item.id }}</span>
 
-            <span class="text-12 text-dim shrink-0">{{ itemStateLabel(item, item.state) }}</span>
+            <span class="text-12 text-dim shrink-0" data-item-state>{{
+              itemStateLabel(item, item.state)
+            }}</span>
           </div>
         </template>
       </div>
@@ -138,6 +160,7 @@ import ATooltip from '~/components/atoms/ATooltip.vue';
 import { HERO_INFO_TONE } from '~/constants/colors.js';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 import { hpLabel, itemStateLabel } from '~/composables/game/useGameHelpers.js';
+import { TAB_LABEL } from '~/ui/tabs.js';
 
 const props = defineProps({
   mode: { type: String, default: 'hero' },
@@ -149,7 +172,7 @@ const props = defineProps({
   catalog: { type: Object, default: () => ({}) },
 });
 
-const LABELS = { hero: 'о герое', fighters: 'о помощниках', items: 'о предметах' };
+const emit = defineEmits(['switch']);
 
 const index = ref(0);
 
@@ -163,12 +186,62 @@ const alive = computed(
   () => sidekicks.value.filter(fighter => Number(fighter?.currentHp ?? 0) > 0).length,
 );
 
-const label = computed(() => {
-  const base = LABELS[props.mode] ?? '';
-  return props.mode === 'fighters' ? `${base} (${alive.value}/${sidekicks.value.length})` : base;
+const items = computed(() => props.player?.items ?? []);
+
+// Число живых помощников стоит в самой вкладке: панель одна, и заголовку незачем повторять раздел.
+const tabs = computed(() => [
+  { key: 'hero', title: 'Герой', label: TOOLTIPS.rail.hero(), disabled: !props.hero },
+  {
+    key: 'fighters',
+    title: `Помощники (${alive.value}/${sidekicks.value.length})`,
+    label: TOOLTIPS.rail.fighters(),
+    disabled: !sidekicks.value.length,
+  },
+  { key: 'items', title: 'Предметы', label: TOOLTIPS.rail.items(), disabled: !items.value.length },
+]);
+
+const tabClass = tab => [
+  tab.key === props.mode ? 'text-[var(--hero-color)]' : 'text-dim hover:text-ink',
+  tab.disabled ? 'opacity-40' : 'cursor-pointer',
+];
+
+const tabList = ref(null);
+const tabNodes = new Map();
+const bar = ref({ left: 0, width: 0, ready: false });
+
+const setTabNode = (key, node) => (node ? tabNodes.set(key, node) : tabNodes.delete(key));
+
+const measureBar = () => {
+  const node = tabNodes.get(props.mode);
+  if (!node) return;
+  bar.value = { left: node.offsetLeft, width: node.offsetWidth, ready: true };
+};
+
+const indicatorStyle = computed(() => ({
+  width: `${bar.value.width}px`,
+  transform: `translateX(${bar.value.left}px)`,
+}));
+
+let barObserver = null;
+
+onMounted(() => {
+  measureBar();
+  if (typeof ResizeObserver === 'undefined' || !tabList.value) return;
+  barObserver = new ResizeObserver(measureBar);
+  barObserver.observe(tabList.value);
 });
 
-const items = computed(() => props.player?.items ?? []);
+onBeforeUnmount(() => barObserver?.disconnect());
+
+watch(
+  () => props.mode,
+  () => nextTick(measureBar),
+);
+
+watch(
+  () => tabs.value.map(tab => tab.title).join('|'),
+  () => nextTick(measureBar),
+);
 
 const page = computed(() => {
   const count = sidekicks.value.length;

@@ -70,7 +70,7 @@
 
         <div class="h-1 w-full shrink-0 bg-white/20" />
 
-        <AScroll class="min-h-0 flex-1">
+        <AScroll class="-mr-8 min-h-0 flex-1" :ui="{ scroll_viewport: 'pr-8' }">
           <CardText :text="card.text" :highlight="props.highlight" />
 
           <CardOptions v-if="options.length" :options="options" class="mt-6" />

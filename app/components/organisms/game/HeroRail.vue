@@ -1,49 +1,42 @@
 <template>
-  <section class="pointer-events-none absolute bottom-14 left-34 z-20 flex items-end gap-10">
+  <section class="pointer-events-none absolute bottom-14 left-14 z-20 flex items-end gap-10">
     <div
       v-for="player in ordered"
       :key="player.id"
       class="pointer-events-auto relative"
-      :class="infoMode(player) ? 'z-40' : 'z-0'"
+      :class="panelOf(player) ? 'z-40' : 'z-0'"
     >
       <HeroInfo
-        v-if="infoMode(player)"
-        :mode="infoMode(player)"
+        v-if="tabOf(player)"
+        :mode="tabOf(player)"
         :player="player"
         :hero="heroOf(player)"
         :color="player.color"
         :catalog="heroPack(player.id)"
         :move-bonus="moveBonusOf(player)"
+        @switch="openInfoTab(player, $event)"
       />
+
+      <PilesInfo v-if="pilesOf(player)" :player="player" @open="openPile(player, $event)" />
 
       <div class="absolute -top-31 left-1/2 flex -translate-x-1/2 items-end gap-3">
         <SlotCard
-          v-for="slot in infoSlots(player)"
-          :key="slot.key"
-          :icon="slot.icon"
-          :label="slot.label"
-          :disabled="slot.disabled"
-          :out="infoMode(player) === slot.key"
+          icon="lucide:info"
+          :label="TOOLTIPS.rail.info()"
+          :out="Boolean(tabOf(player))"
           out-class="-translate-y-10"
-          @click="toggleInfo(player, slot.key)"
+          @click="toggleInfo(player)"
         />
-      </div>
 
-      <div
-        class="absolute top-32 left-11 z-10 flex -translate-x-1/2 -translate-y-1/2 -rotate-60 items-center gap-3"
-      >
         <SlotCard
-          v-for="slot in pileSlots(player)"
-          :key="slot.key"
-          :icon="slot.icon"
-          :icon-class="slot.iconClass"
-          :count="slot.count"
-          :count-class="slot.countClass"
-          :label="slot.label"
-          :empty="slot.empty"
-          :disabled="slot.disabled"
-          :drop="slot.drop"
-          @click="openPile(player, slot.key)"
+          :count="countOf(player, 'hand')"
+          count-class="text-18"
+          :label="pilesLabel(player)"
+          :empty="countOf(player, 'hand') <= 0"
+          :out="Boolean(pilesOf(player))"
+          out-class="-translate-y-10"
+          drop="discard"
+          @click="togglePiles(player)"
         />
       </div>
 
@@ -54,11 +47,11 @@
         :color="player.color"
         :hp="hpOf(player)"
         :actions="hexActions(player)"
-        :action-now="hexActionPair(player)?.now"
+        :action-left="hexActionPair(player)?.left"
         :action-total="hexActionPair(player)?.total"
         :active="isCurrent(player)"
         :dead="isDead(heroOf(player))"
-        :silent="Boolean(infoMode(player))"
+        :silent="Boolean(panelOf(player))"
         :label="hexLabel(player)"
         @click="openHero(player)"
       />
@@ -69,6 +62,7 @@
 <script setup>
 import HeroHex from '~/components/molecules/game/HeroHex.vue';
 import HeroInfo from '~/components/molecules/game/HeroInfo.vue';
+import PilesInfo from '~/components/molecules/game/PilesInfo.vue';
 import SlotCard from '~/components/molecules/game/SlotCard.vue';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 import { hpLabel, playerLabel } from '~/composables/game/useGameHelpers.js';
@@ -134,80 +128,57 @@ const hexActionPair = player => {
   const total = Number(actionsTotal.value ?? 0);
   if (!isCurrent(player) || total <= 0) return null;
   const left = Math.max(0, Number(actionsLeft.value ?? 0));
-  return { now: Math.min(total, total - left + 1), total };
+  return { left: Math.min(total, left), total };
 };
 
 const hexActions = player => {
   const pair = hexActionPair(player);
-  return pair ? TOOLTIPS.rail.heroActions({ action: pair.now, total: pair.total }) : '';
+  return pair ? TOOLTIPS.rail.heroActions({ left: pair.left, total: pair.total }) : '';
 };
 
 const moveBonusOf = player =>
   isCurrent(player) ? Math.max(0, Number(movementBonus.value ?? 0)) : 0;
 
-const infoMode = player =>
-  panel.value && String(panel.value.playerId) === String(player?.id) ? panel.value.mode : '';
+const panelOf = player =>
+  panel.value && String(panel.value.playerId) === String(player?.id) ? panel.value : null;
 
-const infoSlots = player => [
-  {
-    key: 'hero',
-    icon: 'lucide:info',
-    label: TOOLTIPS.rail.hero(),
-    disabled: !heroOf(player),
-  },
-  {
-    key: 'fighters',
-    icon: 'lucide:users',
-    label: TOOLTIPS.rail.fighters(),
-    disabled: !sidekicksOf(player).length,
-  },
-  {
-    key: 'items',
-    icon: 'lucide:package',
-    label: TOOLTIPS.rail.items(),
-    disabled: !(player?.items ?? []).length,
-  },
-];
+const tabOf = player => (panelOf(player)?.kind === 'info' ? panelOf(player).tab : '');
 
-const pileSlots = player => {
-  const hand = countOf(player, 'hand');
-  const deck = countOf(player, 'deck');
-  const discard = countOf(player, 'discard');
+const pilesOf = player => (panelOf(player)?.kind === 'piles' ? panelOf(player) : null);
 
-  return [
-    {
-      key: 'hand',
-      countClass: 'text-18',
-      count: hand,
-      empty: hand <= 0,
-      label:
-        hand > 0 ? TOOLTIPS.playerCard.handCount({ count: hand }) : TOOLTIPS.playerCard.handEmpty(),
-      disabled: !(player?.hand?.length ?? 0),
-    },
-    {
-      key: 'deck',
-      icon: 'lucide:layers',
-      empty: deck <= 0,
-      label:
-        deck > 0 ? TOOLTIPS.playerCard.deckCount({ count: deck }) : TOOLTIPS.playerCard.deckEmpty(),
-      disabled: !(player?.deckVisible ?? false),
-    },
-    {
-      key: 'discard',
-      icon: 'lucide:trash-2',
-      label: TOOLTIPS.playerCard.discardCount({ count: discard }),
-      empty: discard <= 0,
-      disabled: discard <= 0,
-      drop: 'discard',
-    },
-  ];
+// Вкладок в панели три, но панель одна: открыть можно только её, а какую из вкладок показать
+// первой — диктует состав героя.
+const firstTab = player => {
+  if (heroOf(player)) return 'hero';
+  if (sidekicksOf(player).length) return 'fighters';
+  return 'items';
 };
 
-const toggleInfo = (player, mode) => {
-  panel.value = infoMode(player) === mode ? null : { playerId: String(player.id), mode };
+const toggleInfo = player => {
+  panel.value = tabOf(player)
+    ? null
+    : { playerId: String(player.id), kind: 'info', tab: firstTab(player) };
 };
 
-const openPile = (player, key) => openModal(key, { playerId: String(player.id) });
+const togglePiles = player => {
+  panel.value = pilesOf(player) ? null : { playerId: String(player.id), kind: 'piles' };
+};
+
+const openInfoTab = (player, tab) => {
+  if (tabOf(player)) panel.value = { playerId: String(player.id), kind: 'info', tab };
+};
+
+const pilesLabel = player =>
+  TOOLTIPS.rail.piles({
+    hand: countOf(player, 'hand'),
+    deck: countOf(player, 'deck'),
+    discard: countOf(player, 'discard'),
+  });
+
+const openPile = (player, key) => {
+  panel.value = null;
+  openModal(key, { playerId: String(player.id) });
+};
 
 const openHero = player => openModal('heroDetails', String(player.id));
 </script>

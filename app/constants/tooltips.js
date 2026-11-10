@@ -1,17 +1,6 @@
 export const TOOLTIPS = {
   playerCard: {
     health: ({ hp }) => `Здоровье героя: ${hp}`,
-
-    handCount: ({ count }) => `Карт в руке: ${count}`,
-
-    handEmpty: () => 'Рука пуста',
-
-    deckCount: ({ count }) => `Карт в колоде: ${count}`,
-
-    deckEmpty: () => 'Колода пуста',
-
-    discardCount: ({ count }) =>
-      count > 0 ? `Карт в сбросе: ${count}. Клик — открыть сброс` : 'Сброс пуст',
   },
 
   card: {
@@ -65,11 +54,14 @@ export const TOOLTIPS = {
     move: () => 'Перемещение: добрать карту и пройти',
     ok: ({ label }) => String(label ?? 'Завершить действие'),
     heroHex: ({ name, hp }) => `${name}: здоровье ${hp}. Клик — карточка героя`,
-    heroActions: ({ action, total }) => `Действие ${action} из ${total}`,
+    heroActions: ({ left, total }) => `Осталось действий: ${left} из ${total}`,
+    piles: ({ hand, deck, discard }) =>
+      `Карты: в руке ${hand}, в колоде ${deck}, в сбросе ${discard}. Клик — окно карт`,
 
-    hero: () => 'Информация о герое',
-    fighters: () => 'Информация о помощниках',
-    items: () => 'Информация о предметах',
+    info: () => 'Сведения о герое, помощниках и предметах',
+    hero: () => 'О герое',
+    fighters: () => 'О помощниках',
+    items: () => 'О предметах',
   },
 };
 
