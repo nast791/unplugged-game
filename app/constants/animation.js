@@ -1,13 +1,6 @@
-export const ANIMATION_DURATIONS = {
-  battleReveal: 1200,
-  battleStep: 1600,
-  battleDamage: 2600,
-  cardFlip: 420,
-  cardFlight: 780,
-  cardDrop: 240,
-  damageFloat: 1200,
-  aiPause: 1000,
-};
+import { ANIMATION_DURATIONS } from '#shared/constants/tuning.js';
+
+export { ANIMATION_DURATIONS };
 
 export const CARD_FLIGHT = {
   stagger: 90,

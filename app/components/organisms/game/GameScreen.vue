@@ -36,7 +36,7 @@
         <p
           class="text-12 border-line/70 bg-app/80 text-ink rounded-4 backdrop-blur-6 border-2 px-10 py-4 tracking-[0.04em] uppercase lining-nums"
         >
-          {{ props.stageLabel }} · {{ props.partyTime }}
+          {{ props.stageLabel }} · {{ props.stageTime }}
         </p>
 
         <p
@@ -67,12 +67,12 @@
         <BattleWindow />
       </div>
 
-      <HeroRail v-if="!props.compact && !anyModalOpen" />
+      <HeroRail v-if="railsShown" />
 
       <HandFan v-if="!props.compact && !anyModalOpen" />
 
       <div
-        v-if="!props.compact && isPlacement && !anyModalOpen"
+        v-if="isPlacement && !anyModalOpen"
         class="pointer-events-none absolute right-12 bottom-205 z-20 flex"
       >
         <PlacementTray class="pointer-events-auto" />
@@ -144,13 +144,14 @@ import ProfileModal from '~/components/organisms/modals/ProfileModal.vue';
 import SettingsModal from '~/components/organisms/modals/SettingsModal.vue';
 import { addActiveModal, isAnyModalOpen, removeActiveModal } from '~/composables/ui/useModal.js';
 import { useGameSession } from '~/composables/game/useGameSession.js';
+import { railShown } from '~/composables/game/useGameHelpers.js';
 import BrandLogo from '~/svg/brand/logo.svg';
 
 const props = defineProps({
   hintText: { type: String, default: '' },
   hintTone: { type: String, default: '' },
   stageLabel: { type: String, default: '' },
-  partyTime: { type: String, default: '' },
+  stageTime: { type: String, default: '' },
   limitVisible: { type: Boolean, default: false },
   limitExpired: { type: Boolean, default: false },
   limitText: { type: String, default: '' },
@@ -172,6 +173,10 @@ const {
   onFighterClick,
   onCellClick,
 } = useGameSession();
+
+const railsShown = computed(() =>
+  railShown({ compact: props.compact, modalOpen: anyModalOpen.value }),
+);
 
 watch(
   showPickNumHero,

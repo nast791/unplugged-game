@@ -9,6 +9,7 @@ import {
   STROKE,
   PATTERN_TILES,
   TOKEN,
+  avatarDrawBox,
   bendFor,
   bendOf,
   cellAtPoint,
@@ -668,6 +669,46 @@ describe('геометрия доски: фишка бойца', () => {
     expect(tokenFaceRadius(cell)).toBeCloseTo(tokenRadius(cell) * TOKEN.face, 6);
     expect(tokenRadius(cell)).toBeLessThan(cell);
     expect(tokenRadius(0)).toBe(8);
+  });
+
+  it('врезка аватара: узкий высокий портрет вписан целиком — корона и уши не срезаны', () => {
+    const faceR = tokenFaceRadius(56);
+    const picture = { naturalWidth: 512, naturalHeight: 512 };
+    const narrow = avatarDrawBox(faceR, picture, { x: 58, y: 1, width: 396, height: 511 });
+    // масштаб по большей стороне содержимого: по высоте оно ровно легло в поле портрета
+    const scale = (faceR * 2) / 511;
+    expect(narrow.width).toBeCloseTo(512 * scale, 6);
+    expect(narrow.height).toBeCloseTo(512 * scale, 6);
+    // центр содержимого совпал с центром поля
+    expect(narrow.x).toBeCloseTo(-(58 + 396 / 2) * scale, 6);
+    expect(narrow.y).toBeCloseTo(-(1 + 511 / 2) * scale, 6);
+    // верх и низ портрета внутри поля, по ширине остаётся запас: ничего не срезано
+    expect(511 * scale).toBeCloseTo(faceR * 2, 6);
+    expect(396 * scale).toBeLessThan(faceR * 2);
+  });
+
+  it('врезка аватара: широкое содержимое вписано по ширине, а не срезано по краям', () => {
+    const faceR = tokenFaceRadius(56);
+    const picture = { naturalWidth: 512, naturalHeight: 512 };
+    const wide = avatarDrawBox(faceR, picture, { x: 20, y: 40, width: 480, height: 300 });
+    const scale = (faceR * 2) / 480;
+    expect(480 * scale).toBeCloseTo(faceR * 2, 6);
+    expect(300 * scale).toBeLessThan(faceR * 2);
+    expect(wide.height).toBeCloseTo(512 * scale, 6);
+  });
+
+  it('врезка аватара: без границ содержимого портрет просто занимает поле портрета', () => {
+    const faceR = tokenFaceRadius(56);
+    const plain = { x: -faceR, y: -faceR, width: faceR * 2, height: faceR * 2 };
+    expect(avatarDrawBox(faceR, null, null)).toEqual(plain);
+    expect(avatarDrawBox(faceR, { naturalWidth: 512, naturalHeight: 512 }, null)).toEqual(plain);
+    expect(
+      avatarDrawBox(
+        faceR,
+        { naturalWidth: 512, naturalHeight: 512 },
+        { x: 0, y: 0, width: 0, height: 0 },
+      ),
+    ).toEqual(plain);
   });
 
   it('оттенки цвета героя: светлее к белому, темнее к чёрному', () => {

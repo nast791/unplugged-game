@@ -11,21 +11,24 @@ export default {
       move: 2,
       attackRange: 3,
       size: 1,
+      image: 'avatar-ifrit.webp',
     },
   ],
   assistants: [
     {
       id: 'ash',
-      name: 'Пепельные духи',
+      name: 'Пепельный дух',
       type: 'assistant',
       count: 3,
       hp: 1,
       move: 3,
       attackRange: 1,
       size: 1,
+      image: 'avatar-ash.webp',
     },
   ],
   items: [],
+  terrainAffinity: ['lava', 'desert'],
   skill: {
     id: 'ifrit_skill',
     type: 'skill',
@@ -62,5 +65,10 @@ export default {
         ],
       },
     ],
+  },
+  // Арты лежат рядом с паком (`images/`), а наружу отдаются маршрутом
+  // `/api/content/heroes/ifrit/images/{файл}` — путь собирает `server/utils.js: heroImageUrl`.
+  images: {
+    hero: 'hero.webp',
   },
 };

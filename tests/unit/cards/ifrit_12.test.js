@@ -85,8 +85,7 @@ const pick = (state, optionId) =>
 const fighterOf = (state, playerId, fighterId) =>
   player(state, playerId).fighters.find(entry => entry.id === fighterId);
 
-const nodeOf = (state, cellId) =>
-  state.map.nodes.find(node => String(node.id) === String(cellId));
+const nodeOf = (state, cellId) => state.map.nodes.find(node => String(node.id) === String(cellId));
 
 const endTurn = state => {
   state.hook = PHASES.turnEnd;
@@ -135,7 +134,7 @@ describe('карта ifrit_12 «Три обещания»', () => {
     expect(played.targeting.candidates.map(entry => entry.title)).toEqual([
       'Восстановите Ифриту 2 здоровья.',
       'Возьмите 2 карты.',
-      'Сдвиньте Ифрита на расстояние до 2 клеток. Клетка, на которую он наступил, до конца вашего хода получает дополнительную стихию лавы, если на ней меньше 3 стихий.',
+      'Сдвиньте Ифрита на расстояние до 2 клеток. Каждая клетка, по которой он прошёл, до конца вашего хода получает дополнительную стихию лавы, если на ней меньше 3 стихий.',
     ]);
     // у обязательного окна общей кнопки отказа нет: ui её не показывает
     expect(runUi(played, '0').controls.ok).toMatchObject({ visible: false, enabled: false });
@@ -226,6 +225,22 @@ describe('карта ifrit_12 «Три обещания»', () => {
     expect(String(fighterOf(closed, '0', 'ifrit').currentPosition)).toBe('4');
     expect(closed.movement ?? null).toBeNull();
     expect(closed.effect ?? null).toBeNull();
+  });
+
+  it('один шаг на две клетки обжигает весь пройденный путь, а не только клетку прихода', () => {
+    const stepped = runAction(pick(play(buildState()), 'step'), {
+      type: 'PICK',
+      kind: 'cell',
+      id: '4',
+      fighterId: 'ifrit',
+      playerId: '0',
+    });
+
+    expect(String(fighterOf(stepped, '0', 'ifrit').currentPosition)).toBe('4');
+    // шёл 2 → 4 через 3: лава ложится на обе клетки пути
+    expect(nodeOf(stepped, 3)).toMatchObject({ terrain: 'ice', extraTerrain: ['lava'] });
+    expect(nodeOf(stepped, 4)).toMatchObject({ terrain: 'ice', extraTerrain: ['lava'] });
+    expect(nodeOf(stepped, 2).extraTerrain).toBeUndefined();
   });
 
   it('каждая клетка под шагом получает временную лаву, стихия клетки остаётся', () => {

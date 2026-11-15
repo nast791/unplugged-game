@@ -185,7 +185,8 @@ const IconStub = defineComponent({
 const { session } = await import('~/composables/game/useGameSession.js');
 const { TOOLTIPS } = await import('../../../app/constants/tooltips.js');
 const { ANIMATION_DURATIONS } = await import('../../../app/constants/animation.js');
-const { BATTLE_MIN_SIZE } = await import('../../../app/composables/game/useBattleView.js');
+const { BATTLE_MIN_SIZE, battleResultShown } =
+  await import('../../../app/composables/game/useBattleView.js');
 const { useSettings } = await import('../../../app/composables/ui/useSettings.js');
 const { default: BattleWindow } =
   await import('../../../app/components/organisms/game/BattleWindow.vue');
@@ -316,6 +317,7 @@ beforeEach(() => {
   session.okControl.value = { visible: false, enabled: false, label: null };
   session.pending.value = false;
   session.onFinishAction.mockClear();
+  battleResultShown().value = false;
 });
 
 afterEach(() => {
@@ -540,7 +542,7 @@ describe('окно битвы: стороны и карты', () => {
     expect(card.attributes('data-value')).toBe('5');
     expect(card.attributes('data-value-changed')).toBe('true');
     expect(attacker.find('[data-battle-value]').text()).toContain('+1');
-    expect(wrapper.text()).toContain('5 − 2');
+    expect(wrapper.find('[data-battle-window]').text()).toContain('свойства карт');
   });
 
   it('карта усиления ложится поверх той карты, чей шаг её потратил', async () => {
@@ -602,22 +604,53 @@ describe('окно битвы: лента шагов с паузами', () => {
     expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(1);
     expect(wrapper.findAll('[data-battle-step-status]')[0].text()).toBe('сработало');
     // урон ещё не показан: до него дойдёт лента
-    expect(wrapper.find('[data-battle-damage]').exists()).toBe(false);
+    expect(wrapper.find('[data-battle-taken]').exists()).toBe(false);
 
     await passTime(ANIMATION_DURATIONS.battleStep);
     expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(2);
-    expect(wrapper.find('[data-battle-damage]').exists()).toBe(true);
-    expect(wrapper.find('[data-battle-damage]').text()).toBe('−3');
+    // шаги кончились — лента перешла к урону: у бойца появилась строка со снятым здоровьем
+    expect(wrapper.find('[data-battle-taken]').text()).toBe('урон 3');
 
     await passTime(ANIMATION_DURATIONS.battleDamage);
-    // лента доиграла, но окно остаётся с итогом: все шаги, урон и кнопка «Закрыть»
+    // лента доиграла, но окно остаётся с итогом: все шаги, урон у бойца и кнопка «Закрыть»
     expect(wrapper.find('[data-battle-window]').exists()).toBe(true);
     expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(2);
-    expect(wrapper.find('[data-battle-damage]').exists()).toBe(true);
+    expect(wrapper.find('[data-battle-taken]').text()).toBe('урон 3');
     expect(wrapper.find('[data-battle-close]').exists()).toBe(true);
 
     await wrapper.find('[data-battle-close]').trigger('click');
     expect(wrapper.find('[data-battle-window]').exists()).toBe(false);
+  });
+
+  it('строку свойства выделяет наведение, а клик оставляет выделение', async () => {
+    openBattle();
+    const wrapper = mountWindow();
+    await nextTick();
+
+    await finishBattle();
+    await passTime(ANIMATION_DURATIONS.battleReveal);
+    await passTime(ANIMATION_DURATIONS.battleStep);
+    await passTime(ANIMATION_DURATIONS.battleStep);
+    await passTime(ANIMATION_DURATIONS.battleDamage);
+
+    const rows = wrapper.findAll('[data-battle-step]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].classes()).not.toContain('bg-accent/15');
+
+    await rows[0].trigger('mouseenter');
+    expect(rows[0].classes()).toContain('bg-accent/10');
+
+    await rows[0].trigger('click');
+    expect(rows[0].classes()).toContain('bg-accent/15');
+
+    // ховер ушёл, а выбранная строка осталась выделенной
+    await rows[0].trigger('mouseleave');
+    expect(rows[0].classes()).toContain('bg-accent/15');
+    expect(rows[1].classes()).not.toContain('bg-accent/15');
+
+    // повторный клик снимает выделение
+    await rows[0].trigger('click');
+    expect(rows[0].classes()).not.toContain('bg-accent/15');
   });
 
   it('показывает итог битвы: числа, урон и по кому он пришёлся', async () => {
@@ -632,14 +665,34 @@ describe('окно битвы: лента шагов с паузами', () => {
     await passTime(ANIMATION_DURATIONS.battleDamage);
 
     expect(wrapper.find('[data-battle-done]').exists()).toBe(true);
-    expect(wrapper.find('[data-battle-totals]').text()).toBe('битва 5 − 2 = 3');
 
     // урон карт получает проигравшая сторона — защитник-помощник
     const hits = wrapper.findAll('[data-battle-result]');
     expect(hits).toHaveLength(1);
     expect(hits[0].text()).toContain('Тото');
     expect(hits[0].text()).toContain('урон 3');
-    expect(hits[0].text()).toContain('карты 3');
+    // итоговой строки «битва 5 − 2 = 3» и счётчика карт в окне больше нет
+    expect(wrapper.find('[data-battle-totals]').exists()).toBe(false);
+  });
+
+  it('пока итог на экране, об этом знает композиция: компьютер ждёт кнопку', async () => {
+    openBattle();
+    const wrapper = mountWindow();
+    await nextTick();
+
+    await finishBattle();
+    // лента ещё играет, но битва уже кончилась: окно держит итог, а компьютер не должен ходить
+    expect(battleResultShown().value).toBe(true);
+
+    await passTime(ANIMATION_DURATIONS.battleReveal);
+    await passTime(ANIMATION_DURATIONS.battleStep);
+    await passTime(ANIMATION_DURATIONS.battleStep);
+    await passTime(ANIMATION_DURATIONS.battleDamage);
+    expect(wrapper.find('[data-battle-done]').exists()).toBe(true);
+    expect(battleResultShown().value).toBe(true);
+
+    await wrapper.find('[data-battle-close]').trigger('click');
+    expect(battleResultShown().value).toBe(false);
   });
 
   it('вскрытие берёт карты из записи боя: в снимке их нет, сброс ещё пуст', async () => {
@@ -712,7 +765,7 @@ describe('окно битвы: лента шагов с паузами', () => {
     await wrapper.find('[data-battle-skip]').trigger('click');
 
     expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(2);
-    expect(wrapper.find('[data-battle-damage]').exists()).toBe(true);
+    expect(wrapper.find('[data-battle-taken]').exists()).toBe(true);
     expect(wrapper.find('[data-battle-close]').exists()).toBe(true);
   });
 
@@ -747,7 +800,9 @@ describe('окно битвы: лента шагов с паузами', () => {
     await nextTick();
 
     expect(wrapper.find('[data-battle-window]').exists()).toBe(true);
-    expect(wrapper.text()).toContain('2 − 2');
+    // числа боя отдельной строкой больше не пишем: у сторон только их карты и здоровье
+    expect(wrapper.text()).not.toContain('2 − 2');
+    expect(wrapper.findAll('[data-battle-side]')).toHaveLength(2);
     expect(wrapper.find('[data-battle-close]').exists()).toBe(true);
 
     await wrapper.find('[data-battle-close]').trigger('click');
@@ -892,7 +947,7 @@ describe('окно битвы: окна выбора сворачивают ег
     expect(wrapper.find('[data-battle-body]').exists()).toBe(true);
   });
 
-  it('не отбирает указатель на кнопках: свёрнуть и развернуть можно обычным кликом', async () => {
+  it('захват указателя не уводит клик с кнопок: свёрнуть и развернуть можно обычным кликом', async () => {
     openBattle();
     const wrapper = mountWindow();
     await nextTick();
@@ -907,12 +962,14 @@ describe('окно битвы: окна выбора сворачивают ег
     await minimize.trigger('click');
     expect(wrapper.find('[data-battle-mini]').exists()).toBe(true);
 
-    const mini = wrapper.find('[data-battle-mini]').element;
-    mini.setPointerCapture = capture;
-    mini.dispatchEvent(pointerEvent('pointerdown'));
-    expect(capture).not.toHaveBeenCalled();
+    // миниатюра — ручка свёрнутого окна, поэтому указатель берёт она сама: клик остаётся её кликом
+    const mini = wrapper.find('[data-battle-mini]');
+    mini.element.setPointerCapture = capture;
+    mini.element.dispatchEvent(pointerEvent('pointerdown'));
+    document.dispatchEvent(pointerEvent('pointerup'));
+    expect(capture).toHaveBeenCalled();
 
-    await wrapper.find('[data-battle-mini]').trigger('click');
+    await mini.trigger('click');
     expect(wrapper.find('[data-battle-body]').exists()).toBe(true);
   });
 
@@ -1005,6 +1062,31 @@ describe('окно битвы: размер и место', () => {
 
     expect(wrapper.find('section').classes()).not.toContain('fixed');
     expect(wrapper.find('section').attributes('style')).toBeUndefined();
+  });
+
+  it('свёрнутое окно тянется за миниатюру: перенос её не разворачивает, а клик — разворачивает', async () => {
+    openBattle();
+    const wrapper = mountWindow();
+    await nextTick();
+    stubFrame(wrapper);
+    await wrapper.find(`[aria-label="${TOOLTIPS.battle.minimize()}"]`).trigger('click');
+
+    await drag(
+      wrapper.find('[data-battle-mini]').element,
+      { clientX: 100, clientY: 80 },
+      { clientX: 300, clientY: 200 },
+    );
+
+    expect(wrapper.find('section').classes()).toContain('fixed');
+    expect(styleOf(wrapper)).toMatchObject({ left: 320, top: 210 });
+    expect(wrapper.find('[data-battle-body]').exists()).toBe(false);
+
+    // клик, который браузер присылает после переноса, гасит признак переноса и окно не разворачивает
+    await wrapper.find('[data-battle-mini]').trigger('click');
+    expect(wrapper.find('[data-battle-body]').exists()).toBe(false);
+
+    await wrapper.find('[data-battle-mini]').trigger('click');
+    expect(wrapper.find('[data-battle-body]').exists()).toBe(true);
   });
 
   it('растягивание за угол меняет размер окна', async () => {

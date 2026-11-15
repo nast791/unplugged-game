@@ -147,6 +147,10 @@ const summaryFighter = (fighter, type, heroId) => ({
   image: heroImageUrl(heroId, fighter.image),
 });
 
+/** Портрет героя: групповой кадр `images.hero`, а пока его нет — аватар героя, чтобы лобби не пустело. */
+const portraitFile = pack =>
+  pack.images?.hero ?? (pack.heroes ?? []).find(fighter => fighter.image)?.image ?? null;
+
 /**
  * Карточка героя для страницы `/heroes/{id}`: только то, что видит игрок — числа, умение, помощники,
  * предметы и **тексты** карт. Правила карт (`rules`) наружу не отдаём: движок и контент и так уезжают
@@ -171,7 +175,7 @@ export const buildHeroSummary = pack => {
     color: pack.color ?? null,
     // Арт объявлен в паке (`images`), файлы лежат рядом с контентом; нет арта — страница и модалка
     // показывают аватар-заглушку в цвете героя.
-    portrait: heroImageUrl(pack.id, pack.images?.hero),
+    portrait: heroImageUrl(pack.id, portraitFile(pack)),
     promo: heroImageUrl(pack.id, pack.images?.promo),
     cardBack: heroImageUrl(pack.id, pack.images?.back),
     terrainAffinity: pack.terrainAffinity ?? [],

@@ -5,6 +5,7 @@
         v-for="card in cards"
         :key="String(card.instanceId ?? card.id)"
         :card="card"
+        mode="window"
         :disabled="true"
       />
     </div>

@@ -1,4 +1,6 @@
+import { nextTick } from 'vue';
 import { runUi } from '#shared/core.js';
+import { HINTS } from '#shared/constants/hints.js';
 import { cardKey } from '#shared/helpers/cards.js';
 import {
   fighterClickIntent,
@@ -6,6 +8,7 @@ import {
   fighterSelectExpected,
 } from '#shared/helpers/ui.js';
 import { markCardFlightsViewerChanged } from '~/composables/animations/useCardFlights.js';
+import { battleResultShown, battleResultSummary } from '~/composables/game/useBattleGate.js';
 import { useGameView } from '~/composables/game/useGameView.js';
 import { useProfile } from '~/composables/ui/useProfile.js';
 import { playerLabel, useGameHelpers } from './useGameHelpers.js';
@@ -43,8 +46,11 @@ export const handoverTarget = ({
   players = [],
   actingId = null,
   viewerId = null,
+  battleResult = false,
 } = {}) => {
   if (String(seating ?? '') !== 'local') return null;
+  // Итог битвы на экране: следующий игрок садится только после «Закрыть» (m00001)
+  if (battleResult === true) return null;
 
   const humans = (players ?? []).filter(player => String(player?.control ?? 'human') === 'human');
   if (humans.length < 2) return null;
@@ -123,9 +129,20 @@ export const useGameSession = () => {
 
   const inBattle = computed(() => isBattleParticipant(you.value));
 
+  const windowSource = computed(
+    () => targeting.value?.source ?? combat.value?.choice?.source ?? movement.value?.source ?? null,
+  );
+
+  // Окно открыл сам герой (skill.id), а не карта: так доска отличает подсветку умения от подсветки фазы.
+  const skillWindow = computed(() => {
+    const source = windowSource.value;
+    if (source == null) return false;
+    const key = String(source);
+    return (players.value ?? []).some(player => String(player?.skill?.id ?? '') === key);
+  });
+
   const askingCard = computed(() => {
-    const source =
-      targeting.value?.source ?? combat.value?.choice?.source ?? movement.value?.source ?? null;
+    const source = windowSource.value;
     if (source == null) return null;
 
     const key = String(source);
@@ -160,7 +177,13 @@ export const useGameSession = () => {
     return view.value?.ui ?? null;
   });
 
-  const hint = computed(() => ui.value?.hint || message.value || '');
+  const hint = computed(() => {
+    if (battleResultShown().value) {
+      return HINTS.client.battleResult({ summary: battleResultSummary().value });
+    }
+    if (optionHint.value) return optionHint.value;
+    return ui.value?.hint || message.value || '';
+  });
   const highlightedCellIds = computed(() => (ui.value?.highlightedCellIds ?? []).map(String));
   const highlightedFighterIds = computed(() => (ui.value?.highlightedFighterIds ?? []).map(String));
   const pickedFighterIds = computed(() => (ui.value?.pickedFighterIds ?? []).map(String));
@@ -203,6 +226,7 @@ export const useGameSession = () => {
 
   const choices = computed(() =>
     (ui.value?.choices ?? []).map(entry => ({
+      ...entry,
       optionId: String(entry.optionId),
       title: entry.title ?? String(entry.optionId),
       disabled: entry.disabled === true,
@@ -217,6 +241,7 @@ export const useGameSession = () => {
   const targetingChoices = computed(() =>
     showTargetingOptions.value
       ? (targeting.value.candidates ?? []).map(entry => ({
+          ...entry,
           optionId: String(entry.optionId),
           title: entry.title ?? String(entry.optionId),
           disabled: entry.disabled === true,
@@ -236,6 +261,60 @@ export const useGameSession = () => {
     return [...new Set(ids)];
   });
   const choiceComplete = computed(() => choicePicked.value.length >= choiceCount.value);
+
+  // окно выбора карт: кандидат-карта несёт зону и владельца, поэтому клиент показывает окно руки
+  // с настоящими картами, а не строку подписи
+  const choiceEntries = computed(() => {
+    const byId = new Map();
+
+    for (const entry of [...choices.value, ...targetingChoices.value]) {
+      const id = String(entry.optionId);
+      byId.set(id, { ...(byId.get(id) ?? {}), ...entry, optionId: id });
+    }
+
+    return [...byId.values()];
+  });
+
+  const choiceCards = computed(() => choiceEntries.value.filter(entry => entry.zone === 'hand'));
+
+  const choiceHand = computed(() => {
+    const cards = choiceCards.value;
+    if (!cards.length) return null;
+
+    const ownerId = cards[0].ownerId == null ? '' : String(cards[0].ownerId);
+    const owner = (players.value ?? []).find(player => String(player.id) === ownerId) ?? null;
+    const hero = [...(owner?.fighters ?? []), ...(owner?.lost ?? [])].find(
+      fighter => fighter.type === 'hero',
+    );
+
+    return { playerId: ownerId, name: hero?.name || owner?.name || '', cards };
+  });
+
+  const choiceRequired = computed(() => {
+    if (showTargetingOptions.value) return targeting.value?.required === true;
+    return combat.value?.choice ? combat.value.choice.optional !== true : false;
+  });
+
+  // окно вариантов само говорит подсказкой, что делать: выбрать вариант и нажать «Подтвердить»
+  const optionHint = computed(() => {
+    const open = showTargetingOptions.value || Boolean(combat.value?.choice);
+    if (!open) return '';
+    if (!choiceEntries.value.some(entry => entry.zone !== 'hand')) return '';
+
+    return HINTS.defense.effectOption({
+      required: choiceRequired.value,
+      count: choiceCount.value,
+      picked: choicePicked.value.length,
+    });
+  });
+
+  const choiceConfirmEnabled = computed(
+    () =>
+      !pending.value &&
+      !isGameOver.value &&
+      ((choicePicked.value.length > 0 && choiceComplete.value) ||
+        (okControl.value.visible === true && okControl.value.enabled === true)),
+  );
 
   const myItems = computed(() => me.value?.items ?? []);
 
@@ -339,6 +418,7 @@ export const useGameSession = () => {
     () =>
       !pending.value &&
       !isGameOver.value &&
+      !battleResultShown().value &&
       (isPlacement.value ||
         fighterClickPhase.value ||
         highlightedCellIds.value.length > 0 ||
@@ -407,13 +487,17 @@ export const useGameSession = () => {
       await syncHotseat();
     });
 
+  // Окно итога битвы держит и передачу экрана: пока его не закрыли, следующий игрок не садится
   const syncHotseat = async () => {
+    await nextTick();
+
     const target = handoverTarget({
       placement: isPlacement.value,
       seating: view.value?.settings?.seating,
       players: players.value,
       actingId: actingPlayerId.value,
       viewerId: playerId.value,
+      battleResult: battleResultShown().value,
     });
     if (target == null) {
       keepSelectionValid();
@@ -422,8 +506,16 @@ export const useGameSession = () => {
     await switchViewer(target);
   };
 
+  watch(battleResultShown(), shown => {
+    if (!shown) void syncHotseat();
+  });
+
   const send = action =>
     run(async () => {
+      if (battleResultShown().value) {
+        message.value = HINTS.client.battleWait();
+        return;
+      }
       await sendAction(action);
       await syncHotseat();
     });
@@ -505,6 +597,16 @@ export const useGameSession = () => {
       return undefined;
     }
     return pick({ kind: 'option', id: choice.optionId });
+  };
+
+  const pickChoiceCard = card => {
+    const id = String(card?.optionId ?? card?.cardId ?? '');
+    const entry = choiceCards.value.find(item => String(item.optionId) === id);
+    if (!entry) {
+      message.value = 'Этой карты нет среди вариантов';
+      return undefined;
+    }
+    return onChoiceClick(entry.optionId);
   };
 
   const onUiBack = () => send({ type: 'UI_BACK' });
@@ -637,6 +739,8 @@ export const useGameSession = () => {
     isPlacement,
     combat,
     movement,
+    windowSource,
+    skillWindow,
     targeting,
     lastCombat,
     lastSkill,
@@ -660,6 +764,12 @@ export const useGameSession = () => {
     results,
     choices,
     targetingChoices,
+    choiceEntries,
+    choiceCards,
+    choiceHand,
+    choiceRequired,
+    choiceConfirmEnabled,
+    pickChoiceCard,
     myItems,
     pickCandidates,
     expectsFighterPick,

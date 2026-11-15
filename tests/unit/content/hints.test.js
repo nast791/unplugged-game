@@ -22,6 +22,89 @@ const phases = () => [...new Set(Object.values(lifecycleHooks).flatMap(hook => h
 /** Функции без параметров — статические подсказки: в фазе они должны стоять по ссылке. */
 const isStatic = hint => typeof hint === 'function' && hint.length === 0;
 
+/** Контекст-образец: каждой подсказке — правдоподобные поля, чтобы она отдала свой текст. */
+const SAMPLE = {
+  'choose.skillWindow': { text: 'Обменяйте Дороти и Тото' },
+  'handLimit.discardCards': { limit: 5, count: 2 },
+  'attack.waitingDefense': { name: 'Медуза' },
+  'waiting.battle': {
+    attacker: 'Амат (Элизиф)',
+    defender: 'Тото (Гость)',
+    numbers: '4 против 2, урон 2',
+  },
+  'waiting.waitingMovement': { name: 'Медуза' },
+  'waiting.waitingChoice': { name: 'Медуза' },
+  'waiting.waitingTurn': { name: 'Тесла' },
+  'place.cellTaken': { name: 'Амат' },
+  'finished.finished': { name: 'Дороти' },
+  'client.timerExpired': { limit: '30 с' },
+  'client.placementExpired': { limit: '2 мин' },
+};
+
+/** Ветки подсказок: у каждой свой набор контекстов. */
+const BRANCHES = {
+  'choose.skillWindow': [
+    { text: 'Обменяйте Дороти и Тото' },
+    { text: 'Пламя преисподней', toggle: true, picked: 0 },
+    { text: 'Пламя преисподней', toggle: true, picked: 1 },
+    { text: 'Взвешивание сердца', toggle: true, picked: 0, required: true },
+  ],
+  'choose.pickTarget': [
+    { cells: true },
+    { cells: false },
+    { cells: false, count: 2, picked: 0 },
+    { cells: true, count: 2, picked: 1 },
+  ],
+  'movement.moveFighters': [
+    { fromEffect: true },
+    { fromEffect: false },
+    { fromEffect: true, picked: true },
+    { fromEffect: false, picked: true },
+  ],
+  'defense.effectOption': [
+    { required: true },
+    { required: false },
+    { required: true, count: 2, picked: 0 },
+    { required: false, count: 2, picked: 1 },
+  ],
+  'defense.effectTarget': [
+    { cells: true, required: true },
+    { cells: true, required: false },
+    { cells: false, required: true },
+    { cells: false, required: false },
+    { cells: false, required: true, count: 2, picked: 1 },
+    { cells: true, required: false, count: 2, picked: 0 },
+  ],
+  'defense.combatChoice': [{ movement: true }, { movement: false }],
+  'defense.defend': [{ afterCancel: true }, { afterCancel: false }],
+  'waiting.battle': [
+    {},
+    { attacker: 'Амат (Элизиф)' },
+    { attacker: 'Амат (Элизиф)', defender: 'Тото (Гость)' },
+    {
+      attacker: 'Амат (Элизиф)',
+      defender: 'Тото (Гость)',
+      numbers: '4 против 2, урон 2',
+    },
+  ],
+};
+
+/** Все тексты, которые словарь отдаёт: по одному образцу на подсказку плюс известные ветки. */
+const renderedHints = () => {
+  const rendered = [];
+  for (const [group, entries] of Object.entries(HINTS)) {
+    for (const [key, hint] of Object.entries(entries)) {
+      const path = `${group}.${key}`;
+      if (BRANCHES[path]) {
+        for (const context of BRANCHES[path]) rendered.push([path, hint(context)]);
+        continue;
+      }
+      rendered.push([path, hint(SAMPLE[path] ?? {})]);
+    }
+  }
+  return rendered;
+};
+
 describe('словарь подсказок', () => {
   it('у каждой подсказки фазы есть строка в словаре — и наоборот', () => {
     const fromPhases = {};
@@ -72,32 +155,10 @@ describe('словарь подсказок', () => {
   });
 
   it('тексты словаря — непустые строки, а подстановки заполнены', () => {
-    const sample = {
-      'choose.skillWindow': { text: 'Обменяйте Дороти и Тото' },
-      'handLimit.discardCards': { limit: 5, count: 2 },
-      'attack.waitingDefense': { name: 'Медуза' },
-      'waiting.battle': {
-        attacker: 'Амат (Элизиф)',
-        defender: 'Тото (Гость)',
-        numbers: '4 против 2, урон 2',
-      },
-      'waiting.waitingMovement': { name: 'Медуза' },
-      'waiting.waitingChoice': { name: 'Медуза' },
-      'waiting.waitingTurn': { name: 'Тесла' },
-      'place.cellTaken': { name: 'Амат' },
-      'finished.finished': { name: 'Дороти' },
-      'client.timerExpired': { limit: '30 с' },
-      'client.placementExpired': { limit: '2 мин' },
-    };
-
     const empty = [];
-    for (const [group, entries] of Object.entries(HINTS)) {
-      for (const [key, hint] of Object.entries(entries)) {
-        const path = `${group}.${key}`;
-        const value = hint(sample[path] ?? {});
-        if (typeof value !== 'string' || value.trim() === '' || value.includes('undefined')) {
-          empty.push(`${path}: ${JSON.stringify(value)}`);
-        }
+    for (const [path, value] of renderedHints()) {
+      if (typeof value !== 'string' || value.trim() === '' || value.includes('undefined')) {
+        empty.push(`${path}: ${JSON.stringify(value)}`);
       }
     }
 
@@ -105,55 +166,8 @@ describe('словарь подсказок', () => {
   });
 
   it('в подсказке с ветками каждый вариант — непустая строка', () => {
-    const branches = {
-      'choose.skillWindow': [
-        { text: 'Обменяйте Дороти и Тото' },
-        { text: 'Пламя преисподней', toggle: true, picked: 0 },
-        { text: 'Пламя преисподней', toggle: true, picked: 1 },
-        { text: 'Взвешивание сердца', toggle: true, picked: 0, required: true },
-      ],
-      'choose.pickTarget': [
-        { cells: true },
-        { cells: false },
-        { cells: false, count: 2, picked: 0 },
-        { cells: true, count: 2, picked: 1 },
-      ],
-      'movement.moveFighters': [
-        { fromEffect: true },
-        { fromEffect: false },
-        { fromEffect: true, picked: true },
-        { fromEffect: false, picked: true },
-      ],
-      'defense.effectOption': [
-        { required: true },
-        { required: false },
-        { required: true, count: 2, picked: 0 },
-        { required: false, count: 2, picked: 1 },
-      ],
-      'defense.effectTarget': [
-        { cells: true, required: true },
-        { cells: true, required: false },
-        { cells: false, required: true },
-        { cells: false, required: false },
-        { cells: false, required: true, count: 2, picked: 1 },
-        { cells: true, required: false, count: 2, picked: 0 },
-      ],
-      'defense.combatChoice': [{ movement: true }, { movement: false }],
-      'defense.defend': [{ afterCancel: true }, { afterCancel: false }],
-      'waiting.battle': [
-        {},
-        { attacker: 'Амат (Элизиф)' },
-        { attacker: 'Амат (Элизиф)', defender: 'Тото (Гость)' },
-        {
-          attacker: 'Амат (Элизиф)',
-          defender: 'Тото (Гость)',
-          numbers: '4 против 2, урон 2',
-        },
-      ],
-    };
-
     const broken = [];
-    for (const [path, variants] of Object.entries(branches)) {
+    for (const [path, variants] of Object.entries(BRANCHES)) {
       const [group, key] = path.split('.');
       for (const context of variants) {
         const value = HINTS[group][key](context);
@@ -163,5 +177,20 @@ describe('словарь подсказок', () => {
     }
 
     expect(broken).toEqual([]);
+  });
+
+  /**
+   * Подсказка говорит с игроком по-русски: служебные ключи движка (`defense`, `hybrid`, `|`) в ней
+   * остаются только по недосмотру. Так в окне защиты висело «Защититесь картой defense|hybrid
+   * или закончите действие без карты» — игрок читал ключи вместо названия карты (m00799).
+   */
+  it('в текстах нет служебных ключей движка вместо слов', () => {
+    const keys = /(^|[^A-Za-zА-Яа-яёЁ])(attack|defense|hybrid|effect|movement|targeting)([^A-Za-zА-Яа-яёЁ]|$)/i;
+    const leaked = renderedHints()
+      .filter(([, value]) => typeof value === 'string')
+      .filter(([, value]) => value.includes('|') || keys.test(value))
+      .map(([path, value]) => `${path}: ${value}`);
+
+    expect(leaked).toEqual([]);
   });
 });

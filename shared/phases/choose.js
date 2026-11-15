@@ -109,7 +109,7 @@ const skillWindowOf = (partyState, playerId) => {
   return skill;
 };
 
-/** Объявлено действие — окно способности начала хода считается пропущенным. */
+/** Колода объявила перемещение — окно способности начала хода считается пропущенным. */
 const closeSkillWindow = (partyState, playerId) =>
   skillWindowOf(partyState, playerId)
     ? SET_TARGETING(partyState, { op: 'close', playerId })
@@ -123,6 +123,17 @@ const declineLabel = (partyState, playerId) =>
 const requireNoPendingEffect = (partyState, playerId) => {
   if (requiredTargetingOf(partyState, playerId)) {
     throw new Error('PICK: сначала выберите цель разыгранной карты');
+  }
+};
+
+/**
+ * Умение в работе — карты руки закрыты (решение владельца, m00194): пока окно способности открыто,
+ * действие принадлежит ей, и клик по карте его не подменяет. Ни одно окно способности руки не
+ * спрашивает (бойцов, клетки и варианты), поэтому здесь исключений нет.
+ */
+const requireNoSkillWindow = (partyState, playerId) => {
+  if (skillWindowOf(partyState, playerId)) {
+    throw new Error('PICK: сначала завершите умение героя');
   }
 };
 
@@ -144,11 +155,12 @@ const startMovement = (partyState, playerId) => {
 /** Клик по карте атаки = объявление боя: −1 действие, карта в закрытую. */
 const startAttack = (partyState, playerId, cardId) => {
   requireNoPendingEffect(partyState, playerId);
+  requireNoSkillWindow(partyState, playerId);
 
   const reason = attackRejection(partyState, playerId, cardId);
   if (reason) throw new Error(`PICK: ${reason}`);
 
-  const state = SET_ACTIONS(closeSkillWindow(partyState, playerId), {
+  const state = SET_ACTIONS(partyState, {
     playerId,
     delta: -1,
   });
@@ -162,6 +174,7 @@ const startAttack = (partyState, playerId, cardId) => {
  */
 const startEffectCard = (partyState, playerId, cardId) => {
   requireNoPendingEffect(partyState, playerId);
+  requireNoSkillWindow(partyState, playerId);
 
   const card = handCards(partyState, playerId).find(entry => cardKey(entry) === String(cardId));
   if (!card) throw new Error(`PICK: карты "${cardId}" нет в руке`);
@@ -173,7 +186,7 @@ const startEffectCard = (partyState, playerId, cardId) => {
     throw new Error(`PICK: у карты "${cardId}" не описан розыгрыш`);
   }
 
-  let state = SET_ACTIONS(closeSkillWindow(partyState, playerId), {
+  let state = SET_ACTIONS(partyState, {
     playerId,
     delta: -1,
   });
@@ -306,7 +319,10 @@ export default {
     (hasActions(partyState) || isTargetingMine(partyState, playerId) || Boolean(partyState.effect)),
 
   ui(partyState, playerId) {
-    const playable = playableCardIds(partyState, playerId);
+    // умение в работе: действие принадлежит ему, карты руки ждут (решение владельца, m00194)
+    const playable = skillWindowOf(partyState, playerId)
+      ? []
+      : playableCardIds(partyState, playerId);
     const targets = targetingFighters(partyState, playerId);
     const optional = optionalWindowOf(partyState, playerId);
     const picked = Boolean(pickedOptionOf(partyState, playerId));
@@ -442,9 +458,10 @@ export default {
     применяет безальтернативный выбор сам. У необязательного окна без отметки кнопка пропускает
     способность, обязательное (Анубис с несколькими целями) закрывается только выбором. Списка вариантов окну не нужно: «Серебряные башмачки» Дороти
     подсвечивают Дороти и Тото, клик по любому меняет их местами, а выбор здесь симметричный.
- 5. Способность необязательна: объявление любого действия (колода или карта) закрывает её окно — правило
-    с моментом turnStart больше не сработает, потому что вход в хук был один. В конце хода окно закрывает
-    общая кнопка завершения: у окна способности она подписана «Завершить умение», у необязательного окна
+ 5. Способность необязательна и живёт до своего конца: клик по колоде закрывает её окно (правило
+    с моментом turnStart больше не сработает, потому что вход в хук был один), а карты руки под окном
+    **заблокированы** — умение в работе, действие принадлежит ему (решение владельца, m00194). Завершает
+    способность общая кнопка: у окна способности она подписана «Завершить умение», у необязательного окна
     свойства — «Закончить эффект». Вопросов «да или нет» интерфейс не задаёт: подсказка сверху,
     подсвеченные цели и кнопка.
  6. Ход нельзя закрыть, пока в работе любой момент (перемещение, бой, выбор цели) — это держит turn.body,

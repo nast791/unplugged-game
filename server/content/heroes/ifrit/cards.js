@@ -198,9 +198,7 @@ export default [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'] }, var: 'hero' },
         ],
-        then: [
-          { action: 'SET_CELL_TERRAIN', op: 'add', cellId: '$hero', terrain: 'lava' },
-        ],
+        then: [{ action: 'SET_CELL_TERRAIN', op: 'add', cellId: '$hero', terrain: 'lava' }],
       },
     ],
   },
@@ -351,7 +349,7 @@ export default [
       { id: 'draw', text: 'Возьмите 2 карты.' },
       {
         id: 'step',
-        text: 'Сдвиньте Ифрита на расстояние до 2 клеток. Клетка, на которую он наступил, до конца вашего хода получает дополнительную стихию лавы, если на ней меньше 3 стихий.',
+        text: 'Сдвиньте Ифрита на расстояние до 2 клеток. Каждая клетка, по которой он прошёл, до конца вашего хода получает дополнительную стихию лавы, если на ней меньше 3 стихий.',
       },
     ],
     rules: [
@@ -500,7 +498,7 @@ export default [
     bonus: 2,
     quantity: 2,
     fighter: 'ifrit',
-    text: 'ВО ВРЕМЯ БИТВЫ: Если Ифрит стоит на клетке лавы, значение этой карты становится 4. ПОСЛЕ БИТВЫ: Нанесите 1 урон атаковавшему бойцу.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Если Ифрит стоит на клетке лавы, значение этой карты становится 4. ПОСЛЕ БИТВЫ: Нанесите 1 урон бойцу из этой битвы.',
     rules: [
       {
         moment: 'duringCombat',
@@ -510,8 +508,7 @@ export default [
       {
         moment: 'afterCombat',
         when: [
-          { fact: 'COMBAT', params: { role: 'defender' } },
-          { fact: 'COMBAT', params: { select: 'attacker' }, var: 'foe' },
+          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
           { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1 },
         ],
         then: [{ action: 'SET_HEALTH', fighterIds: '$foe', delta: -1 }],

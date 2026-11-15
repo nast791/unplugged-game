@@ -250,6 +250,29 @@ describe('окно информации о герое', () => {
     expect(wrapper.text()).toContain('Серебряные башмачки');
   });
 
+  it('показывает родные земли героя одной короткой строкой с цветом каждой стихии', () => {
+    const wrapper = mountInfo('hero', {
+      catalog: { ...catalog, terrainAffinity: ['lava', 'desert'] },
+    });
+    const row = wrapper.find('[data-terrain-affinity]');
+
+    expect(row.exists()).toBe(true);
+    expect(row.text()).toContain('Земли');
+    expect(row.text()).toContain('Лава');
+    expect(row.text()).toContain('Пустыня');
+    expect(row.findAll('[data-terrain]').map(node => node.attributes('data-terrain'))).toEqual([
+      'lava',
+      'desert',
+    ]);
+    expect(row.html()).toContain('#e8453a');
+  });
+
+  it('не заводит строку земель герою без родных стихий', () => {
+    const wrapper = mountInfo('hero');
+
+    expect(wrapper.find('[data-terrain-affinity]').exists()).toBe(false);
+  });
+
   it('пишет состояние предмета словами движка: «активна» и «не активна»', () => {
     const items = [
       {

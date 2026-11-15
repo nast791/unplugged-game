@@ -101,7 +101,7 @@ const pick = (state, optionId) =>
 const handIds = (state, playerId) => hand(player(state, playerId)).map(entry => entry.instanceId);
 
 describe('карта по чужой руке: выбор и сброс', () => {
-  it('CARDS отдаёт карты чужой руки с title, optionId и bonus', () => {
+  it('CARDS отдаёт карты чужой руки целиком: название, тип, число, усиление и место в руке', () => {
     const state = buildState();
     const fact = runFact(state, 'CARDS', { of: '1', zone: 'hand' }, { playerId: '0' });
 
@@ -113,8 +113,15 @@ describe('карта по чужой руке: выбор и сброс', () => 
         id: 'enemy_guard',
         title: 'Ледяной панцирь',
         type: 'defense',
+        value: 2,
         bonus: 2,
+        text: '',
+        options: [],
+        quantity: null,
+        fighter: 'beta',
         tags: [],
+        zone: 'hand',
+        ownerId: '1',
       },
       {
         cardId: 'enemy_bite',
@@ -122,8 +129,15 @@ describe('карта по чужой руке: выбор и сброс', () => 
         id: 'enemy_bite',
         title: 'Укус',
         type: 'defense',
+        value: 2,
         bonus: 1,
+        text: '',
+        options: [],
+        quantity: null,
+        fighter: 'beta',
         tags: [],
+        zone: 'hand',
+        ownerId: '1',
       },
     ]);
     // ключ копии — тот же, чем карта уходит в сброс (`cardKey`): строка, а не объект факта

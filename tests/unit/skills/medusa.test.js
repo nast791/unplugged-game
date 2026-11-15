@@ -3,7 +3,7 @@ import { isMoment } from '#shared/constants/moments.js';
 import { runUi } from '#shared/core.js';
 import { runAction, runLifecycle } from '#shared/publicApi.js';
 import medusa from '../../../server/content/heroes/medusa/index.js';
-import { ap, createState, fighter, PHASES, player } from '../../fixtures/state.js';
+import { ap, card, createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
 /** Области: 1–3 и 5 синие (зона Медузы), 4 красная. */
 const areaMap = {
@@ -272,5 +272,39 @@ describe('способность Медузы (Взгляд Медузы)', () =
 
     expect(started.targeting).toBeNull();
     expect(runUi(started, '0').highlightedFighterIds).toEqual([]);
+  });
+});
+
+describe('карты руки под окном умения', () => {
+  /** Атака, которой Гарпии достают врага с соседней клетки. */
+  const withStrike = state => {
+    player(state, '0').hand.cards.push(
+      card({ id: 'strike', title: 'Strike', type: 'attack', value: 4, bonus: 1, fighter: 'harpies' }),
+    );
+    return state;
+  };
+
+  it('пока окно умения открыто, карты руки не предлагаются и не играются', () => {
+    const state = runLifecycle(withStrike(skillState({ enemies: twoEnemies() })));
+    const ui = runUi(state, '0');
+
+    expect(state.targeting?.source).toBe('medusa_skill');
+    expect(ui.playableCardIds).toEqual([]);
+    expect(ui.disabledCardIds).toContain('strike_0');
+    expect(() =>
+      runAction(state, { type: 'PICK', kind: 'card', id: 'strike_0', playerId: '0' }),
+    ).toThrow(/сначала завершите умение/);
+  });
+
+  it('«Завершить умение» возвращает картам руки клик', () => {
+    let state = runLifecycle(withStrike(skillState({ enemies: twoEnemies() })));
+    state = runAction(state, { type: 'UI_OK', playerId: '0' });
+
+    const ui = runUi(state, '0');
+    expect(ui.playableCardIds).toContain('strike_0');
+    expect(ui.disabledCardIds).not.toContain('strike_0');
+    expect(() =>
+      runAction(state, { type: 'PICK', kind: 'card', id: 'strike_0', playerId: '0' }),
+    ).not.toThrow();
   });
 });

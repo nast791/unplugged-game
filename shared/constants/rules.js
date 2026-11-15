@@ -1,11 +1,8 @@
-/** Дефолтные правила UnPlugged (не в state). */
+import { RULES } from './tuning.js';
+
+/** Дефолтные правила UnPlugged (не в state); меняемые числа — в `tuning.js`. */
 export const rules = {
-  actionsPerTurn: 2,
-  openingHand: 5,
-  maxHandSize: 7,
-  exhaustionDamage: 2,
+  ...RULES,
   canPassThroughTeammates: true,
   canPassThroughEnemies: false,
-  maxPlayers: 4,
-  minPlayers: 2,
 };

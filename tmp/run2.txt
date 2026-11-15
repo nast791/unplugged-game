@@ -1,0 +1,13 @@
+﻿
+ RUN  v4.1.10 C:/UnPlugged/unplugged-game
+
+ ✓ |node| tests/unit/client/board-map.test.js (55 tests) 136ms
+ ✓ |node| tests/unit/client/battle-summary.test.js (4 tests) 5ms
+ ✓ |node| tests/unit/client/card-scales-icon.test.js (9 tests) 95ms
+ ✓ |node| tests/unit/client/choice-window.test.js (9 tests) 79ms
+
+ Test Files  4 passed (4)
+      Tests  77 passed (77)
+   Start at  17:57:13
+   Duration  4.01s (transform 3.47s, setup 1.02s, import 5.84s, tests 316ms, environment 5.95s)
+

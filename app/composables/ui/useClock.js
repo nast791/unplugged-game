@@ -1,7 +1,7 @@
+import { TIMEOUTS } from '#shared/constants/tuning.js';
 import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue';
 import { resolveCallback, resolveValue } from '~/composables/ui/useReactiveOptions.js';
 
-const TICK_MS = 250;
 const STORAGE_PREFIX = 'unplugged:clock:';
 
 const now = ref(Date.now());
@@ -17,7 +17,7 @@ export const syncNow = sync;
 const acquire = () => {
   subscribers += 1;
   if (ticker !== null) return;
-  ticker = setInterval(sync, TICK_MS);
+  ticker = setInterval(sync, TIMEOUTS.clockTick);
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', sync);
 };
 

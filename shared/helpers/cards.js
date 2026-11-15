@@ -17,6 +17,28 @@ export const cardTags = card => {
 export const cardHasTag = (card, tag) =>
   tag == null || String(tag) === '' || cardTags(card).includes(String(tag));
 
+/**
+ * Карта для интерфейса: всё, что рисует компонент карты (название, тип, число, усиление, текст,
+ * варианты текста, привязка, метки) плюс ключ копии `optionId` — им окно отвечает и карта уходит в сброс.
+ * `zone` и `ownerId` говорят клиенту, откуда карта: по ним окно выбора из руки показывает окно руки
+ * с настоящими картами, а не список подписей. Так список кандидатов и рука — одна и та же карта.
+ */
+export const cardUiView = (card, extra = {}) => ({
+  cardId: cardKey(card),
+  optionId: cardKey(card),
+  id: card?.id ?? null,
+  title: card?.title ?? null,
+  type: card?.type ?? null,
+  value: Number(card?.value) || 0,
+  bonus: Number(card?.bonus) || 0,
+  text: card?.text ?? '',
+  options: (card?.options ?? []).map(entry => ({ ...entry })),
+  quantity: card?.quantity ?? null,
+  fighter: card?.fighter ?? null,
+  tags: cardTags(card),
+  ...extra,
+});
+
 /** Моменты хода, на которых применяется тип карты (constants/deck.js → cardTypes). */
 export const cardMoments = card => cardTypes.find(type => type.name === card?.type)?.turn ?? [];
 
@@ -51,6 +73,7 @@ export const cardOptionText = (card, optionId) => {
  */
 export const cardChoices = (card, candidates = []) =>
   candidates.map(entry => ({
+    ...entry,
     optionId: String(entry.optionId ?? entry.id),
     title:
       cardOptionText(card, entry.optionId ?? entry.id) ??

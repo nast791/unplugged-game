@@ -111,6 +111,27 @@ describe('handoverTarget', () => {
       handoverTarget({ placement: true, seating: 'online', players: table, viewerId: 'p1' }),
     ).toBeNull();
   });
+
+  it('итог битвы на экране — экран ждёт «Закрыть», а не следующего игрока', () => {
+    expect(
+      handoverTarget({
+        seating: 'local',
+        players: table,
+        actingId: 'p2',
+        viewerId: 'p1',
+        battleResult: true,
+      }),
+    ).toBeNull();
+    expect(
+      handoverTarget({
+        seating: 'local',
+        players: table,
+        actingId: 'p2',
+        viewerId: 'p1',
+        battleResult: false,
+      }),
+    ).toBe('p2');
+  });
 });
 
 /**

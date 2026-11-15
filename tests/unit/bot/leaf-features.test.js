@@ -45,8 +45,9 @@ describe('признаки листа про поле', () => {
   });
 
   it('чужой боец на моей стихии отнимает контроль над полем', () => {
-    const { state, beta } = stateOf();
-    // Ифрит стоит на пустыне — земле Анубиса
+    const { state, alpha, beta } = stateOf();
+    // Ифрит занял пустыню — землю Анубиса, а сам Анубис ушёл на лёд
+    alpha.currentPosition = 2;
     beta.currentPosition = 1;
     expect(feature(state, '0', 'terrainFoe')).toBeCloseTo(-0.5);
     expect(feature(state, '1', 'terrainFoe')).toBeCloseTo(0);

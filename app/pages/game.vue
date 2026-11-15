@@ -3,7 +3,7 @@
     :hint-text="hintText"
     :hint-tone="gameHint?.tone ?? ''"
     :stage-label="stageLabel"
-    :party-time="partyTime"
+    :stage-time="stageTime"
     :limit-visible="activeLimitSeconds > 0"
     :limit-expired="activeLimitExpired"
     :limit-text="activeLimitExpired ? activeLimitExpiredText : activeLimitText"
@@ -18,6 +18,7 @@ import { HINTS } from '#shared/constants/hints.js';
 import GameScreen from '~/components/organisms/game/GameScreen.vue';
 import { ensureClock, useClock } from '~/composables/ui/useClock.js';
 import { useGameAi } from '~/composables/game/useGameAi.js';
+import { stageClockLabel } from '~/composables/game/useGameHelpers.js';
 import { useGameHint } from '~/composables/game/useGameHint.js';
 import { useGameSession } from '~/composables/game/useGameSession.js';
 import { useGameView } from '~/composables/game/useGameView.js';
@@ -108,7 +109,10 @@ const actionClock = useClock({
 watch(
   isPlacement,
   placement => {
-    if (placement) return;
+    if (placement) {
+      ensureClock('party:placement');
+      return;
+    }
     ensureClock('party:play');
     placementClock.stop();
   },
@@ -127,7 +131,13 @@ watch(
   { immediate: true },
 );
 
-const partyTime = playClock.label;
+const stageTime = computed(() =>
+  stageClockLabel({
+    placement: isPlacement.value,
+    placementMs: placementClock.elapsed.value,
+    playMs: playClock.elapsed.value,
+  }),
+);
 
 const activeLimitClock = computed(() => (isPlacement.value ? placementClock : actionClock));
 const activeLimitSeconds = computed(() =>

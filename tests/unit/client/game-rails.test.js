@@ -727,7 +727,8 @@ describe('верхний рельс', () => {
 });
 
 describe('рука без слайдера', () => {
-  it('держит карты якорями перелётов и поднимает выдвинутую на полную высоту', async () => {
+  it('держит карты якорями перелётов, поднимает наведённую и разыгрывает кликом', async () => {
+    playCard.mockClear();
     session.myHand.value = [
       { id: 'a', instanceId: 'h1', title: 'Суд молчит', type: 'attack', value: 4, bonus: 2 },
       { id: 'b', instanceId: 'h2', title: 'Взгляд', type: 'scheme', value: 2, bonus: 1 },
@@ -740,12 +741,20 @@ describe('рука без слайдера', () => {
     expect(cards).toHaveLength(2);
     expect(cards.map(card => card.attributes('data-card-key'))).toEqual(['h1', 'h2']);
 
-    const slots = wrapper.findAll('div.cursor-pointer');
-    expect(slots[0].classes()).not.toContain('-translate-y-140');
+    const lift = key => wrapper.find(`[data-hand-slot="${key}"] > div`).classes();
+    expect(lift('h1')).not.toContain('-translate-y-140');
 
+    await wrapper.find('[data-hand-slot="h1"]').trigger('mouseenter');
+    await nextTick();
+
+    expect(lift('h1')).toContain('-translate-y-140');
+
+    await wrapper.find('[data-hand-slot="h1"]').trigger('mouseleave');
     await cards[0].trigger('click');
     await nextTick();
 
-    expect(wrapper.findAll('div.cursor-pointer')[0].classes()).toContain('-translate-y-140');
+    expect(playCard).toHaveBeenCalledWith(session.myHand.value[0]);
+    expect(lift('h1')).not.toContain('-translate-y-140');
+    expect(lift('h2')).not.toContain('-translate-y-140');
   });
 });

@@ -47,9 +47,9 @@ const TONES = {
     label: 'text-11 text-accent',
     dot: 'bg-accent',
   },
-  zoom: {
-    text: 'text-24 font-light text-ink leading-[1.35]',
-    label: 'text-15 text-accent',
+  detail: {
+    text: 'text-11 font-light text-white',
+    label: 'text-9 text-accent',
     dot: 'bg-accent',
   },
 };

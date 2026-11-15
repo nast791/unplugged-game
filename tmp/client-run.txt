@@ -1,0 +1,936 @@
+﻿
+ RUN  v4.1.10 C:/UnPlugged/unplugged-game
+
+node.exe : stderr | tests/unit/client/board-clicks.test.js > доска: клики доходят до движка > слушатель повисает на сце
+не вместе с её появлением
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (stderr | tests/...с её появлением:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: клики доходят до движка > клик по клетке уходит как select-nod
+e с её id
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ ❯ |node| tests/unit/client/board-map.test.js (55 tests | 1 failed) 215ms
+     ✓ называет бойца, здоровье, удар и шаг 24ms
+     ✓ встаёт над фишкой, а не поверх неё, и указывает вниз 3ms
+     ✓ клетки берутся из карты, радиус — из размера узла 3ms
+     ✓ у пары соседей одна линия, и она не ловит клики 3ms
+     ✓ цветная клетка получает сектор на каждую стихию, одноцветная — ни одного 3ms
+     ✓ поле закрывает стол непрозрачной бумагой, без рисунка на фоне 3ms
+     ✓ бойцы стоят по своим клеткам со сдвигом друг от друга, а выбывший не рисуется 3ms
+     ✓ подсветка клетки вне расстановки — то же голубое кольцо, а граница клетки родная 5ms
+     ✓ кольцо рисуется только у клеток-кандидатов и у клеток области расстановки 2ms
+     ✓ область клетки накрывает кольцо и свечение, а не только кружок 4ms
+     ✓ бросок на подсветку тоже находит клетку, а за областью клетки — уже нет 3ms
+     ✓ атакующий обведён красным, защитник — голубым: метки видны всем смотрящим 4ms
+     ✓ волна битвы расходится от того же внешнего кольца, что и обводка 3ms
+     ✓ роль в битве сильнее подсветки фазы: атакующий остаётся красным, даже если фаза зовёт его голубым 2ms
+     ✓ защитник голубой при любой рамке фазы: цвет роли важнее выделения 2ms
+     ✓ рамка фазы акцентная, а не голубая: синего на доске больше нет 4ms
+     ✓ отмеченная цель — акцентная рамка активности, как у выбранного бойца, без заливки 3ms
+     ✓ выбранная фишка светится коралловой тенью, а кольца у неё нет 4ms
+     ✓ рамку фазы выбор не отменяет: кольцо остаётся акцентным, акцент — в тени 6ms
+     ✓ тень обычной фишки тёмная, а не акцентная 4ms
+     ✓ роль в битве сильнее выбора: атакующий остаётся красным 3ms
+     ✓ клетки умения светятся запасным тоном Анубиса — тем же внешним кольцом, что и перемещение 11ms
+     ✓ без умения клетки остаются голубыми: запасной тон — только для способности героя 3ms
+     × кандидаты умения обведены снаружи запасным тоном, а не голубой рамкой фазы 14ms
+     ✓ отмеченный умением дух светится как активная фишка: коралловая тень вместо кольца 3ms
+     ✓ отмеченная карта, а не умение, остаётся акцентной рамкой активности 2ms
+     ✓ светится у всей области, ярче — у клеток активного бойца и под курсором 2ms
+     ✓ свободная клетка области обведена голубым фирменным, а не серой границей 1ms
+     ✓ свечение шире клетки, а у кольца своей тени нет 1ms
+     ✓ под курсором кольцо остаётся тем же, пока дышит свечение 2ms
+     ✓ активный боец — ровное свечение по всей подсветке, без пульсации 2ms
+     ✓ занятая своим бойцом клетка не светится 3ms
+     ✓ клетки-кандидаты пульсируют, а занятая своим бойцом — нет 2ms
+     ✓ бойцы-кандидаты мигают акцентным свечением, остальные — нет 2ms
+     ✓ пульс не участвует в ровных конфигах: меняет узел Konva, а не разметку 2ms
+     ✓ точка экрана превращается в клетку по живому преобразованию сцены 2ms
+     ✓ фигура под курсором поднимается до бойца и до клетки 3ms
+     ✓ габарит поля считается по клеткам и маркерам расстановки 3ms
+     ✓ пока расстановка идёт, на доске только свои бойцы 2ms
+     ✓ чужой слот не виден и после того, как сам подтвердился: расстановка чужих — не наша 3ms
+     ✓ расстановка кончилась — видно всех 3ms
+     ✓ карта и бойцы читаются реактивно: новые данные — новая геометрия 4ms
+     ✓ добавка рисуется отдельным сектором с золотой каймой, а стихия клетки не меняется 5ms
+     ✓ у добавки есть пунктирный обод: видно, что стихия исчезнет в конце хода 2ms
+     ✓ текстура добавки тоже ложится: у клетки две плитки стихий 3ms
+     ✓ кромка фишки — цвет героя с объёмным градиентом, без внешней обводки и без тени-кольца 4ms
+     ✓ край скруглён мягкой тенью, а поле портрета вдавлено тенью поверх аватара 4ms
+     ✓ под фишкой лежит тень: пятно снизу не ловит клики 4ms
+     ✓ поле портрета меньше кромки и не ловит клики: внутри лежит аватар 4ms
+     ✓ блик лежит пятном света на кромке и не ловит клики 4ms
+     ✓ без аватара внутри буква контрастного цвета, а не тёмная на тёмном 3ms
+     ✓ сердце объёмное, без рамки и без карты: градиент, блик и цифры внутри 4ms
+     ✓ не сбрасывается подсветкой и выбором: статика от них не зависит 4ms
+     ✓ сбрасывается сменой стихии клетки: временный сектор — уже другая картинка 5ms
+     ✓ сбрасывается переездом клетки: статика не может остаться на старом месте 3ms
+stderr | tests/unit/client/board-clicks.test.js > доска: клики доходят до движка > клик по фишке уходит как select-figh
+ter с бойцом и владельцем
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: клики доходят до движка > клик мимо клетки и фишки уходит как 
+select-node: null — это «кликнули в пустоту»
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: клики доходят до движка > показывает подсказку бойца при навед
+ении и убирает её, когда курсор ушёл
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: клики доходят до движка > подсказка бойца работает и без выбра
+нного действия: кликов нет, а сведения есть
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: клики доходят до движка > выключенная доска кликов не слушает
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: перетаскивание бойца на клетку > бросок в кружок подсвеченной 
+клетки уходит как select-node с её id
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: перетаскивание бойца на клетку > бросок мимо кружков движку не
+ уходит
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: перетаскивание бойца на клетку > бросок на клетку вне подсветк
+и движку не уходит — выбранный боец не сбрасывается
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: перетаскивание бойца на клетку > клетка светится всё сильнее: 
+область, активный боец, курсор — а граница одна и та же
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: перетаскивание бойца на клетку > подсветка фазы не перекрашива
+ет границу клетки: и в расстановке, и в движении кольцо голубое
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: перетаскивание бойца на клетку > подсветка фазы не перекрашива
+ет границу клетки: и в расстановке, и в движении кольцо голубое
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: перетаскивание бойца на клетку > перетаскивание не показывает 
+«запрещено», даже когда доска сейчас не слушает
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: перетаскивание бойца на клетку > занятая своим бойцом клетка о
+бласти не светится: кольцо серое
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-clicks.test.js > доска: статика в кэше, волны отдельным слоем > держит статику на своё
+м слое, а свет и пульс — на отдельных
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/card-owner-label.test.js > подпись владельца карты: имя бойца, а не привязка > своя карта на
+зывает своего бойца по-русски
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/fighter-selection.test.js > активный боец: выбор ставит клик, а не клиент > по умолчанию ник
+то не подсвечен
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/board-clicks.test.js > доска: статика в кэше, волны отдельным слоем > бросает кэш, когда мен
+яется карта, и пишет его заново
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/card-owner-label.test.js > подпись владельца карты: имя бойца, а не привязка > чужая карта т
+оже называет бойца — по-русски, а не английским id
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/fighter-selection.test.js > активный боец: выбор ставит клик, а не клиент > клик по своему б
+ойцу в перемещении делает его активным и показывает клетки
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+ ✓ |node| tests/unit/client/ai-battle-result.test.js (2 tests) 1096ms
+     ✓ не шлёт действий, пока итог на экране, и продолжает после кнопки  1085ms
+stderr | tests/unit/client/card-owner-label.test.js > подпись владельца карты: имя бойца, а не привязка > карта павшего
+ бойца остаётся подписанной
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/fighter-selection.test.js > активный боец: выбор ставит клик, а не клиент > клик мимо клетки
+ снимает активность
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/card-owner-label.test.js > подпись владельца карты: имя бойца, а не привязка > карта без при
+вязки и карта «любой» подписаны «любой»
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/fighter-selection.test.js > активный боец: выбор ставит клик, а не клиент > окно эффекта со 
+своим бойцом принимает клик, хотя движок своих рамкой не метит
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/card-owner-label.test.js > подпись владельца карты: имя бойца, а не привязка > неизвестная п
+ривязка остаётся как есть, а не пустой строкой
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+ ✓ |node| tests/unit/client/card-owner-label.test.js (5 tests) 452ms
+stderr | tests/unit/client/fighter-selection.test.js > активный боец: выбор ставит клик, а не клиент > без перемещения 
+клик по бойцу активным его не делает
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/fighter-selection.test.js > расстановка: выставленного бойца можно переставить до «ОК» > кли
+к по выставленному бойцу делает его активным и зажигает свободные клетки области
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/fighter-selection.test.js > расстановка: выставленного бойца можно переставить до «ОК» > кли
+к по подсвеченной клетке уходит движку тем же PICK с выбранным бойцом
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/fighter-selection.test.js > окно клеток от карты: клик по подсвеченной клетке — это весь выб
+ор > клик по подсвеченной клетке уходит без выбранного бойца
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/fighter-selection.test.js > окно клеток от карты: клик по подсвеченной клетке — это весь выб
+ор > клетка вне окна по-прежнему просит выбрать бойца
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+ ✓ |node| tests/unit/client/fighter-selection.test.js (9 tests) 815ms
+stderr | tests/unit/client/board-clicks.test.js > доска: статика в кэше, волны отдельным слоем > держит номера мест пов
+ерх подсветки, чтобы кольцо не закрывало цифру
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ ✓ |node| tests/unit/client/ai-player.test.js (3 tests) 638ms
+     ✓ играет за компьютер, пока ход не вернётся человеку  369ms
+stderr | tests/unit/client/board-clicks.test.js > доска: клетки в кэше ловят клик всегда > клетки остаются приёмниками 
+клика и при выключенной доске: клик гейтит движок, а не hit-канва
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=false ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ ✓ |node| tests/unit/client/board-clicks.test.js (18 tests) 2283ms
+     ✓ бросает кэш, когда меняется карта, и пишет его заново  667ms
+     ✓ держит номера мест поверх подсветки, чтобы кольцо не закрывало цифру  377ms
+ ✓ |node| tests/unit/client/ai-parallel-placement.test.js (3 tests) 1769ms
+     ✓ цикл компьютера находит его слот, хотя действующий на расстановке — человек  779ms
+     ✓ после расстановки компьютер цикл заканчивает сам — ждать ему нечего  508ms
+     ✓ человек расставляется после компьютера и партия стартует его «ОК»  476ms
+ ❯ |node| tests/unit/client/battle-summary.test.js (4 tests | 1 failed) 26ms
+     ✓ урон обеих сторон — две пары «кто кого ударил», от источника 5ms
+     ✓ ранен только защитник — одна пара 1ms
+     ✓ никто не ранен — строки нет 1ms
+     × подсказка добавляет ожидание к итогу и живёт без него 16ms
+ ❯ |node| tests/unit/client/choice-window.test.js (9 tests | 3 failed) 213ms
+     × на несколько целей рисует чекбоксы и зовёт подтвердить, когда набор собран 101ms
+     × на одну цель поведение прежнее: радио, галка на отмеченном и старые подписи 19ms
+     × окно вне боя берёт подписи из кандидатов движка 12ms
+     ✓ один вариант не дублируется, когда движок отдал и choices, и кандидатов 7ms
+     ✓ карты руки не идут в список вариантов — их открывают в окне руки 37ms
+     ✓ отмеченная карта просит подтверждения 5ms
+     ✓ обязательное окно на две цели: половина набора кнопку не включает, полный набор — включает 19ms
+     ✓ окно на одну цель: одна отметка сразу включает кнопку — как было 4ms
+     ✓ необязательное окно: кнопку включает движок, даже если отметок ещё нет 5ms
+ ❯ |node| tests/unit/client/card-scales-icon.test.js (9 tests | 1 failed) 266ms
+     ✓ карта с тегом весов показывает значок весов на плашке значения 90ms
+     ✓ значок рисуется обычной иконкой — без белого кружка и подложки 17ms
+     ✓ значок стоит ниже числа, а число и иконка типа остаются на плашке 27ms
+     ✓ карта без тега — без значка, плашка та же 11ms
+     ✓ у карты-эффекта плашка той же высоты, а иконка типа — посередине 26ms
+     × карта с меткой осколка показывает значок там же, где весы 29ms
+     ✓ значок осколка тоже белый, без кружка и подложки 16ms
+     ✓ две метки подряд рисуют два значка на плашке 14ms
+     ✓ в подробном просмотре со скрытой картинкой осколок уезжает наверх, как весы 32ms
+ ✓ |node| tests/unit/client/game-rails.test.js (34 tests) 629ms
+ ✓ |node| tests/unit/client/action-counter.test.js (3 tests) 324ms
+ ✓ |node| tests/unit/client/tooltip.test.js (8 tests) 460ms
+ ✓ |node| tests/unit/client/placement-handover.test.js (16 tests) 211ms
+stderr | tests/unit/client/bonus-armed.test.js > сброс усиления: подъём карты виден всем молекулам > карта, поднятая в 
+одной молекуле, поднята и в другой
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/bonus-armed.test.js > сброс усиления: подъём карты виден всем молекулам > сброс поднятой кар
+ты уходит в движок и снимает подъём у всех
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/bonus-armed.test.js > сброс усиления: подъём карты виден всем молекулам > сброс поднятой кар
+ты уходит в движок и снимает подъём у всех
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+ ✓ |node| tests/unit/client/bonus-armed.test.js (2 tests) 253ms
+ ✓ |node| tests/unit/client/settings-modal.test.js (3 tests) 735ms
+     ✓ открывается по имени и показывает три скорости  395ms
+ ✓ |node| tests/unit/client/table-setup-loading.test.js (6 tests) 1306ms
+     ✓ пока идёт сборка, окно открыто, а на «Начать» лоадер  434ms
+ ✓ |node| tests/unit/client/card-modes.test.js (10 tests) 355ms
+ ✓ |node| tests/unit/client/hand-zoom.test.js (12 tests) 452ms
+stderr | tests/unit/client/board-view.test.js > доска: жесты вида > колесо мыши над доской меняет масштаб сцены
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-tag
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-label
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/client/board-view.test.js > доска: жесты вида > колесо вниз уменьшает поле ниже вписанного, но не д
+альше половины вписанного
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-tag
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-label
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ ✓ |node| tests/unit/client/hero-info.test.js (13 tests) 296ms
+ ✓ |node| tests/unit/client/hero-hex.test.js (15 tests) 240ms
+stderr | tests/unit/client/board-view.test.js > доска: жесты вида > перетаскивание сцены двигает сцену и остаётся в пре
+делах экрана
+[Vue warn]: Failed to resolve component: v-arc
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-ellipse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-image
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-path
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-tag
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: v-label
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <Board interactive=true ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ ✓ |node| tests/unit/client/board-view.test.js (14 tests) 286ms
+ ✓ |node| tests/unit/client/hand-window.test.js (8 tests) 280ms
+ ✓ |node| tests/unit/client/board-geometry.test.js (45 tests) 100ms
+ ✓ |node| tests/unit/client/placement-tray.test.js (8 tests) 518ms
+ ✓ |node| tests/unit/client/piles-info.test.js (6 tests) 160ms
+ ✓ |node| tests/unit/client/card-boost-icon.test.js (4 tests) 151ms
+ ✓ |node| tests/unit/client/hexagon.test.js (5 tests) 131ms
+ ✓ |node| tests/unit/client/battle-gate.test.js (5 tests) 141ms
+ ✓ |node| tests/unit/client/card-bonus-title.test.js (4 tests) 142ms
+ ✓ |node| tests/unit/client/cn.test.js (4 tests) 29ms
+ ✓ |node| tests/unit/client/card-option-lines.test.js (7 tests) 109ms
+ ✓ |node| tests/unit/client/clock.test.js (12 tests) 44ms
+ ✓ |node| tests/unit/client/sortable-dom.test.js (6 tests) 122ms
+stderr | tests/unit/client/skill-window.test.js > признак окна умения: источник окна сверяется со способностью героя > 
+окно способности Ифрита — это окно умения
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/skill-window.test.js > признак окна умения: источник окна сверяется со способностью героя > 
+окно от карты умением не считается: подсветка остаётся цветом фазы
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/skill-window.test.js > признак окна умения: источник окна сверяется со способностью героя > 
+черновик перемещения от умения Теслы — тоже окно умения
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+stderr | tests/unit/client/skill-window.test.js > признак окна умения: источник окна сверяется со способностью героя > 
+обычное перемещение без источника — не умение
+[Vue warn]: onMounted is called when there is no active component instance to be associated with. Lifecycle injection A
+PIs can only be used during execution of setup(). If you are using async setup(), make sure to register lifecycle hooks
+ before the first await statement.
+
+ ✓ |node| tests/unit/client/skill-window.test.js (4 tests) 28ms
+ ✓ |node| tests/unit/client/card-flight.test.js (14 tests) 113ms
+ ✓ |node| tests/unit/client/tooltips.test.js (4 tests) 15ms
+ ✓ |node| tests/unit/client/fit-pad.test.js (3 tests) 77ms
+ ✓ |node| tests/unit/client/battle-side.test.js (3 tests) 77ms
+ ✓ |node| tests/unit/client/card-text.test.js (16 tests) 26ms
+ ✓ |node| tests/unit/client/slot-card.test.js (4 tests) 75ms
+ ✓ |node| tests/unit/client/game-hint.test.js (6 tests) 11ms
+ ✓ |node| tests/unit/client/sortable.test.js (6 tests) 12ms
+ ✓ |node| tests/unit/client/time-loss.test.js (6 tests) 8ms
+ ✓ |node| tests/unit/client/hero-details-modal.test.js (6 tests) 117ms
+ ✓ |node| tests/unit/client/seat-order.test.js (5 tests) 9ms
+ ✓ |node| tests/unit/client/item-state-label.test.js (4 tests) 11ms
+ ✓ |node| tests/unit/client/battle-window.test.js (40 tests) 11470ms
+     ✓ после боя окно остаётся, шаги идут по одному, урон — последним  444ms
+     ✓ строку свойства выделяет наведение, а клик оставляет выделение  470ms
+     ✓ показывает итог битвы: числа, урон и по кому он пришёлся  450ms
+     ✓ пока итог на экране, об этом знает композиция: компьютер ждёт кнопку  524ms
+     ✓ скорость анимации из настроек задаёт паузы ленты  406ms
+     ✓ битва без свойств и без урона показывает итог сразу: ленте ждать нечего  316ms
+     ✓ итог убирает действие вне окна: клик по кнопке действия, а клик мимо — нет  673ms
+     ✓ итог битвы видит только её участник: третьему игроку окно не показывают  870ms
+     ✓ закрытая битва сама не возвращается, а следующая битва открывает окно заново  489ms
+     ✓ выбор цели сворачивает окно в карту-вопрос и разворачивает обратно  479ms
+     ✓ карту-вопрос можно развернуть в полное окно прямо посреди выбора  347ms
+     ✓ новая битва открывается развёрнутой: свёрнутую миниатюру игрок пропустит  594ms
+     ✓ итог битвы окно само не разворачивает: режим поля держит его свёрнутым  852ms
+ ✓ |node| tests/unit/client/game-screen-rails.test.js (4 tests) 48ms
+ ✓ |node| tests/unit/client/settings.test.js (8 tests) 15ms
+ ✓ |node| tests/unit/client/profile-bar.test.js (3 tests) 28ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |node| tests/unit/client/battle-summary.test.js > итог битвы в ленте подсказок > подсказка добавляет ожидание к 
+итогу и живёт без него
+AssertionError: expected 'Анубис: Ифрит −5. Ждём закрытия окна …' to be 'Анубис: Ифрит −5. Ждём закрытия окон …' // Obj
+ect.is equality
+
+Expected: "Анубис: Ифрит −5. Ждём закрытия окон битвы."
+Received: "Анубис: Ифрит −5. Ждём закрытия окна битвы."
+
+ ❯ tests/unit/client/battle-summary.test.js:38:52
+     36|     const summary = battleSummaryOf(sides({ damage: 5 }, { damage: 0 }…
+     37|
+     38|     expect(HINTS.client.battleResult({ summary })).toBe(
+       |                                                    ^
+     39|       'Анубис: Ифрит −5. Ждём закрытия окон битвы.',
+     40|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  |node| tests/unit/client/board-map.test.js > useBoardMap: окно умения > кандидаты умения обведены снаружи запасн
+ым тоном, а не голубой рамкой фазы
+AssertionError: expected 'transparent' to be '#EDC9AF' // Object.is equality
+
+Expected: "#EDC9AF"
+Received: "transparent"
+
+ ❯ tests/unit/client/board-map.test.js:391:25
+    389|     const halo = board.fighterHaloConfig(tokenOf(board, 'anubis'));
+    390|
+    391|     expect(halo.stroke).toBe(HERO_INFO_TONE);
+       |                         ^
+    392|     expect(halo.strokeWidth).toBe(5);
+    393|     expect(halo.radius).toBe(nodeRadius(map.settings.nodeSize) + PLACE…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  |node| tests/unit/client/card-scales-icon.test.js > Card: пометка осколка > карта с меткой осколка показывает зн
+ачок там же, где весы
+AssertionError: expected 'lucide:snowflake' to be 'lucide:gem' // Object.is equality
+
+Expected: "lucide:gem"
+Received: "lucide:snowflake"
+
+ ❯ tests/unit/client/card-scales-icon.test.js:143:96
+    141|
+    142|     expect(plate(wrapper).find('[data-card-tag="shard"]').exists()).to…
+    143|     expect(plate(wrapper).find('[data-card-tag="shard"] [data-icon]').…
+       |                                                                                                ^
+    144|       'lucide:gem',
+    145|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  |node| tests/unit/client/choice-window.test.js > окно вариантов свойства: мультивыбор > на несколько целей рисуе
+т чекбоксы и зовёт подтвердить, когда набор собран
+AssertionError: expected 'доборлечениеудар' to contain 'Выберите варианты (нужно 2)'
+
+Expected: "Выберите варианты (нужно 2)"
+Received: "доборлечениеудар"
+
+ ❯ tests/unit/client/choice-window.test.js:127:28
+    125|
+    126|     expect(panel().findAll('[data-icon="lucide:square"]')).toHaveLengt…
+    127|     expect(panel().text()).toContain('Выберите варианты (нужно 2)');
+       |                            ^
+    128|
+    129|     session.picked = ['draw'];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  |node| tests/unit/client/choice-window.test.js > окно вариантов свойства: мультивыбор > на одну цель поведение п
+режнее: радио, галка на отмеченном и старые подписи
+AssertionError: expected 'доборлечениеудар' to contain 'Выберите вариант'
+
+Expected: "Выберите вариант"
+Received: "доборлечениеудар"
+
+ ❯ tests/unit/client/choice-window.test.js:146:28
+    144|
+    145|     expect(panel().findAll('[data-icon="lucide:circle"]')).toHaveLengt…
+    146|     expect(panel().text()).toContain('Выберите вариант');
+       |                            ^
+    147|
+    148|     session.picked = ['heal'];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  |node| tests/unit/client/choice-window.test.js > подписи вариантов: текст свойства, а не id > окно вне боя берёт
+ подписи из кандидатов движка
+AssertionError: expected [ 'flex', 'w-full', …(8) ] to include 'items-center'
+ ❯ tests/unit/client/choice-window.test.js:168:45
+    166|     expect(window.text()).not.toContain('heal');
+    167|     // текст варианта стоит по центру кружка-радио, а не чуть выше
+    168|     expect(window.find('button').classes()).toContain('items-center');
+       |                                             ^
+    169|   });
+    170|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  4 failed | 47 passed (51)
+      Tests  6 failed | 497 passed (503)
+   Start at  17:55:30
+   Duration  21.50s (transform 31.80s, setup 22.31s, import 97.81s, tests 27.39s, environment 102.22s)
+

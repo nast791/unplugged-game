@@ -34,6 +34,7 @@ import {
   tokenInk,
   tokenRadius,
 } from '~/composables/ui/useBoardGeometry.js';
+import { ACCENT_TONE, HERO_INFO_TONE } from '~/constants/colors.js';
 import { HEART } from '~/constants/heart.js';
 
 // стихии клетки: постоянные, затем временные (дополнительный кусок до конца хода)
@@ -78,6 +79,29 @@ export const useBoardMap = source => {
     };
   });
 
+  // Окно открыто умением героя: подсветка идёт запасным тоном Анубиса, а не цветом фазы.
+  const skillWindow = computed(() => read(source.skillWindow) === true);
+
+  // кандидаты умения подсвечивают КЛЕТКИ, где стоят: сами фишки остаются без колец (m01938)
+  const skillFighterCells = computed(() => {
+    if (!skillWindow.value) return new Set();
+    const marked = pickedFighters.value.size ? pickedFighters.value : highlightedFighters.value;
+    const cells = new Set();
+
+    for (const player of read(source.players) || []) {
+      for (const fighter of player.fighters || []) {
+        if (!marked.has(String(fighter.id))) continue;
+        if (fighter.currentPosition == null) continue;
+        cells.add(String(fighter.currentPosition));
+      }
+    }
+
+    return cells;
+  });
+
+  const phaseTone = () =>
+    skillWindow.value && !skillFighterCells.value.size ? HERO_INFO_TONE : PLACEMENT.free;
+
   const placementCells = computed(() => {
     const cells = new Map();
     for (const cell of read(source.placementCells) || []) {
@@ -94,6 +118,7 @@ export const useBoardMap = source => {
   const activeCells = computed(() => {
     const ids = new Set(highlightedCells.value);
     for (const id of placementCells.value.keys()) ids.add(id);
+    for (const id of skillFighterCells.value) ids.add(id);
     return ids;
   });
   const isActiveCell = node => activeCells.value.has(String(node.id));
@@ -103,7 +128,13 @@ export const useBoardMap = source => {
   const pickFighterIds = computed(() =>
     pickFighters.value ? new Set(highlightedFighters.value) : new Set(),
   );
-  const isPulsingFighter = token => pickFighterIds.value.has(String(token.fighter.id));
+  // Рамка фазы и окно выбора бойца мигают так же, как клетки для перехода: волна по краю клетки.
+  const isPulsingFighter = token => {
+    const id = String(token.fighter.id);
+    if (pickFighterIds.value.has(id)) return true;
+    if (id === battleMarks.value.attacker || id === battleMarks.value.defender) return true;
+    return highlightedFighters.value.has(id) || framedFighters.value.has(id);
+  };
 
   const pulsingCells = computed(() => {
     const ids = new Set();
@@ -123,7 +154,14 @@ export const useBoardMap = source => {
 
   /** Пульс нужен там, где игроку предстоит выбор: клетки-кандидаты и бойцы окна цели. */
   const pulseActive = computed(
-    () => dropCellId.value != null || pulsingCells.value.size > 0 || pickFighterIds.value.size > 0,
+    () =>
+      dropCellId.value != null ||
+      pulsingCells.value.size > 0 ||
+      pickFighterIds.value.size > 0 ||
+      highlightedFighters.value.size > 0 ||
+      framedFighters.value.size > 0 ||
+      battleMarks.value.attacker != null ||
+      battleMarks.value.defender != null,
   );
 
   const pulse = ref(0);
@@ -301,12 +339,13 @@ export const useBoardMap = source => {
   const cellGlowConfig = node => {
     const level = cellGlowLevel(node);
     const spread = radius.value + PLACEMENT.stroke + 1;
+    const tone = phaseTone();
     return {
       radius: spread,
-      stroke: PLACEMENT.free,
+      stroke: tone,
       strokeWidth: 10,
       opacity: level ? 0.14 + 0.07 * level : 0,
-      shadowColor: PLACEMENT.free,
+      shadowColor: tone,
       shadowBlur: 14 + 5 * level,
       shadowOpacity: level ? Math.min(1, 0.18 + 0.08 * level) : 0,
       shadowForStrokeEnabled: true,
@@ -320,9 +359,10 @@ export const useBoardMap = source => {
 
   const cellPulseConfig = node => {
     const wave = isDropCell(node) ? DROP_WAVE : CELL_WAVE;
+    const tone = phaseTone();
     return {
       radius: radius.value + PLACEMENT.stroke + 2,
-      stroke: PLACEMENT.free,
+      stroke: tone,
       strokeWidth: wave.width,
       opacity: 0,
       listening: false,
@@ -335,15 +375,25 @@ export const useBoardMap = source => {
     };
   };
 
+  /** Область клетки: кружок плюс кольцо-кандидат и свечение, которые рисуются снаружи. */
+  const cellAreaRadius = () => radius.value + PLACEMENT.stroke + PLACEMENT.hit;
+
+  const cellHitConfig = () => ({
+    radius: cellAreaRadius(),
+    fill: 'transparent',
+    listening: true,
+  });
+
   const cellRingConfig = node => {
     const busy = isBusyCell(node);
+    const tone = phaseTone();
     return {
       radius: radius.value + PLACEMENT.stroke,
       fill: undefined,
       opacity: busy ? 0.5 : 1,
-      stroke: busy ? PLACEMENT.busy : PLACEMENT.free,
+      stroke: busy ? PLACEMENT.busy : tone,
       strokeWidth: PLACEMENT.stroke,
-      shadowColor: PLACEMENT.free,
+      shadowColor: tone,
       shadowBlur: 0,
       shadowOpacity: 0,
       listening: false,
@@ -486,11 +536,20 @@ export const useBoardMap = source => {
     return placed;
   });
 
-  // Выбор игрока и роль в битве не спорят: выбранный боец, который бьёт или защищается, остаётся цветом боя.
+  // Кольцо битвы и умения стоит на границе клетки — там же, где кольцо доступных клеток: фишка обведена снаружи.
+  const FIGHTER_RING = { width: 5, picked: 7 };
+  const fighterRingRadius = () => radius.value + PLACEMENT.stroke;
+
+  // Выбор игрока, роль в битве и отмеченная цель умения не спорят: битва остаётся цветом боя.
   const isAccentSelected = token => {
     const id = String(token.fighter.id);
     const fighting = battleMarks.value.attacker === id || battleMarks.value.defender === id;
-    return !fighting && String(read(source.selectedFighterId)) === id;
+    if (fighting) return false;
+    if (String(read(source.selectedFighterId)) === id) return true;
+    if (highlightedFighters.value.has(id)) {
+      return !skillWindow.value || pickedFighters.value.has(id);
+    }
+    return skillWindow.value && pickedFighters.value.has(id);
   };
 
   const fighterHaloConfig = token => {
@@ -500,24 +559,41 @@ export const useBoardMap = source => {
 
     // красный — только у того, кто бьёт: рамка фазы и роль защитника рисуются голубым
     const framed = framedFighters.value.has(id);
-    const highlighted = !attacker && !defender && highlightedFighters.value.has(id);
+    const candidate = skillWindow.value && highlightedFighters.value.has(id);
+    const highlighted =
+      !attacker && !defender && !skillWindow.value && highlightedFighters.value.has(id);
     const marked = Boolean(attacker || defender);
     const picked = pickedFighters.value.has(id);
     const accent = isAccentSelected(token);
-    const alive = attacker || framed || highlighted || marked || picked || accent;
+    const alive = attacker || framed || highlighted || marked || picked || accent || candidate;
+    const pickedInSkill = skillWindow.value && picked && !marked;
 
-    // выбор показывает тень-подсветка под фишкой, поэтому кольца у него нет: остаются только линии фаз и битвы
-    const ring = radius.value * (alive ? 0.92 : 0.82);
+    // выбор показывает тень-подсветка под фишкой (активный цвет), поэтому кольца у него нет
+    const outer = marked;
+    const ring = outer ? fighterRingRadius() : radius.value * (alive ? 0.92 : 0.82);
+    const tone = attacker
+      ? '#dc2626'
+      : defender
+        ? '#0ea5e9'
+        : framed || highlighted || picked
+          ? ACCENT_TONE
+          : 'transparent';
+    // отмеченная умением цель светится как активная фишка: тень вместо кольца
+    const shadowed = accent && pickedInSkill;
     return {
       radius: ring,
       fill: 'transparent',
       opacity: alive ? 1 : 0.35,
-      stroke: attacker
-        ? '#dc2626'
-        : framed || defender || highlighted || picked
-          ? '#0ea5e9'
-          : 'transparent',
-      strokeWidth: picked ? 7 : attacker || framed || highlighted || marked ? 5 : 0,
+      stroke: shadowed ? 'transparent' : tone,
+      strokeWidth: shadowed
+        ? 0
+        : outer
+          ? FIGHTER_RING.width
+          : picked
+            ? FIGHTER_RING.picked
+            : framed || highlighted
+              ? FIGHTER_RING.width
+              : 0,
       listening: false,
     };
   };
@@ -526,11 +602,13 @@ export const useBoardMap = source => {
 
   const fighterPulseConfig = token => {
     const id = String(token.fighter.id);
-    const base = radius.value * 0.92;
-    const red = battleMarks.value.attacker === id;
+    const attacker = battleMarks.value.attacker === id;
+    const defender = battleMarks.value.defender === id;
+    const outer = attacker || defender;
+    const base = outer ? fighterRingRadius() : radius.value * 0.92;
     return {
       radius: base,
-      stroke: red ? '#dc2626' : '#0ea5e9',
+      stroke: attacker ? '#dc2626' : defender ? '#0ea5e9' : ACCENT_TONE,
       strokeWidth: FIGHTER_WAVE.width,
       opacity: 0,
       listening: false,
@@ -832,7 +910,7 @@ export const useBoardMap = source => {
   const clickTargetOf = target => clickTarget(target);
 
   const cellAt = (point, transform) =>
-    point ? cellAtPoint(nodes.value, radius.value, transform, point) : null;
+    point ? cellAtPoint(nodes.value, cellAreaRadius(), transform, point) : null;
 
   return {
     nodes,
@@ -859,6 +937,7 @@ export const useBoardMap = source => {
     nodeCircleConfig,
     nodeOutlineConfig,
     cellGlowConfig,
+    cellHitConfig,
     cellPulseConfig,
     cellRingConfig,
     cellLabelConfig,

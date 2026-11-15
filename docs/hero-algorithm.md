@@ -366,10 +366,12 @@ smooth digital painting, soft airbrushed volumetric shading, gentle gradients,
 warm amber light against deep violet-teal night shadow, no ink outlines, no halftone, no grain, no noise
 ```
 
-**Где лежат файлы.** Картинки в `docs/` не держим, папка героя — его дом: базовый кадр и производные
-идут в `server/content/heroes/<id>/images/`. Пока кадров нет, черновики можно держать в
-`.workbuddy/generated-images/<hero-id>/`. В паспорт (`server/content/heroes/<id>/passport.md`) пишутся
-путь **текстом** и промт базового кадра, иначе эталон однажды потеряется вместе с папкой.
+**Где лежат файлы.** Картинки в `docs/` не держим, папка героя — его дом: эталон, базовый кадр и производные
+идут в `server/content/heroes/<id>/images/`. **Эталон живёт в паке** — `images/<кто>-ref01.webp`
+(`dorothy-ref01.webp`, `toto-ref01.webp`, `anubis-ref01.webp`), 1024², WebP с прозрачным фоном, в `index.js`
+не объявлен: `.workbuddy/` в `.gitignore` (строка 31), и эталон, положенный туда, не переживёт клон.
+В паспорт (`server/content/heroes/<id>/passport.md`) пишутся путь **текстом**, размер в байтах
+и промт базового кадра, иначе эталон однажды потеряется вместе с папкой.
 
 **Имя файла — не украшение.** Маршрут `server/api/content/heroes/[id]/images/[file].get.js` отдаёт
 только те файлы, что объявлены в паке (`index.js`: `image` бойца и `images { hero, promo, back }`),
@@ -472,7 +474,8 @@ warm amber light against deep violet-teal night shadow, no ink outlines, no half
 
 Промт базового кадра (полный рост, один персонаж, зелёная заливка #00FF00): …
 Реф в полный рост на зелёном — на героя и на каждого помощника отдельно.
-Эталон: `.workbuddy/generated-images/<id>/base.png`.
+Эталон: `server/content/heroes/<id>/images/<кто>-ref01.webp` (в паке, не объявлен; черновые кадры
+в `.workbuddy/` долго не хранятся — пробные удаляются).
 Остальные кадры — референсом от базового: аватар, аватары-эмоции, презентационный кадр с помощниками,
 аватары помощников, сюжеты карт; рубашка рисуется отдельно. Список файлов и размеры — раздел 8.
 

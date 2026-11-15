@@ -1,11 +1,13 @@
 import { computed, nextTick, ref, watch } from 'vue';
+import { LIMITS, TIMEOUTS } from '#shared/constants/tuning.js';
 import { ANIMATION_DURATIONS } from '~/constants/animation.js';
 import { useGameView } from '~/composables/game/useGameView.js';
+import { battleResultShown } from '~/composables/game/useBattleView.js';
 import { useSettings } from '~/composables/ui/useSettings.js';
 
-export const AI_TIME_MS = 400;
+export const AI_TIME_MS = TIMEOUTS.aiThink;
 export const AI_PAUSE_MS = ANIMATION_DURATIONS.aiPause;
-export const AI_MAX_STEPS = 200;
+export const AI_MAX_STEPS = LIMITS.aiMaxSteps;
 
 let botPromise = null;
 
@@ -64,6 +66,20 @@ export const runAiCycle = async (state, apply, options = {}) => {
   return current;
 };
 
+// Итог битвы убирает игрок, а не таймер: пока окно его показывает, компьютер новых действий не шлёт
+export const waitForBattleResult = () => {
+  const shown = battleResultShown();
+  if (!shown.value) return Promise.resolve();
+
+  return new Promise(resolve => {
+    const stop = watch(shown, open => {
+      if (open) return;
+      stop();
+      resolve();
+    });
+  });
+};
+
 export const useGameAi = () => {
   const { hostState, view, sendAction } = useGameView();
   const { duration } = useSettings();
@@ -89,6 +105,7 @@ export const useGameAi = () => {
       await runAiCycle(
         hostState.value,
         async move => {
+          await waitForBattleResult();
           await sendAction({ ...move.action, playerId: move.playerId });
           await nextTick();
           return hostState.value;

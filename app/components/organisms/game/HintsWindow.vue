@@ -6,16 +6,13 @@
       <div :class="styles.hints_body">
         <Icon :name="icon" :class="[styles.hints_icon, iconToneClass]" aria-hidden="true" />
 
-        <AScroll :ui="{ scroll_viewport: styles.hints_scroll }">
-          <div :class="[styles.hints_text, textToneClass]">{{ props.text }}</div>
-        </AScroll>
+        <div :class="[styles.hints_text, textToneClass]" data-hint-text>{{ props.text }}</div>
       </div>
     </div>
   </section>
 </template>
 
 <script setup>
-import AScroll from '~/components/atoms/AScroll.vue';
 import { useUI } from '~/composables/ui/useUI';
 import { cn } from '~/ui/cn.js';
 

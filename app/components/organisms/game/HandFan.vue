@@ -9,56 +9,102 @@
         v-for="(card, index) in orderedHand"
         :key="cardKeyOf(card)"
         ref="cardEls"
-        class="cursor-pointer transition-transform duration-200"
-        :class="brought(card) ? '-translate-y-140' : 'hover:-translate-y-10'"
+        class="cursor-pointer"
+        :data-hand-slot="cardKeyOf(card)"
         :style="slotStyle(card, index)"
+        @mouseenter="raise(card)"
+        @mouseleave="lower(card)"
       >
-        <ATooltip :text="TOOLTIPS.hand.card()">
-          <Card
-            data-hand-card
-            :data-card-key="cardKeyOf(card)"
-            :card="card"
-            :disabled="isDisabled(card)"
-            :boost="isBoosted(card)"
-            :class="draggingCard(card) ? 'opacity-30' : ''"
-            @pointerdown="onCardPointerDown(card, $event)"
-            @click="handClick(card)"
-            @contextmenu.prevent="zoom(card)"
-          />
-        </ATooltip>
+        <div
+          class="transition-transform duration-200"
+          :class="raised(card) ? '-translate-y-140' : null"
+        >
+          <ATooltip :text="TOOLTIPS.hand.card()">
+            <Card
+              data-hand-card
+              :data-card-key="cardKeyOf(card)"
+              :card="card"
+              :disabled="isDisabled(card)"
+              :boost="isBoosted(card)"
+              :class="draggingCard(card) ? 'opacity-30' : ''"
+              @pointerdown="onCardPointerDown(card, $event)"
+              @click="handClick(card)"
+              @contextmenu.prevent="openDetail(card)"
+            />
+          </ATooltip>
+        </div>
       </div>
     </div>
 
     <Teleport to="body">
       <div
-        v-if="zoomed"
-        ref="zoomRoot"
+        v-if="detail"
+        ref="detailRoot"
         data-esc-layer
-        class="bg-app/85 backdrop-blur-8 fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center p-24"
+        class="bg-app/85 backdrop-blur-8 fixed inset-0 z-50 flex cursor-zoom-out flex-col items-center justify-center gap-16 p-24"
         tabindex="-1"
-        @click="closeZoom"
-        @contextmenu.prevent="closeZoom"
-        @keydown.escape="closeZoom"
+        @click="closeDetail"
+        @contextmenu.prevent="closeDetail"
+        @keydown.escape="closeDetail"
+        @keydown.left.prevent="step(-1)"
+        @keydown.right.prevent="step(1)"
       >
-        <div class="flex items-center justify-center gap-32">
-          <div
-            data-zoom-card
-            class="h-649 w-440 cursor-auto"
-            @click.stop
-            @contextmenu.prevent.stop
-            @mouseenter="zoomTextOpen = true"
-            @mouseleave="zoomTextOpen = false"
-          >
-            <Card :card="zoomed" class="origin-top-left scale-220" />
+        <div data-zoom-card class="h-649 w-440 cursor-auto" @click.stop @contextmenu.prevent.stop>
+          <Card
+            :card="detail"
+            mode="detail"
+            :disabled="!detailPlayable"
+            class="origin-top-left scale-220"
+          />
+        </div>
+
+        <div
+          data-detail-controls
+          class="flex cursor-auto flex-col items-center gap-8"
+          @click.stop
+          @contextmenu.prevent.stop
+        >
+          <div class="flex items-center gap-16">
+            <span class="text-16 text-white/70" data-detail-count>
+              Карт в руке: {{ orderedHand.length }}
+            </span>
+
+            <ATooltip :text="TOOLTIPS.card.play()">
+              <AButton
+                variant="secondary"
+                data-detail-play
+                :disabled="!detailPlayable"
+                @click="playDetail"
+              >
+                Разыграть
+              </AButton>
+            </ATooltip>
           </div>
 
-          <div
-            v-if="zoomTextOpen"
-            data-zoom-text
-            class="border-line bg-surface text-ink rounded-4 text-26 pointer-events-none max-w-460 border-2 px-16 py-12 shadow-2xl"
-          >
-            <span class="block font-semibold">{{ zoomed.title }}</span>
-            <CardText class="mt-6" :text="zoomed.text" tone="zoom" />
+          <div class="flex items-center gap-12">
+            <ATooltip :text="TOOLTIPS.card.prev()">
+              <AButton
+                variant="secondary"
+                icon
+                data-detail-prev
+                :disabled="singleCard"
+                @click="step(-1)"
+              >
+                <Icon name="lucide:chevron-left" class="size-22!" aria-hidden="true" />
+              </AButton>
+            </ATooltip>
+
+            <ATooltip :text="TOOLTIPS.card.next()">
+              <AButton
+                variant="secondary"
+                icon
+                data-detail-next
+                :disabled="singleCard"
+                @click="step(1)"
+              >
+                <Icon name="lucide:chevron-right" class="size-22!" aria-hidden="true" />
+              </AButton>
+            </ATooltip>
           </div>
         </div>
       </div>
@@ -68,9 +114,9 @@
 
 <script setup>
 import { cardBonus } from '#shared/helpers/cards.js';
+import AButton from '~/components/atoms/AButton.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
 import Card from '~/components/molecules/game/Card.vue';
-import CardText from '~/components/molecules/game/CardText.vue';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 import { useCardDrag } from '~/composables/ui/useCardDrag.js';
 import { sortHandCards } from '~/composables/game/useGameHelpers.js';
@@ -82,6 +128,7 @@ const {
   onCardClick: playCard,
   canDiscardBonus,
   armBonusCard,
+  disarmBonusCard,
   onBonusDiscard,
 } = useGameSession();
 
@@ -101,18 +148,23 @@ const {
 } = useCardDrag();
 
 const cardEls = ref([]);
-const zoomRoot = ref(null);
+const detailRoot = ref(null);
 const cardWidth = ref(0);
 const expose = ref(0);
 
-const frontKey = ref('');
-const zoomed = ref(null);
-const zoomTextOpen = ref(false);
+const hoverKey = ref('');
+const detailKey = ref('');
 const dragging = ref(false);
 
 const cardKeyOf = card => String(card?.instanceId ?? card?.id ?? '');
-const brought = card => frontKey.value === cardKeyOf(card);
+const raised = card => hoverKey.value === cardKeyOf(card);
 const draggingCard = card => drag.active && String(drag.key) === cardKeyOf(card);
+
+const raise = card => (hoverKey.value = cardKeyOf(card));
+
+const lower = card => {
+  if (hoverKey.value === cardKeyOf(card)) hoverKey.value = '';
+};
 
 const orderedHand = computed(() => sortHandCards(hand.value));
 
@@ -120,7 +172,7 @@ const overlap = computed(() => Math.max(0, cardWidth.value - expose.value));
 
 const slotStyle = (card, index) => ({
   marginLeft: index === 0 ? '0' : `-${overlap.value}px`,
-  zIndex: brought(card) ? orderedHand.value.length + 1 : orderedHand.value.length - index,
+  zIndex: raised(card) ? orderedHand.value.length + 1 : orderedHand.value.length - index,
 });
 
 const measure = () => {
@@ -145,16 +197,35 @@ const isBoosted = card => canDiscardBonus.value && cardBonus(card) > 0 && isCard
 
 const handClick = card => {
   if (dragging.value) return;
-  if (!brought(card)) {
-    if (frontKey.value === cardKeyOf(card)) return;
-    frontKey.value = cardKeyOf(card);
-    if (canDiscardBonus.value && isCardPlayable(card)) armBonusCard(card);
-    return;
-  }
-  if (!isCardPlayable(card)) {
-    frontKey.value = '';
-    return;
-  }
+  if (!isCardPlayable(card)) return;
+  playCard(card);
+};
+
+const detail = computed(
+  () => orderedHand.value.find(card => cardKeyOf(card) === detailKey.value) ?? null,
+);
+const detailPlayable = computed(() => Boolean(detail.value) && isCardPlayable(detail.value));
+const singleCard = computed(() => orderedHand.value.length < 2);
+
+const openDetail = card => {
+  detailKey.value = cardKeyOf(card);
+};
+
+const closeDetail = () => {
+  detailKey.value = '';
+};
+
+const step = direction => {
+  const list = orderedHand.value;
+  if (list.length < 2) return;
+  const index = list.findIndex(card => cardKeyOf(card) === detailKey.value);
+  const next = (Math.max(0, index) + direction + list.length) % list.length;
+  detailKey.value = cardKeyOf(list[next]);
+};
+
+const playDetail = () => {
+  const card = detail.value;
+  if (!card || !isCardPlayable(card)) return;
   playCard(card);
 };
 
@@ -168,6 +239,7 @@ const onDragMove = event => {
   if (!dragStart.active) {
     if (Math.abs(dy) < DRAG_THRESHOLD || Math.abs(dy) < Math.abs(dx)) return;
     dragStart.active = true;
+    dragStart.armed = armBonusCard(dragStart.card);
     startCardDrag({
       key: dragStart.key,
       card: dragStart.card,
@@ -192,6 +264,7 @@ const releaseDrag = () => {
 const onDragEnd = () => {
   if (!dragStart) return;
   const started = dragStart.active;
+  const armed = dragStart.armed;
   const overDiscard = started && cardDragOver.value === 'discard';
   releaseDrag();
   endCardDrag();
@@ -201,7 +274,9 @@ const onDragEnd = () => {
   dragging.value = true;
   setTimeout(() => (dragging.value = false), 140);
   if (overDiscard) onBonusDiscard();
-  else frontKey.value = '';
+  else {
+    if (armed) disarmBonusCard();
+  }
 };
 
 const onDragCancel = () => {
@@ -220,46 +295,29 @@ const onCardPointerDown = (card, event) => {
     y: event.clientY,
     rect: event.currentTarget?.getBoundingClientRect?.() ?? null,
     active: false,
+    armed: false,
   };
   window.addEventListener('pointermove', onDragMove);
   window.addEventListener('pointerup', onDragEnd);
   window.addEventListener('pointercancel', onDragCancel);
 };
 
-const zoom = card => {
-  zoomTextOpen.value = false;
-  zoomed.value = card;
-};
-
-const closeZoom = () => {
-  zoomed.value = null;
-  zoomTextOpen.value = false;
-  frontKey.value = '';
-};
-
-const onScreenClick = event => {
-  if (event?.target?.closest?.('[data-hand-card]')) return;
-  frontKey.value = '';
-};
-
 const onResize = () => measure();
 
 onMounted(() => {
   measure();
-  document.addEventListener('click', onScreenClick, true);
   window.addEventListener('resize', onResize);
 });
 
 onBeforeUnmount(() => {
   releaseDrag();
   dragStart = null;
-  document.removeEventListener('click', onScreenClick, true);
   window.removeEventListener('resize', onResize);
 });
 
-watch(zoomed, async card => {
+watch(detail, async card => {
   if (!card) return;
   await nextTick();
-  zoomRoot.value?.focus?.();
+  detailRoot.value?.focus?.();
 });
 </script>

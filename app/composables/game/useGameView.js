@@ -16,7 +16,9 @@ export const adaptPartyView = raw => {
     phase: raw.hook ?? raw.phase ?? null,
     currentPlayer: turnObj?.playerId ?? raw.currentPlayer ?? null,
     turn: turnObj?.index ?? (typeof raw.turn === 'number' ? raw.turn : 0),
-    actionsLeft: turnObj?.actionsLeft ?? raw.actionsLeft ?? 0,
+    // списанное действие доходит до счётчика, только когда объявленное действие закончено: движок
+    // списывает его в момент объявления, поэтому сервер отдаёт признак незаконченного действия
+    actionsLeft: (turnObj?.actionsLeft ?? raw.actionsLeft ?? 0) + (Number(raw.actionsPending) || 0),
     // счётчик карточки — числа движка: «осталось/всего» хода плюс выданный в этом ходу запас
     actionsTotal: Number(turnObj?.actionsTotal ?? raw.actionsTotal) || 0,
     actionsBonus: Number(turnObj?.bonus?.actions) || 0,

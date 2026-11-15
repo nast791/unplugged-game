@@ -1,15 +1,7 @@
 <template>
   <article data-battle-side :data-side="side.side" class="flex w-200 shrink-0 flex-col gap-8">
     <div class="flex items-center gap-8">
-      <AAvatar
-        :alt="side.fighterName"
-        :style="side.color ? { '--hero-color': side.color } : null"
-        :ui="{
-          avatar_root: 'size-44 border-3 border-[var(--hero-color)]',
-          avatar_image: side.dead ? 'grayscale' : '',
-          avatar_fallback: side.dead ? 'grayscale' : '',
-        }"
-      />
+      <AAvatar :src="side.image || ''" :alt="side.fighterName" :ui="avatarUi" />
 
       <div class="flex min-w-0 flex-col">
         <span class="text-15 min-w-0 truncate font-semibold">{{ side.fighterName }}</span>
@@ -18,14 +10,24 @@
         }}</span>
       </div>
 
-      <span
-        v-if="hpText"
-        class="text-15 ml-auto shrink-0 font-semibold lining-nums"
-        :class="side.dead && 'text-dim'"
-        :style="hpStyle"
-      >
-        {{ hpText }}
-      </span>
+      <div class="ml-auto flex shrink-0 flex-col items-end gap-2">
+        <span
+          v-if="hpText"
+          class="text-15 font-semibold lining-nums"
+          :class="side.dead && 'text-dim'"
+          :style="hpStyle"
+        >
+          {{ hpText }}
+        </span>
+
+        <span
+          v-if="taken > 0"
+          data-battle-taken
+          class="text-13 text-danger font-semibold lining-nums"
+        >
+          урон {{ taken }}
+        </span>
+      </div>
     </div>
 
     <div class="relative" data-battle-slot>
@@ -45,7 +47,7 @@
         :class="back ? 'border-line' : 'bg-surface-3 border-transparent'"
         :style="!back && side.color ? { backgroundColor: side.color } : null"
       >
-        <APicture v-if="back" :src="back" alt="" class="size-full" />
+        <APicture v-if="back" provider="none" :src="back" alt="" class="size-full" />
       </div>
 
       <div
@@ -65,14 +67,6 @@
       >
         <Card :card="boost" :highlight="highlight" />
       </div>
-
-      <span
-        v-if="damageAmount"
-        data-battle-damage
-        class="battle-damage rounded-4 bg-danger text-app text-18 absolute -top-10 left-1/2 px-10 py-4 font-bold lining-nums"
-      >
-        −{{ damageAmount }}
-      </span>
     </div>
 
     <span
@@ -98,13 +92,17 @@ const props = defineProps({
 
   boost: { type: Object, default: null },
 
-  damage: { type: Number, default: 0 },
+  taken: { type: Number, default: 0 },
 
   back: { type: String, default: '' },
 });
 
 const boostFront = ref(false);
-const damageAmount = computed(() => Number(props.damage) || 0);
+const avatarUi = computed(() => ({
+  avatar_root: `size-44 border-2 ${props.side.side === 'attacker' ? 'border-danger' : 'border-info'}`,
+  avatar_image: props.side.dead ? 'grayscale' : '',
+  avatar_fallback: props.side.dead ? 'grayscale' : '',
+}));
 const waiting = computed(() => props.side.cardState === 'waiting');
 const hpText = computed(() => (props.side.dead ? props.side.deadLabel : props.side.hpLabel));
 const hpStyle = computed(() => (props.side.dead ? null : { color: props.side.hpColor }));

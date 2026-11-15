@@ -1,0 +1,12 @@
+﻿import { runAction } from "#shared/publicApi.js";
+import ifritCards from "../server/content/heroes/ifrit/cards.js";
+import { createState, fighter, PHASES, player } from "../tests/fixtures/state.js";
+const card = ifritCards.find(c => c.id === "ifrit_15");
+const lineMap = t => ({ id: "line", nodes: [ { id: 1, neighbors: [2], terrain: "ice" }, { id: 2, neighbors: [1,3], terrain: t }, { id: 3, neighbors: [2], terrain: "ice" } ] });
+const zone = cards => ({ visibility: [], cards });
+const unit = (id, cell, hp, extra={}) => ({ ...fighter({ id, name: id, type: "hero", currentPosition: cell, currentHp: hp, move: 2, attackRange: 1 }), startHp: hp, ...extra });
+const slot = (id, name, order, fighters, hand=[]) => ({ id, name, order, placementReady: true, deck: zone([]), hand: zone(hand), discard: zone([]), fighters });
+const s = createState({ phase: PHASES.turn, map: lineMap("lava"), players: [ slot("0","Ифрит",1,[unit("ifrit",2,14,{attackRange:3})],[{...card, instanceId:"ifrit_15_1"}]), slot("1","Бета",2,[unit("beta",3,14,{attackRange:1})]) ], turn: { index: 1, playerId: "0", actedRound: ["0"] }, _enteredHooks: { gameStart: true, turn: true } });
+const a = runAction(s, { type: "PICK", kind: "card", id: "ifrit_15_1", playerId: "0" });
+console.log("combat:", JSON.stringify(a.combat), "last:", JSON.stringify(a.lastCombat && { atk: a.lastCombat.attackValue, def: a.lastCombat.defenseValue, winner: a.lastCombat.winner }));
+console.log("hp:", player(a,"0").fighters[0].currentHp, player(a,"1").fighters[0].currentHp);

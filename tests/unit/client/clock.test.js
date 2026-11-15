@@ -9,6 +9,7 @@ import {
   syncNow,
   useClock,
 } from '../../../app/composables/ui/useClock.js';
+import { stageClockLabel } from '../../../app/composables/game/useGameHelpers.js';
 
 /**
  * Счётчик считает **от отметки времени**, поэтому проверяется сдвигом системного времени и `syncNow()`:
@@ -158,6 +159,33 @@ describe('useClock', () => {
     expect(placement.remaining.value).toBe(50_000);
   });
 
+  it('время расстановки и время партии — два счётчика: партия начинает с нуля на выходе', async () => {
+    // Экран партии: создание партии ставит отметку расстановки и снимает отметку партии.
+    markClock('party:placement');
+    clearClock('party:play');
+    const placement = useClock({ key: 'party:placement', mode: 'down', limit: 60_000 });
+    const play = useClock({ key: 'party:play', mode: 'up' });
+
+    vi.setSystemTime(T0 + 12_000);
+    syncNow();
+    await nextTick();
+
+    // Та же отметка держит и лимит расстановки, и её время в шапке.
+    expect(formatElapsed(placement.elapsed.value)).toBe('0:12');
+    expect(placement.remaining.value).toBe(48_000);
+    expect(play.label.value).toBe('0:00');
+
+    placement.stop();
+    ensureClock('party:play');
+    vi.setSystemTime(T0 + 20_000);
+    syncNow();
+    await nextTick();
+
+    expect(formatElapsed(placement.elapsed.value)).toBe('0:12');
+    expect(play.label.value).toBe('0:08');
+    expect(play.running.value).toBe(true);
+  });
+
   it('ensureClock ставит отметку один раз, clearClock снимает её', () => {
     const first = ensureClock('party:play');
 
@@ -191,5 +219,13 @@ describe('useClock', () => {
     expect(formatElapsed(65_000)).toBe('1:05');
     expect(formatElapsed(3_600_000)).toBe('1:00:00');
     expect(formatElapsed(-100)).toBe('0:00');
+  });
+});
+
+describe('время этапа в шапке партии', () => {
+  it('в расстановке — счётчик расстановки, после неё — счётчик партии', () => {
+    expect(stageClockLabel({ placement: true, placementMs: 12_000, playMs: 0 })).toBe('0:12');
+    expect(stageClockLabel({ placement: false, placementMs: 12_000, playMs: 8000 })).toBe('0:08');
+    expect(stageClockLabel()).toBe('0:00');
   });
 });

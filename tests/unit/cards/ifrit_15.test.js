@@ -65,9 +65,13 @@ const buildState = ({ terrain = 'lava', betaRange = 1, attackValue = 4 } = {}) =
         [unit('ifrit', 2, 14, { attackRange: 3 })],
         [{ ...card, instanceId: 'ifrit_15_1' }],
       ),
-      slot('1', 'Бета', 2, [unit('beta', 3, 14, { attackRange: betaRange })], [
-        attackCard(attackValue),
-      ]),
+      slot(
+        '1',
+        'Бета',
+        2,
+        [unit('beta', 3, 14, { attackRange: betaRange })],
+        [attackCard(attackValue)],
+      ),
     ],
     turn: { index: 1, playerId: '1', actedRound: ['1'] },
     _enteredHooks: { gameStart: true, turn: true },
@@ -107,7 +111,7 @@ describe('карта ifrit_15 «Искры»', () => {
     });
     expect(card.rules[1].when[0]).toMatchObject({
       fact: 'COMBAT',
-      params: { role: 'defender' },
+      params: { select: 'opponent' },
     });
     expect(card.rules[1].then[0]).toMatchObject({
       action: 'SET_HEALTH',
@@ -152,5 +156,38 @@ describe('карта ifrit_15 «Искры»', () => {
     // Ифрит потерял 4 здоровья, но Бета всё равно получила 1 от «Искр»
     expect(fighterOf(after, '0', 'ifrit').currentHp).toBe(10);
     expect(fighterOf(after, '1', 'beta').currentHp).toBe(13);
+  });
+
+  it('карта гибридная: сыгранная в атаку, она бьёт защитника, а не атакующего', () => {
+    const state = createState({
+      phase: PHASES.turn,
+      map: lineMap('lava'),
+      players: [
+        slot(
+          '0',
+          'Ифрит',
+          1,
+          [unit('ifrit', 2, 14, { attackRange: 3 })],
+          [{ ...card, instanceId: 'ifrit_15_1' }],
+        ),
+        slot('1', 'Бета', 2, [unit('beta', 3, 14, { attackRange: 1 })]),
+      ],
+      turn: { index: 1, playerId: '0', actedRound: ['0'] },
+      _enteredHooks: { gameStart: true, turn: true },
+    });
+    const opened = runAction(state, {
+      type: 'PICK',
+      kind: 'card',
+      id: 'ifrit_15_1',
+      playerId: '0',
+    });
+    // карт у Беты нет — защита закрывается общей кнопкой
+    const after = runAction(opened, { type: 'UI_OK', playerId: '1' });
+
+    // на лаве карта стоит 4: защитник потерял 4 от боя и 1 от искр
+    expect(after.lastCombat.attackValue).toBe(4);
+    expect(after.lastCombat.winner).toBe('attacker');
+    expect(fighterOf(after, '0', 'ifrit').currentHp).toBe(14);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(9);
   });
 });

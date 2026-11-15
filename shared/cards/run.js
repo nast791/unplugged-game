@@ -2,8 +2,9 @@ import { SET_COMBAT } from '#shared/actions/combat.js';
 import { actions } from '#shared/actions/index.js';
 import { combatMomentsAt } from '#shared/constants/moments.js';
 import { runConditions } from '#shared/facts/run.js';
+import { zoneCards } from '#shared/helpers/base.js';
 import { cardKey } from '#shared/helpers/cards.js';
-import { damagedSince, healthSnapshot } from '#shared/helpers/damage.js';
+import { damagedSince, healthSnapshot, hurtSince } from '#shared/helpers/damage.js';
 import { forkState } from '#shared/helpers/fork.js';
 import { closeTargetingWindow, pickAutoCandidates } from '#shared/helpers/targeting.js';
 import { hasMissing, resolveVars } from '#shared/helpers/vars.js';
@@ -90,6 +91,46 @@ const ruleOfStep = (combat, step) => {
   return index < 0 ? null : (rules[index] ?? null);
 };
 
+/** Сколько каких карт лежит в сбросах: по нему видно, что именно ушло в сброс за шаг свойства. */
+const discardSnapshot = partyState => {
+  const snapshot = new Map();
+  for (const player of partyState?.players ?? []) {
+    const counts = new Map();
+    for (const card of zoneCards(player.discard)) {
+      const key = cardKey(card);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    snapshot.set(String(player.id), counts);
+  }
+  return snapshot;
+};
+
+const discardedSince = (partyState, snapshot) => {
+  const list = [];
+  for (const player of partyState?.players ?? []) {
+    const counts = new Map(snapshot.get(String(player.id)) ?? []);
+    for (const card of zoneCards(player.discard)) {
+      const key = cardKey(card);
+      const left = counts.get(key) ?? 0;
+      if (left > 0) {
+        counts.set(key, left - 1);
+        continue;
+      }
+      list.push({ playerId: String(player.id), key, title: String(card.title ?? '') });
+    }
+  }
+  return list;
+};
+
+/** Запись шага для окна битвы: кого ранило и какая карта ушла в сброс — «Результат» пишется по факту. */
+const noteStepChanges = (step, state, health, discarded) => {
+  const hurt = hurtSince(state, health);
+  if (hurt.length > 0) step.hurt = [...(step.hurt ?? []), ...hurt];
+
+  const dropped = discardedSince(state, discarded);
+  if (dropped.length > 0) step.discarded = [...(step.discarded ?? []), ...dropped];
+};
+
 /**
  * Один шаг очереди: одно правило карты в его моменте.
  * Если эффекты этой стороны отменены картой противника («мгновенно»), шаг помечается `cancelled`
@@ -112,6 +153,7 @@ const runEffectStep = (partyState, step) => {
 
   const before = fingerprint(partyState);
   const health = healthSnapshot(partyState);
+  const discarded = discardSnapshot(partyState);
   const state = runRules(partyState, [rule], step.moment, {
     playerId: step.playerId,
     source: step.cardId,
@@ -123,6 +165,7 @@ const runEffectStep = (partyState, step) => {
   // урон шага: в окне битвы урон карт и урон свойств — разные слагаемые, и свойство показывает своё
   const damage = damagedSince(state, health);
   if (damage > 0) step.damage = damage;
+  noteStepChanges(step, state, health, discarded);
   return state;
 };
 
@@ -190,6 +233,7 @@ export const runCombatPicked = partyState => {
 
   const card = cardOf(combat, step.side);
   const health = healthSnapshot(partyState);
+  const discarded = discardSnapshot(partyState);
   const state = runRules(partyState, card?.rules ?? [], 'picked', {
     playerId: step.playerId,
     source: step.cardId,
@@ -200,6 +244,7 @@ export const runCombatPicked = partyState => {
   // шаг ждал решения игрока: урон свойства считается здесь, когда выбор сделан
   const damage = damagedSince(state, health);
   if (damage > 0) step.damage = (Number(step.damage) || 0) + damage;
+  noteStepChanges(step, state, health, discarded);
   return state;
 };
 

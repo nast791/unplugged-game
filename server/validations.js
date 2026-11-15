@@ -1,12 +1,13 @@
 import { CELLS_LIMIT } from '#shared/helpers/mapGenerator.js';
 import { modes } from '#shared/constants/modes.js';
 import { SEAT_NAME_LIMIT } from '#shared/constants/seats.js';
+import { LIMITS } from '#shared/constants/tuning.js';
 
 const CONTROLS = new Set(['human', 'ai']);
 /** Сид — 32-битное число (тот же диапазон, что у генератора карт). */
 const SEED_MAX = 0xffffffff;
-/** Предел лимита времени (на действие и на расстановку): 0 — без лимита, больше 3600 с (час) — уже не лимит. */
-const TIME_LIMIT_MAX = 3600;
+/** Предел лимита времени (на действие и на расстановку): 0 — без лимита, больше `LIMITS.timeLimit` — уже не лимит. */
+const TIME_LIMIT_MAX = LIMITS.timeLimit;
 
 /**
  * Необязательные числа запроса (сид, размер поля, лимит времени): пустая строка и `null` значит

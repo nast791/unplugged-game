@@ -1,5 +1,5 @@
 import { findPlayer, zoneCards } from '#shared/helpers/base.js';
-import { cardHasTag, cardKey } from '#shared/helpers/cards.js';
+import { cardHasTag, cardKey, cardUiView } from '#shared/helpers/cards.js';
 
 const ZONES = ['deck', 'hand', 'discard'];
 
@@ -49,15 +49,7 @@ export const CARDS = (ctx, params = {}) => {
 
   return {
     ok,
-    value: filtered.map(card => ({
-      cardId: cardKey(card),
-      optionId: cardKey(card),
-      id: card?.id,
-      title: card?.title ?? null,
-      type: card?.type,
-      bonus: Number(card?.bonus) || 0,
-      tags: Array.isArray(card?.tags) ? [...card.tags] : [],
-    })),
+    value: filtered.map(card => cardUiView(card, { zone: zoneName, ownerId: String(player.id) })),
   };
 };
 

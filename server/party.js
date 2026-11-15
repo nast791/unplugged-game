@@ -1,15 +1,16 @@
 import { stacks } from '#shared/constants/deck.js';
 import { playerFields, stateFields } from '#shared/constants/state.js';
+import { LIMITS } from '#shared/constants/tuning.js';
 import { runUi } from '#shared/core.js';
+import { pendingActionCount } from '#shared/helpers/turn.js';
 import { runLifecycle } from '#shared/publicApi.js';
-const MAX_PARTIES = 32;
 const parties = new Map();
 
 /** Партия закончена: экран итогов (gameEnd). Итоговое состояние не храним. */
 const isFinished = state => state?.hook === 'gameEnd';
 
 const trimParties = () => {
-  while (parties.size > MAX_PARTIES) {
+  while (parties.size > LIMITS.parties) {
     const oldest = parties.keys().next().value;
     parties.delete(oldest);
   }
@@ -237,6 +238,8 @@ export const view = (state, playerId) => {
   return {
     ...projectState(snapshot, you),
     you: String(playerId),
+    // объявленное действие движок списывает сразу, а счётчик карточки видит его законченным
+    actionsPending: pendingActionCount(snapshot),
     ui: runUi(snapshot, playerId),
     players: (snapshot.players ?? []).map(p => projectPlayer(p, snapshot, you)),
   };

@@ -1,0 +1,10 @@
+﻿
+ RUN  v4.1.10 C:/UnPlugged/unplugged-game
+
+ ✓ |node| tests/unit/cards/ifrit_15.test.js (6 tests) 17ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  18:00:54
+   Duration  1.20s (transform 579ms, setup 174ms, import 724ms, tests 17ms, environment 0ms)
+

@@ -1,11 +1,10 @@
 import { computed, ref } from 'vue';
-
-const TOAST_MS = 2400;
+import { TIMEOUTS } from '#shared/constants/tuning.js';
 
 const message = ref('');
 let timer = null;
 
-export const notify = (text, duration = TOAST_MS) => {
+export const notify = (text, duration = TIMEOUTS.toast) => {
   message.value = String(text ?? '');
   clearTimeout(timer);
   timer = setTimeout(() => {

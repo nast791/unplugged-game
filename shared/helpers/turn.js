@@ -45,6 +45,15 @@ export const hasMoment = partyState =>
 /** Объявленное действие в работе: перемещение или бой. Выбор цели объявить действие не мешает. */
 export const hasAction = partyState => Boolean(partyState?.movement || partyState?.combat);
 
+/**
+ * Действие объявлено, но ещё не закончено: списанную единицу счётчик карточки показывает только после
+ * завершения. Перемещение от эффекта (`movement.source`) — не объявленное действие, его карта уже заплатила.
+ */
+export const pendingActionCount = partyState => {
+  const { effect, combat, movement } = partyState ?? {};
+  return effect || combat || (movement && movement.source == null) ? 1 : 0;
+};
+
 /** Выбор цели открыт и открыт этим игроком. */
 export const isTargetingMine = (partyState, playerId) => {
   const targeting = partyState?.targeting;

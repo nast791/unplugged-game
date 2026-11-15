@@ -406,3 +406,47 @@ describe('окна эффектов боя', () => {
     expect(after.winner).toBe('0');
   });
 });
+
+/**
+ * Окно битвы пишет «Результат» по факту, а не по тексту свойства (`m00001`): движок записывает
+ * в шаг очереди, кого ранило свойство и какая карта ушла в сброс, и клиент не гадает по формулировке.
+ */
+describe('запись боя: что шаг сделал по факту', () => {
+  const steps = state => state.lastCombat?.effects ?? [];
+
+  it('урон свойства записан на пострадавшего бойца', () => {
+    const state = buildState({
+      attack: attackCard([
+        {
+          moment: 'duringCombat',
+          then: [{ action: 'SET_HEALTH', fighterIds: ['beta'], delta: -3 }],
+        },
+      ]),
+      defense: defenseCard(),
+    });
+
+    const after = playDefense(state);
+    const hurt = steps(after).flatMap(step => step.hurt ?? []);
+
+    expect(hurt).toEqual([{ fighterId: 'beta', amount: 3 }]);
+  });
+
+  it('карта, сброшенная свойством, записана с названием', () => {
+    const state = buildState({
+      attackerHand: [handBonus('spare', 1)],
+      defense: defenseCard([
+        {
+          moment: 'immediately',
+          then: [{ action: 'SET_CARDS', of: 'opponent', op: 'discard', count: 1, random: true }],
+        },
+      ]),
+    });
+
+    const after = playDefense(state);
+    const discarded = steps(after).flatMap(step => step.discarded ?? []);
+
+    expect(discarded).toEqual([{ playerId: '0', key: 'spare_1', title: 'spare' }]);
+    // в руке было две карты: сыгранная в бой и сброшенная свойством
+    expect(handSize(after, '0')).toBe(0);
+  });
+});

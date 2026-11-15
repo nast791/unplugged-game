@@ -1,0 +1,38 @@
+﻿
+ RUN  v4.1.10 C:/UnPlugged/unplugged-game
+
+ ❯ |node| tests/unit/cards/ifrit_15.test.js (6 tests | 1 failed) 23ms
+     ✓ описана правилами, моменты — из списка 4ms
+     ✓ на лаве значение становится 4: атака гасится, атакующий получает 1 урон 8ms
+     ✓ вне лавы остаётся 2: Ифрит получает разницу, атакующий — 1 урон 1ms
+     ✓ при дальней атаке сила та же: дальность больше не условие 1ms
+     ✓ ответный урон приходит и при проигранной битве 1ms
+     × карта гибридная: сыгранная в атаку, она бьёт защитника, а не атакующего 5ms
+node.exe : 
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |node| tests/unit/cards/ifrit_15.test.js > карта ifrit_15 «Искры» > карта гибридная: сыгранная в атаку, она бьёт
+ защитника, а не атакующего
+TypeError: Cannot read properties of null (reading 'attackValue')
+ ❯ tests/unit/cards/ifrit_15.test.js:182:29
+    180|
+    181|     // на лаве карта стоит 4: защитник потерял 4 от боя и 1 от искр
+    182|     expect(after.lastCombat.attackValue).toBe(4);
+       |                             ^
+    183|     expect(after.lastCombat.winner).toBe('attacker');
+    184|     expect(fighterOf(after, '0', 'ifrit').currentHp).toBe(14);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  17:59:51
+   Duration  1.30s (transform 560ms, setup 207ms, import 692ms, tests 23ms, environment 0ms)
+

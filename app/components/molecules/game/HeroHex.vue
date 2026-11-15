@@ -20,6 +20,7 @@
               :src="props.portrait"
               provider="none"
               :alt="props.name"
+              :ui="{ picture_img: 'object-top' }"
               :class="['size-full', props.dead && 'grayscale']"
             />
 

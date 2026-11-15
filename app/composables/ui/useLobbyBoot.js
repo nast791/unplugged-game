@@ -1,6 +1,5 @@
+import { TIMEOUTS } from '#shared/constants/tuning.js';
 import { useProfile } from './useProfile.js';
-
-const MIN_VISIBLE_MS = 700;
 
 export const useLobbyBoot = () => {
   const ready = useState('lobby:ready', () => false);
@@ -20,7 +19,7 @@ export const useLobbyBoot = () => {
         content.value = null;
       });
 
-    const left = MIN_VISIBLE_MS - (Date.now() - startedAt);
+    const left = TIMEOUTS.lobbyBoot - (Date.now() - startedAt);
     if (left > 0) await new Promise(resolve => setTimeout(resolve, left));
 
     ready.value = true;

@@ -98,6 +98,23 @@ export const damagedSince = (partyState, snapshot) => {
 };
 
 /**
+ * Кто именно пострадал с момента снимка: список `{ fighterId, amount }` по бойцам, у которых
+ * здоровье упало. Нужен только для записи боя — чтобы окно показало «урон» у той стороны, чей боец его
+ * получил, а не одно общее число.
+ */
+export const hurtSince = (partyState, snapshot) => {
+  const after = healthSnapshot(partyState);
+  const hurt = [];
+
+  for (const [fighterId, hp] of snapshot) {
+    const now = after.has(fighterId) ? after.get(fighterId) : 0;
+    if (now < hp) hurt.push({ fighterId, amount: hp - now });
+  }
+
+  return hurt;
+};
+
+/**
  * Снять отметку начала хода — у всех бойцов: «в этом ходу» значит ровно один ход.
  * Зовётся рядом со снятием `movedThisTurn` (`shared/lifecycle/turnStart.js`) и возвращает новое
  * состояние: кирпичи этого хода правят вложенные объекты на месте, а флаг живёт на бойце.

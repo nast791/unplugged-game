@@ -1,5 +1,5 @@
 import { playerByRole, zoneCards } from '#shared/helpers/base.js';
-import { cardHasTag } from '#shared/helpers/cards.js';
+import { cardHasTag, cardUiView } from '#shared/helpers/cards.js';
 import {
   activePlayerId,
   handCards,
@@ -11,15 +11,6 @@ import {
 
 /** Игрок из контекста факта: явный playerId важнее ctx.player, иначе — активный игрок хода. */
 const contextPlayerId = ctx => ctx.playerId ?? ctx.player?.id ?? ctx.state?.turn?.playerId;
-
-const cardView = card => ({
-  cardId: String(card?.instanceId ?? card?.id),
-  id: card?.id,
-  type: card?.type,
-  value: Number(card?.value) || 0,
-  bonus: Number(card?.bonus) || 0,
-  tags: Array.isArray(card?.tags) ? [...card.tags] : [],
-});
 
 /** ACTIVE_PLAYER — чей ход; params: { id } — проверить конкретного игрока. */
 export const ACTIVE_PLAYER = (ctx, params = {}) => {
@@ -128,11 +119,13 @@ export const HAND = (ctx, params = {}) => {
   const min = params.min == null ? 0 : Number(params.min);
   const max = params.max == null ? Infinity : Number(params.max);
   const otherId =
-    params.over == null ? null : playerByRole(ctx.state, selfId, params.over === true ? 'opponent' : params.over);
+    params.over == null
+      ? null
+      : playerByRole(ctx.state, selfId, params.over === true ? 'opponent' : params.over);
   const overOk = otherId == null || cards.length > handCards(ctx.state, otherId).length;
   return {
     ok: cards.length >= min && cards.length <= max && overOk,
-    value: cards.map(cardView),
+    value: cards.map(card => cardUiView(card, { zone: 'hand', ownerId: String(ownerPlayerId) })),
   };
 };
 

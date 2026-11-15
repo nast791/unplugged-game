@@ -5,14 +5,15 @@
  * Исходник приходит JPEG'ом, где «прозрачность» нарисована шахматкой (белое 255 и серое 217) —
  * альфы в таком файле нет. Скрипт заливает от краёв всё светлое нейтральное (шахматку и белое),
  * находит голову (силуэт до сужения в шею), обводит её кругом и добавляет прозрачные поля:
- * аватар на доске рисуется крупнее поля (`TOKEN.avatar` в `useBoardGeometry.js`) и обрезается
- * кругом, поэтому без полей голова не вставала в контур (m01757, m01791). Кадр не режется —
+ * аватар на доске раньше рисовался крупнее поля и обрезался кругом, поэтому без полей голова
+ * не вставала в контур (m01757, m01791; теперь арт вписывается в поле целиком, `avatarDrawBox`).
+ * Кадр не режется —
  * вокруг портрета добавляется только прозрачность, исходное изображение остаётся целиком.
  *
  *   node scripts/avatar-from-image.mjs .workbuddy/toto-new.jpg \
  *     server/content/heroes/dorothy/images/avatar-toto.webp
  *
- * `--scale=1.16` — то же `TOKEN.avatar`: какую долю круга занимает картинка на фишке.
+ * `--scale=1.16` — бывший `TOKEN.avatar`: какую долю круга занимала картинка на фишке.
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
@@ -38,7 +39,10 @@ if (!sourcePath || !outputPath) {
 const avatarScale = option('scale') ?? 1.16;
 
 const source = await readFile(sourcePath);
-const { data, info } = await sharp(source).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+const { data, info } = await sharp(source)
+  .ensureAlpha()
+  .raw()
+  .toBuffer({ resolveWithObject: true });
 const { width, height } = info;
 const pixels = Buffer.from(data);
 const total = width * height;

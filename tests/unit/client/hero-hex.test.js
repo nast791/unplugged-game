@@ -82,9 +82,14 @@ vi.mock('~/components/atoms/APicture.vue', async () => {
   return {
     default: defineComponent({
       name: 'APicture',
-      props: { src: { type: String, default: '' }, alt: { type: String, default: '' } },
+      props: {
+        src: { type: String, default: '' },
+        alt: { type: String, default: '' },
+        ui: { type: Object, default: () => ({}) },
+      },
       setup(props) {
-        return () => h('div', { 'data-picture': props.src });
+        return () =>
+          h('div', { 'data-picture': props.src, 'data-picture-img': props.ui.picture_img || '' });
       },
     }),
   };
@@ -116,6 +121,13 @@ describe('гекс героя', () => {
     expect(picture.getAttribute('data-picture')).toBe('anubis.webp');
     expect(picture.classList).toContain('size-full');
     expect(bodyOf(wrapper).classList).toContain('hex-side-clip');
+  });
+
+  it('держит макушку аватара: квадрат в широком гексе срезается только снизу', () => {
+    const wrapper = mountHex({ portrait: 'dorothy.webp', name: 'Дороти' });
+    const picture = bodyOf(wrapper).querySelector('[data-picture]');
+
+    expect(picture.getAttribute('data-picture-img')).toBe('object-top');
   });
 
   it('держит все шесть сторон равными: ширина — 2/√3 высоты', () => {
@@ -196,7 +208,9 @@ describe('гекс героя', () => {
     );
     expect(mountHex({ active: true }).find('[data-action-badge]').exists()).toBe(false);
     expect(
-      mountHex({ active: true, actionLeft: 1, actionTotal: 0 }).find('[data-action-badge]').exists(),
+      mountHex({ active: true, actionLeft: 1, actionTotal: 0 })
+        .find('[data-action-badge]')
+        .exists(),
     ).toBe(false);
   });
 

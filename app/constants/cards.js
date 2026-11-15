@@ -1,3 +1,5 @@
+import { TOOLTIPS } from '~/constants/tooltips.js';
+
 export const CARD_TYPES = {
   attack: { label: 'Атака', icon: 'lucide:swords', plate: 'bg-danger' },
   defense: { label: 'Защита', icon: 'lucide:shield', plate: 'bg-info' },
@@ -18,6 +20,18 @@ export const CARD_MOMENT_PREFIXES = [
 // Опции свойства («Помилование», «Наказание» у Анубиса) — части текста, а не выбор игрока: их нельзя
 // нажать, поэтому клиент рисует их строкой с подписью, а не списком опций окна выбора.
 export const CARD_TEXT_OPTION_LABELS = ['Помилование', 'Наказание'];
+
+// Метки карты (`card.tags`) — значок на плашке значения: у весов суд, у осколка ресурс героя.
+export const CARD_TAGS = {
+  scales: { icon: 'lucide:scale', tooltip: TOOLTIPS.card.scales },
+  shard: { icon: 'lucide:snowflake', tooltip: TOOLTIPS.card.shard },
+};
+
+export const cardTagMarks = tags =>
+  (tags ?? [])
+    .map(String)
+    .map(tag => ({ tag, ...CARD_TAGS[tag] }))
+    .filter(mark => Boolean(mark.icon));
 
 export const cardType = type =>
   CARD_TYPES[String(type)] ?? {

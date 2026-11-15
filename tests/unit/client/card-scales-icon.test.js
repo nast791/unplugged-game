@@ -88,7 +88,7 @@ const mountCard = (props = {}, cardOverride = {}) =>
     global: { stubs: { NuxtIcon: IconStub, Icon: IconStub } },
   });
 
-const scales = wrapper => wrapper.find('[data-card-scales]').exists();
+const scales = wrapper => wrapper.find('[data-card-tag="scales"]').exists();
 const plate = wrapper => wrapper.find('[data-card-plate]');
 
 describe('Card: пометка весов', () => {
@@ -96,12 +96,12 @@ describe('Card: пометка весов', () => {
     const wrapper = mountCard();
 
     expect(scales(wrapper)).toBe(true);
-    expect(plate(wrapper).find('[data-card-scales]').exists()).toBe(true);
+    expect(plate(wrapper).find('[data-card-tag="scales"]').exists()).toBe(true);
     expect(plate(wrapper).html()).toContain('Пометка весов');
   });
 
   it('значок рисуется обычной иконкой — без белого кружка и подложки', () => {
-    const badge = mountCard().find('[data-card-scales]');
+    const badge = mountCard().find('[data-card-tag="scales"]');
 
     expect(badge.classes()).not.toContain('rounded-full');
     expect(badge.classes()).not.toContain('bg-white');
@@ -130,5 +130,46 @@ describe('Card: пометка весов', () => {
     expect(plate(effect).html()).toContain('h-54');
     expect(plate(effect).html()).toContain('justify-center');
     expect(plate(number).html()).toContain('h-54');
+  });
+});
+
+describe('Card: пометка осколка', () => {
+  const shard = { tags: ['shard'] };
+
+  it('карта с меткой осколка показывает значок там же, где весы', () => {
+    const wrapper = mountCard({}, shard);
+
+    expect(plate(wrapper).find('[data-card-tag="shard"]').exists()).toBe(true);
+    expect(plate(wrapper).find('[data-card-tag="shard"] [data-icon]').attributes('data-icon')).toBe(
+      'lucide:snowflake',
+    );
+    expect(plate(wrapper).html()).toContain('Пометка осколка');
+    expect(scales(wrapper)).toBe(false);
+  });
+
+  it('значок осколка тоже белый, без кружка и подложки', () => {
+    const badge = mountCard({}, shard).find('[data-card-tag="shard"]');
+
+    expect(badge.classes()).not.toContain('rounded-full');
+    expect(badge.classes()).not.toContain('bg-white');
+  });
+
+  it('две метки подряд рисуют два значка на плашке', () => {
+    const wrapper = mountCard({}, { tags: ['scales', 'shard'] });
+
+    expect(plate(wrapper).find('[data-card-tag="scales"]').exists()).toBe(true);
+    expect(plate(wrapper).find('[data-card-tag="shard"]').exists()).toBe(true);
+  });
+
+  it('в подробном просмотре со скрытой картинкой осколок уезжает наверх, как весы', async () => {
+    const wrapper = mountCard({ mode: 'detail' }, shard);
+
+    expect(wrapper.find('[data-card-detail-value] [data-card-tag="shard"]').exists()).toBe(false);
+
+    await wrapper.find('[data-card-eye]').trigger('click');
+
+    const shown = wrapper.find('[data-card-detail-value] [data-card-tag="shard"]');
+    expect(shown.exists()).toBe(true);
+    expect(shown.find('[data-icon]').classes()).toContain('size-14!');
   });
 });

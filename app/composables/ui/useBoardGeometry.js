@@ -1,9 +1,5 @@
 import { seatSide } from '#shared/constants/seats.js';
-import {
-  colorLuminance,
-  terrainColor,
-  terrainLabelColor,
-} from '#shared/constants/terrain.js';
+import { colorLuminance, terrainColor, terrainLabelColor } from '#shared/constants/terrain.js';
 
 export const MIN_RADIUS = 24;
 export const MAX_RADIUS = 64;
@@ -44,17 +40,41 @@ export const PLACEMENT = {
   busy: '#94a3b8',
   stroke: 3,
   glow: 14,
+  // насколько область клика по клетке выходит за кружок: кольцо и свечение рисуются снаружи
+  hit: 15,
 };
 
 /**
  * Фишка бойца: радиус — доля радиуса клетки, поле портрета — доля радиуса фишки.
- * Портрет — наклейка: его круг вписан в поле портрета (`avatar`), а всё, что торчит
- * за круг в самом арте (уши, волосы), выходит на серое кольцо — клип держит его по радиусу фишки.
+ * Портрет ложится на поле портрета и прилегает к его ободку: врезка считается по видимым
+ * границам картинки (`avatarDrawBox`), поэтому прозрачные поля файла не оставляют щели.
+ * Всё, что вышло за ободок, срезает кромка фишки — клип держит портрет по радиусу фишки.
  */
 export const TOKEN = {
   radius: 0.72,
   face: 0.8,
-  avatar: 1,
+};
+
+/**
+ * Рисунок аватара: видимое содержимое картинки вписывается в поле портрета целиком.
+ * `content` — границы непрозрачного в пикселях картинки; масштаб считается по большей стороне,
+ * поэтому ни верх, ни низ портрета не срезается (у героя кадр узкий и высокий: корона и уши
+ * стоят на всю высоту), а прозрачные поля файла не оставляют щели — содержимое прилегает к ободку.
+ */
+export const avatarDrawBox = (faceRadius, image, content) => {
+  const width = Number(image?.naturalWidth || image?.width) || 0;
+  const height = Number(image?.naturalHeight || image?.height) || 0;
+  const box = { x: -faceRadius, y: -faceRadius, width: faceRadius * 2, height: faceRadius * 2 };
+  if (!width || !height || !content?.width || !content?.height) return box;
+  const scale = (faceRadius * 2) / Math.max(content.width, content.height);
+  const centerX = content.x + content.width / 2;
+  const centerY = content.y + content.height / 2;
+  return {
+    x: -centerX * scale,
+    y: -centerY * scale,
+    width: width * scale,
+    height: height * scale,
+  };
 };
 
 export const tokenRadius = cellRadius => Math.max(8, cellRadius * TOKEN.radius);

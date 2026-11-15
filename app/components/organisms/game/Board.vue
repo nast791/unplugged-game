@@ -28,6 +28,7 @@
               cellId: node.id,
             }"
           >
+            <v-circle :config="cellHitConfig()" />
             <v-circle :config="nodeCircleConfig(node)" />
 
             <v-wedge
@@ -154,7 +155,7 @@
 </template>
 
 <script setup>
-import { TOKEN, tokenFaceRadius, tokenRadius } from '~/composables/ui/useBoardGeometry.js';
+import { avatarDrawBox, tokenFaceRadius, tokenRadius } from '~/composables/ui/useBoardGeometry.js';
 import { useBoardMap } from '~/composables/ui/useBoardMap.js';
 import { useBoardView } from '~/composables/ui/useBoardView.js';
 import { useFitPad } from '~/composables/ui/useFitPad.js';
@@ -182,6 +183,7 @@ const {
   framedFighterIds,
   battleRoles,
   placementCells,
+  skillWindow,
   expectsFighterPick,
 } = useGameSession();
 
@@ -211,6 +213,7 @@ const {
   isPulsingFighter,
   isDropCell,
   cellGlowConfig,
+  cellHitConfig,
   cellPulseConfig,
   cellRingConfig,
   pulse,
@@ -253,6 +256,7 @@ const {
   framedFighterIds,
   battleRoles,
   placementCells,
+  skillWindow,
   pickFighters: expectsFighterPick,
 });
 
@@ -262,12 +266,43 @@ const avatars = reactive(new Map());
 
 const avatarOf = token => avatars.get(String(token.fighter.image || '')) || null;
 
+const contentOf = picture => {
+  const side = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = side;
+  canvas.height = side;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(picture, 0, 0, side, side);
+  const { data } = ctx.getImageData(0, 0, side, side);
+  let left = side;
+  let top = side;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < side; y += 1) {
+    for (let x = 0; x < side; x += 1) {
+      if (data[(y * side + x) * 4 + 3] <= 16) continue;
+      if (x < left) left = x;
+      if (y < top) top = y;
+      if (x > right) right = x;
+      if (y > bottom) bottom = y;
+    }
+  }
+  if (right < left || bottom < top) return null;
+  const k = (picture.naturalWidth || side) / side;
+  return {
+    x: left * k,
+    y: top * k,
+    width: (right - left + 1) * k,
+    height: (bottom - top + 1) * k,
+  };
+};
+
 const loadAvatars = () => {
   const urls = new Set(placedFighters.value.map(token => token.fighter.image).filter(Boolean));
   for (const url of urls) {
     if (avatars.has(url)) continue;
     const picture = new Image();
-    picture.onload = () => avatars.set(url, picture);
+    picture.onload = () => avatars.set(url, { picture, content: contentOf(picture) });
     picture.src = url;
   }
 };
@@ -286,13 +321,10 @@ const fighterAvatarClip = () => {
 };
 
 const fighterAvatarConfig = token => {
-  const faceR = tokenFaceRadius(radius.value) * TOKEN.avatar;
+  const avatar = avatarOf(token);
   return {
-    image: avatarOf(token),
-    x: -faceR,
-    y: -faceR,
-    width: faceR * 2,
-    height: faceR * 2,
+    image: avatar?.picture || null,
+    ...avatarDrawBox(tokenFaceRadius(radius.value), avatar?.picture, avatar?.content),
     listening: false,
   };
 };

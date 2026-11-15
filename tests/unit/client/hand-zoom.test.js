@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 /**
- * Большой формат карты из руки: правый клик по карте открывает её во весь экран, а закрывает
- * окно клик ВНЕ карты. Клик по самой карте окно не закрывает — иначе нельзя ни прокрутить
- * текст свойства, ни прочитать его на увеличенной карте.
+ * Карты руки живут в трёх режимах: веер на столе, окно стопки и подробный вид по правому клику.
+ * Подробный вид — та же карта крупно, без панели полного текста: текст живёт на самой карте, а под ней
+ * стоят листание по кругу, число карт в руке и кнопка розыгрыша. Наведение на карту веера поднимает её,
+ * а первый левый клик сразу разыгрывает карту.
  */
 globalThis.ref = ref;
 globalThis.computed = computed;
@@ -20,17 +21,19 @@ const cards = vi.hoisted(() => [
   { instanceId: 'card-2', id: 'anubis_02', title: 'Суд молчит', text: 'Возьмите карту.' },
 ]);
 
+const session = vi.hoisted(() => ({}));
+
 vi.mock('~/composables/game/useGameSession.js', async () => {
   const { ref } = await import('vue');
-  const session = {
+  Object.assign(session, {
     myHand: ref(cards),
-    isCardPlayable: () => true,
+    isCardPlayable: vi.fn(() => true),
     onCardClick: vi.fn(),
     canDiscardBonus: ref(false),
     armBonusCard: vi.fn(),
     onBonusDiscard: vi.fn(),
-  };
-  return { useGameSession: () => session, session };
+  });
+  return { useGameSession: () => session };
 });
 
 vi.mock('~/composables/ui/useCardDrag.js', async () => {
@@ -45,6 +48,13 @@ vi.mock('~/composables/ui/useCardDrag.js', async () => {
       endCardDrag: vi.fn(),
     }),
   };
+});
+
+// Кнопка подробного вида тянет конфиг приложения (`useUI` → `useAppConfig`), которого в тесте нет.
+vi.mock('~/composables/ui/useUI', async importOriginal => {
+  const actual = await importOriginal();
+  const { computed } = await import('vue');
+  return { ...actual, useUI: () => ({ styles: computed(() => ({})) }) };
 });
 
 vi.mock('~/components/atoms/ATooltip.vue', async () => {
@@ -66,26 +76,17 @@ vi.mock('~/components/molecules/game/Card.vue', async () => {
     default: defineComponent({
       name: 'Card',
       inheritAttrs: false,
-      props: { card: { type: Object, default: null } },
-      setup(props, { attrs }) {
-        return () => h('div', attrs, h('p', { 'data-card-body': '' }, props.card?.text ?? ''));
+      props: {
+        card: { type: Object, default: null },
+        mode: { type: String, default: 'hand' },
       },
-    }),
-  };
-});
-
-vi.mock('~/components/molecules/game/CardText.vue', async () => {
-  const { defineComponent, h } = await import('vue');
-  return {
-    default: defineComponent({
-      name: 'CardText',
-      props: { text: { type: String, default: '' }, tone: { type: String, default: 'card' } },
-      setup(props) {
+      setup(props, { attrs }) {
         return () =>
-          h('div', { 'data-zoom-body': '', 'data-tone': props.tone }, [
-            h('span', { 'data-zoom-line': '' }, 'Помилование'),
-            h('span', { 'data-zoom-raw': '' }, props.text),
-          ]);
+          h(
+            'div',
+            { ...attrs, 'data-card-mode': props.mode },
+            h('p', { 'data-card-body': '' }, props.card?.text ?? ''),
+          );
       },
     }),
   };
@@ -95,85 +96,176 @@ const HandFan = (await import('~/components/organisms/game/HandFan.vue')).defaul
 
 const click = element => element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-const openZoom = async wrapper => {
+const openDetail = async wrapper => {
   await wrapper.find('[data-hand-card]').trigger('contextmenu');
   await nextTick();
 };
 
-describe('большой формат карты из руки', () => {
+const detailCard = () => document.querySelector('[data-zoom-card]');
+const layer = () => document.querySelector('[data-esc-layer]');
+
+describe('карты руки: веер и подробный вид', () => {
   let wrapper = null;
+
+  beforeEach(() => {
+    session.myHand.value = cards;
+    session.isCardPlayable.mockReturnValue(true);
+    session.onCardClick.mockClear();
+  });
 
   afterEach(() => {
     wrapper?.unmount();
     wrapper = null;
+    document.body.innerHTML = '';
   });
 
   const mountHandFan = () => {
-    wrapper = mount(HandFan, { attachTo: document.body });
+    wrapper = mount(HandFan, {
+      attachTo: document.body,
+      global: { stubs: { NuxtIcon: true } },
+    });
     return wrapper;
   };
 
-  it('открывает карту правым кликом и закрывает кликом вне её', async () => {
+  it('поднимает карту при наведении без нажатий', async () => {
     const fan = mountHandFan();
-    await openZoom(fan);
+    const slot = () => fan.find('[data-hand-slot="card-1"] > div');
 
-    expect(document.querySelector('[data-zoom-card]')).toBeTruthy();
-    expect(document.querySelector('[data-zoom-card]')?.textContent).toContain('Нанесите 2 урона.');
+    expect(slot().classes()).not.toContain('-translate-y-140');
 
-    click(document.querySelector('[data-esc-layer]'));
+    await fan.find('[data-hand-slot="card-1"]').trigger('mouseenter');
+    expect(slot().classes()).toContain('-translate-y-140');
+
+    await fan.find('[data-hand-slot="card-1"]').trigger('mouseleave');
+    expect(slot().classes()).not.toContain('-translate-y-140');
+  });
+
+  it('разыгрывает карту первым левым кликом, без лишнего выдвижения', async () => {
+    const fan = mountHandFan();
+    click(fan.find('[data-hand-card]').element);
     await nextTick();
 
-    expect(document.querySelector('[data-zoom-card]')).toBeNull();
+    expect(session.onCardClick).toHaveBeenCalledWith(cards[0]);
+  });
+
+  it('не разыгрывает задизейбленную карту левым кликом', async () => {
+    session.isCardPlayable.mockReturnValue(false);
+    const fan = mountHandFan();
+    click(fan.find('[data-hand-card]').element);
+    await nextTick();
+
+    expect(session.onCardClick).not.toHaveBeenCalled();
+  });
+
+  it('открывает карту правым кликом и закрывает кликом вне её', async () => {
+    const fan = mountHandFan();
+    await openDetail(fan);
+
+    expect(detailCard()).toBeTruthy();
+    expect(detailCard()?.textContent).toContain('Нанесите 2 урона.');
+
+    click(layer());
+    await nextTick();
+
+    expect(detailCard()).toBeNull();
   });
 
   it('держит окно открытым, когда кликают по самой карте: текст листают точечно', async () => {
     const fan = mountHandFan();
-    await openZoom(fan);
+    await openDetail(fan);
 
     click(document.querySelector('[data-card-body]'));
     await nextTick();
 
-    expect(document.querySelector('[data-zoom-card]')).toBeTruthy();
+    expect(detailCard()).toBeTruthy();
   });
 
-  it('показывает рядом с картой полный текст, а не поверх неё', async () => {
+  it('показывает карту в режиме «подробно» без панели полного текста', async () => {
     const fan = mountHandFan();
-    await openZoom(fan);
+    await openDetail(fan);
 
-    const card = () => document.querySelector('[data-zoom-card]');
-    const hover = type => card().dispatchEvent(new MouseEvent(type, { bubbles: false }));
-
+    expect(detailCard().querySelector('[data-card-mode]')?.getAttribute('data-card-mode')).toBe(
+      'detail',
+    );
     expect(document.querySelector('[data-zoom-text]')).toBeNull();
+  });
 
-    hover('mouseenter');
+  it('листает карты из руки по кругу, не переключая фон', async () => {
+    const fan = mountHandFan();
+    await openDetail(fan);
+    const background = layer();
+
+    expect(detailCard()?.textContent).toContain('Нанесите 2 урона.');
+    expect(document.querySelector('[data-detail-count]')?.textContent).toContain('2');
+
+    click(document.querySelector('[data-detail-next]'));
+    await nextTick();
+    expect(detailCard()?.textContent).toContain('Возьмите карту.');
+
+    click(document.querySelector('[data-detail-next]'));
+    await nextTick();
+    expect(detailCard()?.textContent).toContain('Нанесите 2 урона.');
+
+    click(document.querySelector('[data-detail-prev]'));
+    await nextTick();
+    expect(detailCard()?.textContent).toContain('Возьмите карту.');
+
+    expect(layer()).toBe(background);
+    expect(detailCard()).toBeTruthy();
+  });
+
+  it('не пересоздаёт карту при перелистывании — режим глаза переезжает на следующую', async () => {
+    const fan = mountHandFan();
+    await openDetail(fan);
+
+    const box = document.querySelector('[data-zoom-card]');
+    const before = box.firstElementChild;
+
+    click(document.querySelector('[data-detail-next]'));
     await nextTick();
 
-    const panel = document.querySelector('[data-zoom-text]');
+    expect(box.firstElementChild).toBe(before);
+  });
 
-    expect(panel?.textContent).toContain('Погребальный звон');
-    expect(panel?.textContent).toContain('Нанесите 2 урона.');
-    expect(panel?.classList.contains('pointer-events-none')).toBe(true);
-    expect(panel.querySelector('[data-zoom-body]')?.getAttribute('data-tone')).toBe('zoom');
+  it('гасит стрелки, когда в руке одна карта', async () => {
+    session.myHand.value = [cards[0]];
+    const fan = mountHandFan();
+    await openDetail(fan);
 
-    hover('mouseleave');
+    expect(document.querySelector('[data-detail-prev]').disabled).toBe(true);
+    expect(document.querySelector('[data-detail-next]').disabled).toBe(true);
+  });
+
+  it('разыгрывает карту кнопкой', async () => {
+    const fan = mountHandFan();
+    await openDetail(fan);
+
+    click(document.querySelector('[data-detail-play]'));
     await nextTick();
-    expect(document.querySelector('[data-zoom-text]')).toBeNull();
+
+    expect(session.onCardClick).toHaveBeenCalledWith(cards[0]);
+  });
+
+  it('гасит кнопку розыгрыша у задизейбленной карты', async () => {
+    session.isCardPlayable.mockReturnValue(false);
+    const fan = mountHandFan();
+    await openDetail(fan);
+
+    expect(document.querySelector('[data-detail-play]').disabled).toBe(true);
   });
 
   it('закрывает окно правым кликом вне карты и не закрывает им внутри карты', async () => {
     const fan = mountHandFan();
-    await openZoom(fan);
+    await openDetail(fan);
 
     document
       .querySelector('[data-card-body]')
       .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await nextTick();
-    expect(document.querySelector('[data-zoom-card]')).toBeTruthy();
+    expect(detailCard()).toBeTruthy();
 
-    document
-      .querySelector('[data-esc-layer]')
-      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    layer().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await nextTick();
-    expect(document.querySelector('[data-zoom-card]')).toBeNull();
+    expect(detailCard()).toBeNull();
   });
 });

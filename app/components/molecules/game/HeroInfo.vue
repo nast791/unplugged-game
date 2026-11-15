@@ -58,6 +58,26 @@
               statLabel(heroStats.move, props.moveBonus)
             }}</span>
           </div>
+          <ATooltip v-if="terrains.length" :text="TOOLTIPS.playerCard.terrains()">
+            <div data-terrain-affinity class="flex items-center justify-between gap-8">
+              <span class="text-14 text-dim">Земли</span>
+              <div class="flex flex-wrap items-center justify-end gap-6">
+                <div
+                  v-for="terrain in terrains"
+                  :key="terrain"
+                  class="flex items-center gap-4"
+                  :data-terrain="terrain"
+                >
+                  <div
+                    class="border-line/70 size-10 shrink-0 rounded-full border"
+                    :style="{ background: terrainColor(terrain) }"
+                    aria-hidden="true"
+                  />
+                  <span class="text-17 font-semibold">{{ terrainLabel(terrain) }}</span>
+                </div>
+              </div>
+            </div>
+          </ATooltip>
           <div v-if="skill" class="border-line/70 flex flex-col gap-4 border-t-2 pt-8">
             <span class="text-14 font-semibold">{{ skill.title }}</span>
             <span class="text-13 text-dim leading-[1.3]">{{ skill.text }}</span>
@@ -130,13 +150,12 @@
           <div v-for="item in items" :key="item.id" class="flex items-center gap-10">
             <span
               class="flex size-26 shrink-0 items-center justify-center"
-              :style="{ '--item-color': item.color }"
+              :style="{ '--item-color': props.color || item.color }"
             >
               <Icon
                 v-if="itemIcon(item)"
                 :name="itemIcon(item)"
-                class="size-26!"
-                :class="isItemOn(item) ? 'text-[var(--item-color)]' : 'text-gray'"
+                class="size-26! text-[var(--item-color)]"
                 aria-hidden="true"
               />
             </span>
@@ -154,6 +173,7 @@
 </template>
 
 <script setup>
+import { terrainColor, terrainName } from '#shared/constants/terrain.js';
 import APicture from '~/components/atoms/APicture.vue';
 import AScroll from '~/components/atoms/AScroll.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
@@ -302,12 +322,15 @@ const initialsOf = name =>
 
 const skill = computed(() => props.catalog?.skill ?? null);
 
+const terrains = computed(() => (props.catalog?.terrainAffinity ?? []).map(String).filter(Boolean));
+
+const terrainLabel = terrain => terrainName(terrain);
+
 const itemCatalog = computed(
   () => new Map((props.catalog?.items ?? []).map(entry => [String(entry.id), entry])),
 );
 
 const isDead = fighter => Number(fighter?.currentHp ?? 0) <= 0;
-const isItemOn = item => String(item?.state ?? '') === 'active';
 
 const itemIcon = item => {
   const entry = itemCatalog.value.get(String(item?.group ?? item?.id));

@@ -1,4 +1,4 @@
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   CARD_MOMENT_PREFIXES,
   CARD_TEXT_OPTION_LABELS,
@@ -6,6 +6,8 @@ import {
 } from '~/constants/cards.js';
 import { HEALTH_THRESHOLDS, HEALTH_TONES } from '~/constants/health.js';
 import { ITEM_STATE_LABELS } from '~/constants/items.js';
+import { formatElapsed } from '~/composables/ui/useClock.js';
+import { battleResultShown } from './useBattleGate.js';
 import { useGameView } from './useGameView.js';
 
 const seatOf = player => Number(player?.order) || String(player?.id ?? '');
@@ -187,6 +189,25 @@ export const momentsOfStage = stage => {
   return [];
 };
 
+/** Подпись окна выбора карты из руки: что сделать сейчас, чтобы выбор применился. */
+export const handChoiceStatus = ({ picked = 0, required = false } = {}) => {
+  if (picked > 0) return 'Нажмите «Подтвердить»';
+  return required ? 'Выберите карту в окне руки' : 'Можете выбрать карту или закончить';
+};
+
+/** Кнопка окна выбора карты из руки: подтвердить отметку, выбрать карту или пропустить выбор. */
+export const handChoiceConfirmLabel = ({ picked = 0, required = false } = {}) => {
+  if (picked > 0) return 'Подтвердить';
+  return required ? 'Выберите карту' : 'Пропустить';
+};
+
+/** Время этапа в шапке партии: в расстановке — своё, с её началом партия начинает с нуля. */
+export const stageClockLabel = ({ placement = false, placementMs = 0, playMs = 0 } = {}) =>
+  formatElapsed(placement ? placementMs : playMs);
+
+/** Полка героев: свёрнутый вид её прячет всегда, а полка расстановки от свёрнутого вида не зависит. */
+export const railShown = ({ compact = false, modalOpen = false } = {}) => !modalOpen && !compact;
+
 export const useGameHelpers = () => {
   const { view, playerId } = useGameView();
 
@@ -200,8 +221,33 @@ export const useGameHelpers = () => {
   const you = computed(() => view.value?.you ?? playerId.value ?? null);
   const me = computed(() => findPlayer(you.value));
 
+  // итог битвы на экране: ход и остаток действий держим теми, что были в самой битве (m01938)
+  const battleTurn = ref(null);
+  const battleResult = battleResultShown();
+  watch(
+    () => Boolean(view.value?.combat),
+    open => {
+      const state = view.value;
+      if (!open || !state) return;
+      battleTurn.value = {
+        currentPlayerId: state.currentPlayer != null ? String(state.currentPlayer) : null,
+        actionsLeft: Number(state.actionsLeft) || 0,
+        actionsTotal: Number(state.actionsTotal) || 0,
+      };
+    },
+  );
+  watch(battleResult, shown => {
+    if (!shown) battleTurn.value = null;
+  });
+
+  const frozenTurn = computed(() => (battleResult.value ? battleTurn.value : null));
+
   const currentPlayerId = computed(() =>
-    view.value?.currentPlayer != null ? String(view.value.currentPlayer) : null,
+    frozenTurn.value
+      ? frozenTurn.value.currentPlayerId
+      : view.value?.currentPlayer != null
+        ? String(view.value.currentPlayer)
+        : null,
   );
   const currentPlayer = computed(() => findPlayer(currentPlayerId.value));
 
@@ -212,8 +258,12 @@ export const useGameHelpers = () => {
 
   const turn = computed(() => view.value?.turn ?? 0);
   const phase = computed(() => view.value?.phase ?? null);
-  const actionsLeft = computed(() => view.value?.actionsLeft ?? 0);
-  const actionsTotal = computed(() => view.value?.actionsTotal ?? 0);
+  const actionsLeft = computed(() =>
+    frozenTurn.value ? frozenTurn.value.actionsLeft : (view.value?.actionsLeft ?? 0),
+  );
+  const actionsTotal = computed(() =>
+    frozenTurn.value ? frozenTurn.value.actionsTotal : (view.value?.actionsTotal ?? 0),
+  );
   const actionsBonus = computed(() => view.value?.actionsBonus ?? 0);
   const winner = computed(() => view.value?.winner ?? null);
   const isGameOver = computed(() => phase.value === 'gameEnd' || winner.value != null);

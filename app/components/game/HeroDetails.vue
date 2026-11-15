@@ -8,6 +8,7 @@
         <span class="absolute inset-0 bg-[var(--hero-color)]/20" />
         <APicture
           v-if="hero.portrait"
+          provider="none"
           :src="hero.portrait"
           :alt="hero.name"
           :ui="{
@@ -28,7 +29,7 @@
         <p class="text-16 text-dim">
           {{ healthLine }}
           <template v-if="hero.terrainAffinity.length">
-            · стихии: {{ hero.terrainAffinity.map(terrainLabel).join(', ') }}
+            · земли: {{ hero.terrainAffinity.map(terrainLabel).join(', ') }}
           </template>
         </p>
       </div>

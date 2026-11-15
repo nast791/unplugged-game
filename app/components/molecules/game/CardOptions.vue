@@ -4,7 +4,7 @@
       <button
         v-if="interactive"
         type="button"
-        class="flex w-full items-center gap-6 text-left disabled:cursor-not-allowed"
+        class="flex w-full items-start gap-6 text-left disabled:cursor-not-allowed"
         :class="
           option.disabled
             ? 'text-dim'
@@ -15,7 +15,7 @@
       >
         <Icon
           :name="markIcon(option)"
-          class="size-16 shrink-0"
+          class="mt-[-1px] size-16 shrink-0"
           :class="pickedSet.has(String(option.id)) && 'text-success'"
           aria-hidden="true"
         />

@@ -2,28 +2,27 @@
   <PileWindow name="discard" :title="title" close-label="Закрыть сброс">
     <p v-if="!groups.length" class="text-dim text-15">Сброс пуст</p>
 
-    <section v-for="group in groups" :key="group.type" class="flex flex-col gap-12">
-      <h3 class="text-15 font-semibold">
-        {{ group.label }}
-        <span class="text-dim font-normal">· {{ group.count }}</span>
-      </h3>
-
-      <div class="flex flex-wrap items-start gap-12">
-        <div v-for="stack in group.stacks" :key="stack.id" class="flex items-start">
-          <Card
-            v-for="(card, index) in stack.cards"
-            :key="card.instanceId"
-            :card="card"
-            class="relative"
-            :class="index ? '-mt-6 -ml-224' : ''"
-          />
+    <ATabs v-else v-model="activeType" :items="tabs">
+      <template v-for="group in groups" :key="group.type" #[group.type]>
+        <div class="flex flex-wrap items-start gap-12">
+          <div v-for="stack in group.stacks" :key="stack.id" class="flex flex-col items-start">
+            <Card
+              v-for="(card, index) in stack.cards"
+              :key="card.instanceId"
+              :card="card"
+              mode="window"
+              :class="index ? '-mt-[260px] ml-12' : ''"
+              :style="{ zIndex: index + 1 }"
+            />
+          </div>
         </div>
-      </div>
-    </section>
+      </template>
+    </ATabs>
   </PileWindow>
 </template>
 
 <script setup>
+import ATabs from '~/components/atoms/ATabs.vue';
 import Card from '~/components/molecules/game/Card.vue';
 import PileWindow from '~/components/molecules/game/PileWindow.vue';
 import { CARD_TYPE_ORDER, cardType } from '~/constants/cards.js';
@@ -69,4 +68,18 @@ const byType = () => {
 };
 
 const groups = computed(byType);
+const tabLabel = group => `${group.label} · ${group.count}`;
+const tabs = computed(() =>
+  groups.value.map(group => ({ id: group.type, label: tabLabel(group) })),
+);
+const activeType = ref('');
+
+watch(
+  groups,
+  list => {
+    if (list.some(group => group.type === activeType.value)) return;
+    activeType.value = list[0]?.type ?? '';
+  },
+  { immediate: true },
+);
 </script>

@@ -1,13 +1,16 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
-import { computed, defineComponent, h, ref } from 'vue';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { computed, defineComponent, h, nextTick, ref } from 'vue';
 
 /**
  * Окно руки показывает карты **в том же порядке, что и рука на столе** (`HandFan`): окно — это крупный вид
  * руки, и пересортировка в нём заставляла бы игрока искать карту на новом месте. Порядок один на оба вида:
  * по типу (`CARD_TYPE_ORDER`), затем по значению (сильные первыми), затем по названию — его держит
  * `sortHandCards` из `useGameHelpers`.
+ *
+ * Второй режим окна — выбор карты из руки (`choiceHand`): карта вида «посмотрите руку противника и выберите
+ * карту» открывает окно руки с настоящими картами, а клик по карте отмечает вариант (применяет общая кнопка).
  */
 globalThis.computed = computed;
 globalThis.ref = ref;
@@ -31,15 +34,42 @@ const players = ref([
   },
 ]);
 
+const payload = ref({ playerId: 'dorothy' });
+const choiceHand = ref(null);
+const choicePicked = ref([]);
+const choiceRequired = ref(false);
+const choiceConfirmEnabled = ref(false);
+const pickChoiceCard = vi.fn();
+const onFinishAction = vi.fn();
+const openModal = vi.fn();
+const closeModal = vi.fn();
+
 vi.mock('~/composables/game/useGameSession.js', () => ({
-  useGameSession: () => ({ players }),
+  useGameSession: () => ({
+    players,
+    choiceHand,
+    choicePicked,
+    choiceRequired,
+    choiceConfirmEnabled,
+    pickChoiceCard,
+    onFinishAction,
+  }),
 }));
 
 vi.mock('~/composables/ui/useModal.js', () => ({
-  useModalPayload: () => ref({ playerId: 'dorothy' }),
+  useModalPayload: () => payload,
+  openModal,
+  closeModal,
 }));
 
-// Окно-рамка: проверяем только порядок карт, вид рамки рисует `PileWindow`.
+// Кнопка окна тянет конфиг приложения (`useUI` → `useAppConfig`), которого в тесте нет.
+vi.mock('~/composables/ui/useUI', async importOriginal => {
+  const actual = await importOriginal();
+  const { computed } = await import('vue');
+  return { ...actual, useUI: () => ({ styles: computed(() => ({})) }) };
+});
+
+// Окно-рамка: проверяем только карты, вид рамки рисует `PileWindow`.
 vi.mock('~/components/molecules/game/PileWindow.vue', async () => {
   const { defineComponent, h } = await import('vue');
   return {
@@ -47,7 +77,8 @@ vi.mock('~/components/molecules/game/PileWindow.vue', async () => {
       name: 'PileWindow',
       props: { title: { type: String, default: '' } },
       setup(props, { slots }) {
-        return () => h('div', { 'data-pile-window': props.title }, slots.default?.());
+        return () =>
+          h('div', { 'data-pile-window': props.title }, [slots.default?.(), slots.footer?.()]);
       },
     }),
   };
@@ -58,12 +89,17 @@ vi.mock('~/components/molecules/game/Card.vue', async () => {
   return {
     default: defineComponent({
       name: 'Card',
-      props: { card: { type: Object, required: true } },
+      props: {
+        card: { type: Object, required: true },
+        disabled: { type: Boolean, default: false },
+      },
       setup(props) {
         return () =>
           h('div', {
-            'data-card': String(props.card?.instanceId ?? ''),
+            'data-card': String(props.card?.instanceId ?? props.card?.optionId ?? ''),
             'data-card-title': String(props.card?.title ?? ''),
+            'data-card-text': String(props.card?.text ?? ''),
+            'data-card-disabled': props.disabled ? 'yes' : 'no',
           });
       },
     }),
@@ -74,6 +110,57 @@ const { sortHandCards } = await import('~/composables/game/useGameHelpers.js');
 const HandWindow = (await import('~/components/molecules/game/HandWindow.vue')).default;
 
 const keysOf = wrapper => wrapper.findAll('[data-card]').map(node => node.attributes('data-card'));
+const titlesOf = wrapper =>
+  wrapper.findAll('[data-card]').map(node => node.attributes('data-card-title'));
+
+const enemyCards = () => [
+  {
+    optionId: 'mirror_1',
+    cardId: 'mirror_1',
+    id: 'mirror',
+    title: 'Ледяное зеркало',
+    type: 'attack',
+    value: 3,
+    bonus: 2,
+    text: 'ВО ВРЕМЯ БИТВЫ: Сбросьте карту из руки противника.',
+    zone: 'hand',
+    ownerId: 'medusa',
+  },
+  {
+    optionId: 'barrier_1',
+    cardId: 'barrier_1',
+    id: 'barrier',
+    title: 'Хрустальный барьер',
+    type: 'defense',
+    value: 4,
+    bonus: 1,
+    text: 'ЗАЩИТА 4.',
+    zone: 'hand',
+    ownerId: 'medusa',
+  },
+];
+
+beforeEach(() => {
+  players.value = [
+    {
+      id: 'dorothy',
+      order: 1,
+      name: 'Игрок',
+      hand,
+      fighters: [{ id: 'dorothy-hero', type: 'hero', name: 'Дороти' }],
+      lost: [],
+    },
+  ];
+  payload.value = { playerId: 'dorothy' };
+  choiceHand.value = null;
+  choicePicked.value = [];
+  choiceRequired.value = false;
+  choiceConfirmEnabled.value = false;
+  pickChoiceCard.mockClear();
+  onFinishAction.mockClear();
+  openModal.mockClear();
+  closeModal.mockClear();
+});
 
 describe('окно руки', () => {
   it('сортирует карты как рука на столе: по типу, затем по значению, затем по названию', () => {
@@ -107,5 +194,53 @@ describe('окно руки', () => {
     const wrapper = mount(HandWindow);
     expect(keysOf(wrapper)).toEqual([]);
     expect(wrapper.text()).toContain('скрыты от вас');
+  });
+});
+
+describe('окно руки выбирает карту из руки', () => {
+  it('показывает карты чужой руки целиком: название, текст и само окно открывается само', () => {
+    choiceHand.value = { playerId: 'medusa', name: 'Медуза', cards: enemyCards() };
+    const wrapper = mount(HandWindow);
+
+    expect(titlesOf(wrapper)).toEqual(['Ледяное зеркало', 'Хрустальный барьер']);
+    expect(wrapper.find('[data-pile-window]').attributes('data-pile-window')).toBe('Рука: Медуза');
+    // карта, которую выбирают, не выглядит закрытой: замок рисуют только недоступным
+    expect(
+      wrapper.findAll('[data-card]').map(node => node.attributes('data-card-disabled')),
+    ).toEqual(['no', 'no']);
+    // окно руки открывается само — игроку не нужно искать его в панели
+    expect(openModal).toHaveBeenCalledWith('hand', { playerId: 'medusa', picking: true });
+  });
+
+  it('клик по карте отмечает вариант, кнопка окна подтверждает выбор', async () => {
+    choiceHand.value = { playerId: 'medusa', name: 'Медуза', cards: enemyCards() };
+    const wrapper = mount(HandWindow);
+    const confirm = () => wrapper.find('[data-hand-choice-ok]');
+
+    expect(confirm().attributes('disabled')).toBeDefined();
+
+    await wrapper.findAll('[data-hand-choice]')[1].trigger('click');
+    expect(pickChoiceCard).toHaveBeenCalledTimes(1);
+    expect(pickChoiceCard.mock.calls[0][0].optionId).toBe('barrier_1');
+
+    choicePicked.value = ['barrier_1'];
+    choiceConfirmEnabled.value = true;
+    await nextTick();
+
+    expect(confirm().attributes('disabled')).toBeUndefined();
+    expect(confirm().text()).toBe('Подтвердить');
+    await confirm().trigger('click');
+    expect(onFinishAction).toHaveBeenCalled();
+  });
+
+  it('окно закрывается само, когда выбор из руки закончен', async () => {
+    choiceHand.value = { playerId: 'medusa', name: 'Медуза', cards: enemyCards() };
+    mount(HandWindow);
+    expect(openModal).toHaveBeenCalled();
+
+    choiceHand.value = null;
+    await nextTick();
+
+    expect(closeModal).toHaveBeenCalledWith('hand');
   });
 });

@@ -15,8 +15,9 @@ globalThis.ref = ref;
 globalThis.onMounted = onMounted;
 
 const { useBoardMap } = await import('~/composables/ui/useBoardMap.js');
-const { TOKEN, nodeRadius, tokenFaceRadius, tokenRadius } =
+const { PLACEMENT, TOKEN, nodeRadius, tokenFaceRadius, tokenRadius } =
   await import('~/composables/ui/useBoardGeometry.js');
+const { HERO_INFO_TONE } = await import('~/constants/colors.js');
 const { terrainColor } = await import('#shared/constants/terrain.js');
 
 const Probe = defineComponent({
@@ -32,6 +33,7 @@ const Probe = defineComponent({
     pickedFighterIds: { type: Array, default: () => [] },
     framedFighterIds: { type: Array, default: () => [] },
     battleRoles: { type: Object, default: () => ({}) },
+    skillWindow: { type: Boolean, default: false },
     pickFighters: { type: Boolean, default: false },
   },
   setup(props) {
@@ -171,6 +173,34 @@ describe('useBoardMap: что рисуется', () => {
     expect(board.isActiveCell(second)).toBe(true);
     expect(board.isActiveCell(first)).toBe(false);
   });
+
+  /**
+   * Кольцо-кандидат и свечение рисуются снаружи кружка, поэтому клик по самой подсветке обязан попадать
+   * в клетку: иначе клетка «выделена», а клик уходит в пустую бумагу и окно выбора молча ждёт
+   * (баг «Путь на закат» Анубиса, m00001).
+   */
+  it('область клетки накрывает кольцо и свечение, а не только кружок', async () => {
+    const { board } = mountMap({ highlightedCellIds: [2] });
+    const cell = value(board.nodes)[1];
+    const hit = board.cellHitConfig(cell);
+    const glow = board.cellGlowConfig(cell);
+    const ring = board.cellRingConfig(cell);
+
+    expect(hit.listening).toBe(true);
+    expect(hit.fill).toBeTruthy();
+    expect(hit.radius).toBeGreaterThanOrEqual(glow.radius + glow.strokeWidth / 2);
+    expect(hit.radius).toBeGreaterThanOrEqual(ring.radius + ring.strokeWidth / 2);
+  });
+
+  it('бросок на подсветку тоже находит клетку, а за областью клетки — уже нет', async () => {
+    const { board } = mountMap({ highlightedCellIds: [2] });
+    const cell = value(board.nodes)[1];
+    const reach = board.cellHitConfig(cell).radius;
+    const transform = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
+
+    expect(board.cellAt({ x: cell.x + reach - 1, y: cell.y }, transform)).toBe('2');
+    expect(board.cellAt({ x: cell.x + reach + 1, y: cell.y }, transform)).toBe(null);
+  });
 });
 
 describe('useBoardMap: метки битвы', () => {
@@ -189,6 +219,24 @@ describe('useBoardMap: метки битвы', () => {
     expect(attacker.strokeWidth).toBe(5);
     expect(defender.stroke).toBe('#0ea5e9');
     expect(defender.strokeWidth).toBe(5);
+    // кольцо стоит на границе клетки — там же, где кольцо доступных клеток: фишка обведена снаружи
+    const cell = nodeRadius(map.settings.nodeSize);
+    expect(attacker.radius).toBe(cell + PLACEMENT.stroke);
+    expect(defender.radius).toBe(cell + PLACEMENT.stroke);
+  });
+
+  it('волна битвы расходится от того же внешнего кольца, что и обводка', () => {
+    const { board } = mountMap({
+      battleRoles: { attackerFighterId: 'anubis', defenderFighterId: 'amat' },
+      pickFighters: true,
+      highlightedFighterIds: ['anubis', 'amat'],
+    });
+    const cell = nodeRadius(map.settings.nodeSize);
+    const wave = board.fighterPulseConfig(tokenOf(board, 'anubis'));
+
+    expect(wave.stroke).toBe('#dc2626');
+    expect(wave.baseRadius).toBe(cell + PLACEMENT.stroke);
+    expect(board.fighterPulseConfig(tokenOf(board, 'amat')).stroke).toBe('#0ea5e9');
   });
 
   it('роль в битве сильнее подсветки фазы: атакующий остаётся красным, даже если фаза зовёт его голубым', () => {
@@ -214,26 +262,26 @@ describe('useBoardMap: метки битвы', () => {
     expect(board.fighterHaloConfig(tokenOf(board, 'anubis')).stroke).toBe('#dc2626');
   });
 
-  it('рамка фазы никогда не красная: красный остаётся за тем, кто бьёт', () => {
+  it('рамка фазы акцентная, а не голубая: синего на доске больше нет', () => {
     const { board } = mountMap({
       framedFighterIds: ['anubis'],
       highlightedFighterIds: ['amat'],
     });
 
     const framed = board.fighterHaloConfig(tokenOf(board, 'anubis'));
-    expect(framed.stroke).toBe('#0ea5e9');
+    expect(framed.stroke).toBe('#ff7f50');
     expect(framed.strokeWidth).toBe(5);
-    expect(board.fighterHaloConfig(tokenOf(board, 'amat')).stroke).toBe('#0ea5e9');
+    expect(board.fighterHaloConfig(tokenOf(board, 'amat')).stroke).toBe('#ff7f50');
 
     const attacker = mountMap({
       battleRoles: { attackerFighterId: 'anubis' },
       framedFighterIds: ['anubis', 'amat'],
     }).board;
     expect(attacker.fighterHaloConfig(tokenOf(attacker, 'anubis')).stroke).toBe('#dc2626');
-    expect(attacker.fighterHaloConfig(tokenOf(attacker, 'amat')).stroke).toBe('#0ea5e9');
+    expect(attacker.fighterHaloConfig(tokenOf(attacker, 'amat')).stroke).toBe('#ff7f50');
   });
 
-  it('отмеченная цель — рамка активности, как у выбранного бойца, без заливки', () => {
+  it('отмеченная цель — акцентная рамка активности, как у выбранного бойца, без заливки', () => {
     const { board } = mountMap({
       highlightedFighterIds: ['amat'],
       pickedFighterIds: ['amat'],
@@ -241,7 +289,7 @@ describe('useBoardMap: метки битвы', () => {
 
     const halo = board.fighterHaloConfig(tokenOf(board, 'amat'));
     expect(halo.fill).toBe('transparent');
-    expect(halo.stroke).toBe('#0ea5e9');
+    expect(halo.stroke).toBe('#ff7f50');
     expect(halo.strokeWidth).toBe(7);
     expect(halo.opacity).toBe(1);
     // кандидат без отметки остаётся только подсвеченным
@@ -274,7 +322,7 @@ describe('useBoardMap: выделение фишки', () => {
     expect(shadow.radiusY).toBeLessThan(cell);
   });
 
-  it('рамку фазы выбор не отменяет: кольцо остаётся голубым, акцент — в тени', () => {
+  it('рамку фазы выбор не отменяет: кольцо остаётся акцентным, акцент — в тени', () => {
     const { board } = mountMap({
       selectedFighterId: 'anubis',
       framedFighterIds: ['anubis'],
@@ -282,11 +330,11 @@ describe('useBoardMap: выделение фишки', () => {
     });
 
     const halo = board.fighterHaloConfig(tokenOf(board, 'anubis'));
-    expect(halo.stroke).toBe('#0ea5e9');
+    expect(halo.stroke).toBe('#ff7f50');
     expect(halo.strokeWidth).toBe(5);
-    // соседняя фишка без выбора остаётся голубой рамкой фазы, тень у неё тёмная
+    // соседняя фишка без выбора остаётся акцентной рамкой фазы, тень у неё тёмная
     const other = mountMap({ framedFighterIds: ['amat'] }).board;
-    expect(other.fighterHaloConfig(tokenOf(other, 'amat')).stroke).toBe('#0ea5e9');
+    expect(other.fighterHaloConfig(tokenOf(other, 'amat')).stroke).toBe('#ff7f50');
   });
 
   it('тень обычной фишки тёмная, а не акцентная', () => {
@@ -308,6 +356,67 @@ describe('useBoardMap: выделение фишки', () => {
     // и тень у него обычная: акцент не перебивает бой
     const shadow = board.fighterShadowConfig(tokenOf(board, 'anubis'));
     expect(shadow.fillRadialGradientColorStops[1]).toContain('15, 23, 42');
+  });
+});
+
+describe('useBoardMap: окно умения', () => {
+  const tokenOf = (board, id) =>
+    value(board.placedFighters).find(token => String(token.fighter.id) === id);
+
+  it('клетки умения светятся запасным тоном Анубиса — тем же внешним кольцом, что и перемещение', () => {
+    const { board } = mountMap({ highlightedCellIds: [2], skillWindow: true });
+    const cell = value(board.nodes)[1];
+    const ring = board.cellRingConfig(cell);
+    const glow = board.cellGlowConfig(cell);
+
+    expect(ring.stroke).toBe(HERO_INFO_TONE);
+    expect(glow.stroke).toBe(HERO_INFO_TONE);
+    expect(glow.shadowColor).toBe(HERO_INFO_TONE);
+    // кольцо остаётся внешним: граница клетки родная, обводка живёт снаружи
+    expect(ring.radius).toBe(nodeRadius(map.settings.nodeSize) + PLACEMENT.stroke);
+    expect(board.cellPulseConfig(cell).stroke).toBe(HERO_INFO_TONE);
+    expect(board.nodeCircleConfig(cell).stroke).toBe('#1E293B');
+  });
+
+  it('без умения клетки остаются голубыми: запасной тон — только для способности героя', () => {
+    const { board } = mountMap({ highlightedCellIds: [2] });
+
+    expect(board.cellRingConfig(value(board.nodes)[1]).stroke).toBe('#22d3ee');
+  });
+
+  it('кандидаты умения подсвечены голубыми клетками, а сами фишки — без колец', () => {
+    const { board } = mountMap({ highlightedFighterIds: ['anubis'], skillWindow: true });
+    const cell = value(board.nodes)[0];
+    const halo = board.fighterHaloConfig(tokenOf(board, 'anubis'));
+
+    // фишку не обводим ничем: игрок читает клетки под бойцами
+    expect(halo.strokeWidth).toBe(0);
+    // клетки кандидатов — тот же голубой, что у перемещения
+    expect(board.cellRingConfig(cell).stroke).toBe('#22d3ee');
+    expect(board.cellGlowConfig(cell).stroke).toBe('#22d3ee');
+  });
+
+  it('отмеченный умением дух светится как активная фишка: коралловая тень вместо кольца', () => {
+    const { board } = mountMap({
+      highlightedFighterIds: ['amat'],
+      pickedFighterIds: ['amat'],
+      skillWindow: true,
+    });
+    const token = tokenOf(board, 'amat');
+    const halo = board.fighterHaloConfig(token);
+    const shadow = board.fighterShadowConfig(token);
+
+    expect(halo.strokeWidth).toBe(0);
+    expect(shadow.fillRadialGradientColorStops[1]).toContain('255, 127, 80');
+    expect(shadow.y).toBe(0);
+  });
+
+  it('отмеченная карта, а не умение, остаётся акцентной рамкой активности', () => {
+    const { board } = mountMap({ highlightedFighterIds: ['amat'], pickedFighterIds: ['amat'] });
+    const halo = board.fighterHaloConfig(tokenOf(board, 'amat'));
+
+    expect(halo.stroke).toBe('#ff7f50');
+    expect(halo.strokeWidth).toBe(7);
   });
 });
 
@@ -424,16 +533,16 @@ describe('useBoardMap: мигание там, где нужен выбор', () 
     expect(board.cellPulseConfig(free).pulseRing).toBe(true);
   });
 
-  it('бойцы мигают только когда фаза просит клик по бойцу', async () => {
+  it('бойцы-кандидаты мигают акцентным свечением, остальные — нет', async () => {
     const { board, wrapper } = mountMap({ highlightedFighterIds: ['amat'] });
 
-    expect(board.isPulsingFighter(tokenOf(board, 'amat'))).toBe(false);
-
-    await wrapper.setProps({ pickFighters: true });
-
+    // кандидат выбора, который пришёл от движка (окно цели карты, защита), мигает сам по себе
     expect(board.isPulsingFighter(tokenOf(board, 'amat'))).toBe(true);
     expect(board.isPulsingFighter(tokenOf(board, 'anubis'))).toBe(false);
     expect(board.fighterPulseConfig(tokenOf(board, 'amat')).pulseRing).toBe(true);
+
+    await wrapper.setProps({ pickFighters: true });
+    expect(board.isPulsingFighter(tokenOf(board, 'amat'))).toBe(true);
   });
 
   it('пульс не участвует в ровных конфигах: меняет узел Konva, а не разметку', () => {

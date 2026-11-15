@@ -1,0 +1,10 @@
+﻿
+ RUN  v4.1.10 C:/UnPlugged/unplugged-game
+
+ ✓ |node| tests/unit/client/battle-turn-freeze.test.js (2 tests) 8ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  18:02:34
+   Duration  615ms (transform 107ms, setup 212ms, import 112ms, tests 8ms, environment 0ms)
+

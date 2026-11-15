@@ -11,18 +11,20 @@ export default {
       move: 2,
       attackRange: 3,
       size: 1,
+      image: 'avatar-snow-queen.webp',
     },
   ],
   assistants: [
     {
       id: 'crow',
-      name: 'Кристальные вороны',
+      name: 'Кристальная ворона',
       type: 'assistant',
       count: 2,
       hp: 2,
       move: 3,
       attackRange: 1,
       size: 1,
+      image: 'avatar-crow.webp',
     },
   ],
   items: [
@@ -73,5 +75,10 @@ export default {
         then: [{ action: 'SET_CARDS', op: 'discard', from: 'deck', count: 1 }],
       },
     ],
+  },
+  // Арты лежат рядом с паком (`images/`), а наружу отдаются маршрутом
+  // `/api/content/heroes/snow-queen/images/{файл}` — путь собирает `server/utils.js: heroImageUrl`.
+  images: {
+    hero: 'hero.webp',
   },
 };

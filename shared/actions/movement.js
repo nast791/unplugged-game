@@ -5,11 +5,7 @@ import { openMovementChoice, finishMovementChoice } from '#shared/actions/combat
 import { addTemporaryTerrain } from '#shared/actions/terrain.js';
 import { isTerrainId } from '#shared/constants/terrain.js';
 import { pathInRadius } from '#shared/helpers/board.js';
-import {
-  findCardInHand,
-  findPlayer,
-  isEnemyPlayer,
-} from '#shared/helpers/base.js';
+import { findCardInHand, findPlayer, isEnemyPlayer } from '#shared/helpers/base.js';
 import {
   blockedCellsForStep,
   bonusCardIds,
@@ -276,8 +272,9 @@ const stepMovement = (partyState, action) => {
   // урон на проходе: маршрут нужен только тому перемещению, которое его наносит (или крадёт здоровье)
   const damage = Number(movement.damageOnPass) || 0;
   const heal = Number(movement.healOnPass) || 0;
+  const placesTerrain = movement.terrainOnStep != null && movement.teleport !== true;
   const route =
-    damage > 0 || heal > 0
+    damage > 0 || heal > 0 || placesTerrain
       ? stepRoute(partyState, movement, playerId, fighter, action.cellId)
       : null;
 
@@ -288,9 +285,11 @@ const stepMovement = (partyState, action) => {
     ...(movement.teleport === true ? { teleport: true } : {}),
   });
 
-  // клетка, на которую ступили, получает временную стихию: телепорт — не шаг
-  if (movement.terrainOnStep != null && movement.teleport !== true) {
-    state = addTemporaryTerrain(state, action.cellId, movement.terrainOnStep, playerId);
+  // временная стихия ложится на весь пройденный путь, а не только на клетку прихода: телепорт — не шаг
+  if (placesTerrain) {
+    for (const cellId of route?.length ? route : [action.cellId]) {
+      state = addTemporaryTerrain(state, cellId, movement.terrainOnStep, playerId);
+    }
   }
 
   const move = { fighterId, from, to: action.cellId };

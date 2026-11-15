@@ -18,27 +18,30 @@ const session = vi.hoisted(() => ({
   targeting: [],
   count: 1,
   picked: [],
+  hand: null,
+  required: false,
   ok: { visible: false, enabled: false, label: null },
 }));
 
 vi.mock('~/composables/game/useGameSession.js', async () => {
   const { computed } = await import('vue');
+  const merged = () => {
+    const byId = new Map();
+    for (const entry of [...session.options, ...session.targeting]) {
+      byId.set(entry.id, {
+        ...entry,
+        optionId: entry.id,
+        title: entry.text,
+        disabled: entry.disabled === true,
+      });
+    }
+    return [...byId.values()];
+  };
   return {
     useGameSession: () => ({
-      choices: computed(() =>
-        session.options.map(option => ({
-          optionId: option.id,
-          title: option.text,
-          disabled: option.disabled === true,
-        })),
-      ),
-      targetingChoices: computed(() =>
-        session.targeting.map(option => ({
-          optionId: option.id,
-          title: option.text,
-          disabled: option.disabled === true,
-        })),
-      ),
+      choiceEntries: computed(merged),
+      choiceHand: computed(() => session.hand),
+      choiceRequired: computed(() => session.required === true),
       choiceCount: computed(() => session.count),
       choicePicked: computed(() => session.picked),
       choiceComplete: computed(() => session.picked.length >= session.count),
@@ -49,6 +52,13 @@ vi.mock('~/composables/game/useGameSession.js', async () => {
       onFinishAction: () => undefined,
     }),
   };
+});
+
+// Кнопка тянет конфиг приложения (`useUI` → `useAppConfig`), которого в тесте нет: классы не проверяем.
+vi.mock('~/composables/ui/useUI', async importOriginal => {
+  const actual = await importOriginal();
+  const { computed } = await import('vue');
+  return { ...actual, useUI: () => ({ styles: computed(() => ({})) }) };
 });
 
 // Тултип тянет конфиг Nuxt (`useUI` → `useAppConfig`): кнопке от него нужен только текст подсказки.
@@ -95,12 +105,15 @@ beforeEach(() => {
   session.targeting = [];
   session.count = 1;
   session.picked = [];
+  session.hand = null;
+  session.required = false;
   session.ok = { visible: false, enabled: false, label: null };
 });
 
-const finish = () => mount(FinishButton, {
-  global: { stubs: { NuxtIcon: IconStub, Icon: IconStub } },
-});
+const finish = () =>
+  mount(FinishButton, {
+    global: { stubs: { NuxtIcon: IconStub, Icon: IconStub } },
+  });
 /** Активность кнопки — на самой кнопке: обвязка тултипа её состояние не значит. */
 const finishDisabled = wrapper => wrapper.find('button').attributes('disabled');
 
@@ -111,31 +124,30 @@ describe('окно вариантов свойства: мультивыбор',
     session.picked = [];
 
     expect(panel().findAll('[data-icon="lucide:square"]')).toHaveLength(3);
-    expect(panel().text()).toContain('Выберите варианты (нужно 2)');
+    // статус живёт в подсказке сверху, а не в окне выбора
+    expect(panel().text()).not.toContain('Выберите варианты');
 
     session.picked = ['draw'];
     const half = panel();
-    // отмеченный вариант — зелёная галка, статус показывает, сколько уже отмечено
+    // отмеченный вариант — зелёная галка
     expect(half.find('[data-icon="lucide:check"]').exists()).toBe(true);
     expect(half.findAll('[data-icon="lucide:square"]')).toHaveLength(2);
-    expect(half.text()).toContain('Выбрано 1 из 2');
 
     session.picked = ['draw', 'heal'];
-    expect(panel().text()).toContain('Нажмите «Подтвердить»');
+    expect(panel().findAll('[data-icon="lucide:check"]')).toHaveLength(2);
   });
 
-  it('на одну цель поведение прежнее: радио, галка на отмеченном и старые подписи', () => {
+  it('на одну цель поведение прежнее: радио и галка на отмеченном', () => {
     session.options = threeOptions();
     session.count = 1;
     session.picked = [];
 
     expect(panel().findAll('[data-icon="lucide:circle"]')).toHaveLength(3);
-    expect(panel().text()).toContain('Выберите вариант');
+    expect(panel().text()).not.toContain('Выберите вариант');
 
     session.picked = ['heal'];
     const marked = panel();
     expect(marked.find('[data-icon="lucide:check"]').exists()).toBe(true);
-    expect(marked.text()).toContain('Нажмите «Подтвердить»');
   });
 });
 
@@ -151,8 +163,8 @@ describe('подписи вариантов: текст свойства, а н�
     expect(window.findAll('[data-icon="lucide:circle"]')).toHaveLength(3);
     expect(window.text()).toContain('Восстановите Ифриту 2 здоровья.');
     expect(window.text()).not.toContain('heal');
-    // текст варианта стоит по центру кружка-радио, а не чуть выше
-    expect(window.find('button').classes()).toContain('items-center');
+    // кружок-радио держится первой строки текста, а не середины многострочного варианта
+    expect(window.find('button').classes()).toContain('items-start');
   });
 
   it('один вариант не дублируется, когда движок отдал и choices, и кандидатов', () => {
@@ -162,6 +174,43 @@ describe('подписи вариантов: текст свойства, а н�
     const window = panel();
     expect(window.findAll('button')).toHaveLength(3);
     expect(window.text().match(/добор/g)).toHaveLength(1);
+  });
+});
+
+describe('выбор карты из руки: окно руки, а не список вариантов', () => {
+  it('карты руки не идут в список вариантов — их открывают в окне руки', async () => {
+    session.hand = {
+      playerId: 'medusa',
+      name: 'Медуза',
+      cards: [
+        { optionId: 'mirror_1', title: 'Ледяное зеркало', type: 'attack', value: 3, zone: 'hand' },
+      ],
+    };
+    session.required = true;
+
+    const { closeAllModals, getActiveModals } = await import('~/composables/ui/useModal.js');
+    closeAllModals();
+
+    const window = panel();
+    // карта — не строка подписи: списка вариантов нет вовсе
+    expect(window.findAll('[data-icon="lucide:circle"]')).toHaveLength(0);
+    expect(window.text()).toContain('Выберите карту в окне руки');
+    expect(window.text()).not.toContain('Ледяное зеркало');
+
+    await window.find('[data-hand-open]').trigger('click');
+    expect(getActiveModals().value).toContain('hand');
+    closeAllModals();
+  });
+
+  it('отмеченная карта просит подтверждения', () => {
+    session.hand = {
+      playerId: 'medusa',
+      name: 'Медуза',
+      cards: [{ optionId: 'mirror_1', zone: 'hand' }],
+    };
+    session.picked = ['mirror_1'];
+
+    expect(panel().text()).toContain('Нажмите «Подтвердить»');
   });
 });
 

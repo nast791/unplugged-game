@@ -1,0 +1,206 @@
+﻿diff --git a/app/components/organisms/game/BattleWindow.vue b/app/components/organisms/game/BattleWindow.vue
+index 514ee6a..1b8de80 100644
+--- a/app/components/organisms/game/BattleWindow.vue
++++ b/app/components/organisms/game/BattleWindow.vue
+@@ -35,10 +35,12 @@
+           data-battle-mini
+           class="rounded-6 border-accent/60 bg-surface/95 backdrop-blur-16 flex touch-none items-center gap-10 border-2 px-16 py-10 shadow-2xl"
+           :aria-label="TOOLTIPS.battle.expand()"
++          @pointerdown="beginMiniDrag"
+           @click="expandAfterDrag"
+         >
+           <Icon name="lucide:swords" class="text-accent size-20 shrink-0" aria-hidden="true" />
+           <span class="text-16 font-semibold tracking-[0.02em] uppercase">Битва</span>
++          <span class="text-15 text-dim shrink-0">·</span>
+           <span class="text-15 text-dim">{{ stageLabel }}</span>
+           <span v-if="numbers" class="text-16 lining-nums">
+             {{ numbers.attack }} : {{ numbers.defense }}
+@@ -51,10 +53,12 @@
+     <div v-else data-battle-body :class="windowClass" @click="onBodyClick">
+       <header
+         class="border-line flex items-center gap-12 border-b-2 px-16 py-10"
++        :class="isDragging ? 'cursor-grabbing' : 'cursor-grab'"
+         @pointerdown="beginDrag"
+       >
+         <Icon name="lucide:swords" class="text-accent size-20 shrink-0" aria-hidden="true" />
+         <span class="text-16 font-semibold tracking-[0.02em] uppercase">Битва</span>
++        <span class="text-15 text-dim shrink-0">·</span>
+         <span class="text-15 text-dim min-w-0 truncate">{{ stageLabel }}</span>
+ 
+         <div class="ml-auto flex shrink-0 items-center gap-8">
+@@ -87,7 +91,7 @@
+           :side="attacker"
+           :highlight="activeMoments"
+           :boost="boostSide === 'attacker' ? boostCard : null"
+-          :damage="damageOf(attacker)"
++          :taken="takenOf(attacker)"
+           :back="backOf(attacker)"
+         />
+ 
+@@ -108,41 +112,22 @@
+           :side="defender"
+           :highlight="activeMoments"
+           :boost="boostSide === 'defender' ? boostCard : null"
+-          :damage="damageOf(defender)"
++          :taken="takenOf(defender)"
+           :back="backOf(defender)"
+         />
+       </div>
+ 
+-      <div
+-        v-if="numbers"
+-        class="border-line/60 mx-12 flex shrink-0 items-center justify-center gap-10 border-y-2 py-6"
+-      >
+-        <span class="text-13 text-dim tracking-[0.08em] uppercase">Числа</span>
+-        <span class="text-18 lining-nums">{{ numbers.attack }} − {{ numbers.defense }}</span>
+-        <span v-if="damageAmount != null" class="text-18 text-danger font-semibold lining-nums">
+-          урон {{ damageAmount }}
+-        </span>
+-        <span v-else class="text-15 text-dim">урон ещё не считали</span>
+-        <span
+-          v-if="damageAmount != null && numbers.effectDamage"
+-          data-battle-effect-damage
+-          class="text-18 text-danger font-semibold lining-nums"
+-        >
+-          + {{ numbers.effectDamage }}
+-        </span>
+-        <span v-if="damageAmount != null && numbers.effectDamage" class="text-13 text-dim">
+-          из свойств
+-        </span>
+-      </div>
+-
+       <AScroll class="min-h-0 flex-1 px-12 py-8">
+         <ol v-if="steps.length" class="flex flex-col gap-4">
+           <li
+             v-for="(step, index) in steps"
+             :key="step.key"
+             data-battle-step
+-            class="rounded-4 flex items-start gap-8 px-6 py-2"
+-            :class="index === activeStepIndex && 'bg-info/10'"
++            class="rounded-4 flex cursor-pointer items-start gap-8 px-6 py-2"
++            :class="stepTone(index)"
++            @mouseenter="hoverStep = index"
++            @mouseleave="hoverStep = -1"
++            @click="pickedStep = pickedStep === index ? -1 : index"
+           >
+             <Icon
+               :name="shown(index) ? step.statusIcon : 'lucide:hourglass'"
+@@ -155,12 +140,8 @@
+               <span v-if="step.property" data-battle-step-property class="text-13 text-ink">
+                 {{ step.property }}
+               </span>
+-              <span
+-                v-if="shown(index) && step.damage > 0"
+-                data-battle-step-damage
+-                class="text-13 text-danger font-semibold lining-nums"
+-              >
+-                урон {{ step.damage }}
++              <span v-if="shown(index) && step.result" data-battle-step-result class="text-13">
++                <span class="text-dim">Результат: </span>{{ step.result }}
+               </span>
+             </div>
+ 
+@@ -175,7 +156,7 @@
+           </li>
+         </ol>
+ 
+-        <p v-else class="text-14 text-dim">
++        <p v-else-if="revealed" class="text-14 text-dim">
+           У карт этой битвы свойств нет — считаются только числа
+         </p>
+       </AScroll>
+@@ -186,10 +167,6 @@
+         class="border-line/60 flex shrink-0 items-center justify-between gap-12 border-t-2 px-12 py-8"
+       >
+         <div class="flex min-w-0 flex-col gap-2">
+-          <span class="text-13 text-dim">Битва закончена</span>
+-          <span v-if="result" data-battle-totals class="text-14 text-ink min-w-0 truncate">
+-            {{ result.line }}
+-          </span>
+           <template v-for="side in result?.sides ?? []" :key="side.key">
+             <span
+               v-if="side.damage > 0"
+@@ -197,11 +174,6 @@
+               class="text-13 text-danger font-semibold lining-nums"
+             >
+               {{ side.name }}: урон {{ side.damage }}
+-              <span class="text-dim font-normal">
+-                (карты {{ side.card }}
+-                <template v-if="side.effect">+ свойства {{ side.effect }}</template
+-                >)
+-              </span>
+             </span>
+           </template>
+         </div>
+@@ -243,6 +215,7 @@ import Card from '~/components/molecules/game/Card.vue';
+ import { TOOLTIPS } from '~/constants/tooltips.js';
+ import { useHeroPacks } from '~/composables/api/heroes.js';
+ import { BATTLE_MIN_SIZE, useBattleView } from '~/composables/game/useBattleView.js';
++import { registerBattleDismiss, setBattleResultShown } from '~/composables/game/useBattleGate.js';
+ import { useGameSession } from '~/composables/game/useGameSession.js';
+ import { useDraggable } from '~/composables/ui/useDraggable.js';
+ import { cn } from '~/ui/cn.js';
+@@ -262,7 +235,8 @@ const {
+   stageLabel,
+   numbers,
+   result,
+-  damage,
++  taken,
++  revealed,
+   showSwords,
+   boost,
+   asking,
+@@ -310,15 +284,16 @@ const collapse = () => {
+ 
+ const shown = index => index < shownSteps.value;
+ 
+-const damageAmount = computed(() => {
+-  if (replayActive.value) return damage.value?.amount ?? null;
+-  return stage.value === 'close' ? (numbers.value?.damage ?? null) : null;
+-});
++const takenOf = side => Number(taken.value?.[side?.side]) || 0;
+ 
+-const damageOf = side =>
+-  damage.value && String(damage.value.fighterId) === String(side?.fighterId)
+-    ? damage.value.amount
+-    : 0;
++const hoverStep = ref(-1);
++const pickedStep = ref(-1);
++
++const stepTone = index => {
++  if (pickedStep.value === index) return 'bg-accent/15';
++  if (hoverStep.value === index) return 'bg-accent/10';
++  return null;
++};
+ 
+ const onBodyClick = event => {
+   if (!replayActive.value) return;
+@@ -343,11 +318,15 @@ const onPointerDown = event => {
+ onMounted(() => {
+   document.addEventListener('keydown', onKeydown);
+   document.addEventListener('pointerdown', onPointerDown, true);
++  registerBattleDismiss(dismiss);
+ });
+ 
+ onBeforeUnmount(() => {
+   document.removeEventListener('keydown', onKeydown);
+   document.removeEventListener('pointerdown', onPointerDown, true);
++  registerBattleDismiss(null);
++  // окна больше нет — снимаем с партии ожидание итога, иначе оно останется висеть навсегда
++  setBattleResultShown(false);
+ });
+ 
+ const measure = () => {
+@@ -395,6 +374,12 @@ const beginCollapsedDrag = event => {
+   handlers.onPointerdown(event);
+ };
+ 
++const beginMiniDrag = event => {
++  wasDragged.value = false;
++  pin();
++  handlers.onPointerdown(event);
++};
++
+ const expandAfterDrag = () => {
+   if (wasDragged.value) {
+     wasDragged.value = false;
