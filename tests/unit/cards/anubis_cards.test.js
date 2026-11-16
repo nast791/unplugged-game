@@ -830,6 +830,15 @@ describe('карты Анубиса: весы при целой пелене', (
 
     expect(ids(hand(player(after, '0')))).toEqual(['deck_low']);
     expect(hand(player(after, '1'))).toHaveLength(0);
+    // весы — два разных свойства: несработавшее «Наказание» видно отдельной строкой со своим текстом
+    const steps = after.lastCombat.effects.filter(
+      step => step.side === 'attacker' && step.moment === 'afterCombat',
+    );
+    expect(steps.map(step => step.text)).toEqual([
+      'Помилование: возьмите 1 карту.',
+      'Наказание: оппонент сбрасывает ещё 1 случайную карту.',
+    ]);
+    expect(steps.map(step => step.status)).toEqual(['applied', 'skipped']);
   });
 
   it('«Печать Маат»: усиление врага строго больше — наказание сбрасывает ещё одну', () => {

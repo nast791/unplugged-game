@@ -34,11 +34,13 @@ export const windowReady = targeting =>
  * Отметить кандидатов окна, открытого с `auto: true`: выбора нет, решает движок.
  * Так способность «выберите вражеского бойца в области» не спрашивает клик, когда враг один,
  * а окно на две цели с ровно двумя кандидатами движок собирает сам.
+ * Окно с `manual: true` не отмечается никогда: даже единственного кандидата выбирает игрок.
  * Возвращает null, если выбор всё же есть (кандидатов не столько, сколько просит окно,
  * или среди них есть недоступный): сравнивать состояние по ссылке нельзя — экшены меняют объект партии на месте.
  */
 export const pickAutoCandidates = (partyState, playerId) => {
   const targeting = partyState.targeting;
+  if (targeting?.manual === true) return null;
   const candidates = targeting?.candidates ?? [];
   if (candidates.length !== windowCount(targeting)) return null;
   if (candidates.some(candidate => candidate?.disabled === true)) return null;

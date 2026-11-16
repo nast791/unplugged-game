@@ -61,8 +61,11 @@ const openReveal = (partyState, action) => {
       cards: top.map(card => ({
         cardId: cardKey(card),
         name: card.title ?? card.name ?? String(card.id),
+        type: card.type ?? null,
         value: Number(card.value) || 0,
         bonus: Number(card.bonus) || 0,
+        // текст карты — для подсказки по названию в окне битвы (карта уже открыта, прятать нечего)
+        text: card.text ?? '',
       })),
     },
   ];

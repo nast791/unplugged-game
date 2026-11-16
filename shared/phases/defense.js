@@ -241,8 +241,12 @@ export default {
             : [String(combat.attackerFighterId)],
       pickFighters: windowFighters.length > 0,
       framedFighterIds: combat?.targetFighterId == null ? [] : [String(combat.targetFighterId)],
-      // варианты свойства: тексты берём с самой карты (card.options)
-      choices: cardChoices(waitingCombatCard(partyState), options?.candidates ?? []),
+      // варианты свойства: тексты берём с самой карты (card.options); у выбора карты из руки
+      // кандидаты — настоящие карты с зоной и владельцем, поэтому клиент открывает окно руки
+      choices: cardChoices(
+        waitingCombatCard(partyState),
+        options?.candidates ?? choice?.candidates ?? [],
+      ),
       playableCardIds: playable,
       disabledCardIds: handCardIds(partyState, playerId).filter(
         cardId => !playable.includes(cardId),

@@ -15,6 +15,8 @@ export const stateFields = {
   movement: ['self', 'team', 'enemy'],
   targeting: ['self', 'team', 'enemy'],
   lastCombat: ['self', 'team', 'enemy'],
+  // итог битвы ещё не закрыт окном: пока он есть, ход остаётся за атакующим (`UI_CLOSE_BATTLE`)
+  awaitingBattleClose: ['self', 'team', 'enemy'],
   lastBonus: ['self', 'team', 'enemy'],
   // последнее сработавшее умение: карточка героя показывает по нему плашку «Умение»
   lastSkill: ['self', 'team', 'enemy'],

@@ -1,7 +1,7 @@
 export default {
   id: 'ifrit',
   name: 'Ифрит',
-  color: '#EA580C',
+  color: '#D9532F',
   heroes: [
     {
       id: 'ifrit',

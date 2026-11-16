@@ -228,7 +228,9 @@ describe('карта ifrit_08 «Стена огня»', () => {
     expect(after.combat ?? null).toBeNull();
     expect(after.movement ?? null).toBeNull();
 
-    const enemiesTurnOver = endTurn(after);
+    // итог битвы закрывает участник: пока окно открыто, действие не закончено и ход не передаётся
+    const closed = runAction(after, { type: 'UI_CLOSE_BATTLE', playerId: '1' });
+    const enemiesTurnOver = endTurn(closed);
 
     expect(nodeOf(enemiesTurnOver, 2).extraTerrain).toEqual(['lava']);
 

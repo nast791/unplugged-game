@@ -27,6 +27,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Если вы проиграли эту битву, оппонент сбрасывает 1 карту из руки на свой выбор.',
         when: [
           { fact: 'COMBAT', params: { winner: 'opponent' } },
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
@@ -48,6 +49,7 @@ export default [
       },
       {
         moment: 'afterCombat',
+        text: 'Если выиграли — можете поставить участвовавшего в битве бойца оппонента на любую свободную клетку льда.',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
@@ -192,7 +194,7 @@ export default [
     bonus: 3,
     quantity: 2,
     fighter: 'snow-queen',
-    text: 'ВО ВРЕМЯ БИТВЫ: Оппонент сбрасывает 1 случайную карту из руки; значение карты увеличивается на усиление сброшенной карты.',
+    text: 'ВО ВРЕМЯ БИТВЫ: Оппонент сбрасывает 1 случайную карту из руки; значение карты увеличивается на бонус сброшенной карты.',
     rules: [
       {
         moment: 'duringCombat',
@@ -227,6 +229,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Если ваш боец в этой битве стоит на клетке со стихией льда, значение карты становится 5.',
         when: [
           { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
           { fact: 'FIGHTERS', params: { fighterIds: '$ours', terrain: 'ice' }, min: 1 },
@@ -237,6 +240,7 @@ export default [
         // Лёд и порог осколков независимы: правило не требует стоять на льду. Если сработали оба,
         // значение выставит последнее правило (7) — поэтому порядок здесь важен, а не накопителен.
         moment: 'duringCombat',
+        text: 'При 6 и более осколках значение карты становится 7 на любой клетке.',
         when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 6 } }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 7 }],
       },

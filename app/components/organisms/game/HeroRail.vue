@@ -19,9 +19,10 @@
 
       <PilesInfo v-if="pilesOf(player)" :player="player" @open="openPile(player, $event)" />
 
-      <div class="absolute -top-31 left-1/2 flex -translate-x-1/2 items-end gap-3">
+      <div class="absolute -top-45 left-1/2 flex -translate-x-1/2 items-end gap-4">
         <SlotCard
           icon="lucide:info"
+          size="md"
           :label="TOOLTIPS.rail.info()"
           :out="Boolean(tabOf(player))"
           out-class="-translate-y-10"
@@ -29,10 +30,11 @@
         />
 
         <SlotCard
-          :count="countOf(player, 'hand')"
-          count-class="text-18"
+          :fraction="[countOf(player, 'hand'), countOf(player, 'deck')]"
+          size="md"
+          count-class="text-15"
           :label="pilesLabel(player)"
-          :empty="countOf(player, 'hand') <= 0"
+          :empty="countOf(player, 'hand') <= 0 || countOf(player, 'deck') <= 0"
           :out="Boolean(pilesOf(player))"
           out-class="-translate-y-10"
           drop="discard"
@@ -88,6 +90,8 @@ const sidekicksOf = player =>
 const isDead = fighter => Number(fighter?.currentHp ?? 0) <= 0;
 
 const countOf = (player, zone) => Number(player?.[`${zone}Count`] ?? player?.[zone]?.length ?? 0);
+
+// на кнопке карт — рука и колода дробью: игрок видит, когда колода кончилась и добор бьёт истощением
 
 const portraitOf = player => {
   const fromView = heroOf(player)?.image;

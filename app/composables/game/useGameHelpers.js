@@ -189,10 +189,15 @@ export const momentsOfStage = stage => {
   return [];
 };
 
-/** Подпись окна выбора карты из руки: что сделать сейчас, чтобы выбор применился. */
-export const handChoiceStatus = ({ picked = 0, required = false } = {}) => {
-  if (picked > 0) return 'Нажмите «Подтвердить»';
-  return required ? 'Выберите карту в окне руки' : 'Можете выбрать карту или закончить';
+/**
+ * Подпись окна выбора карты из руки: кто выбирает, зачем и что сделать, чтобы выбор применился.
+ * `who` — имя выбирающего, `reason` — что случится с картой; без них подпись была непонятной.
+ */
+export const handChoiceStatus = ({ picked = 0, required = false, who = '', reason = '' } = {}) => {
+  const lead = who ? `${who} выбирает карту из руки` : 'Выберите карту из руки';
+  const why = reason ? `: ${reason}` : '';
+  if (picked > 0) return `${lead}${why}. Нажмите «Подтвердить»`;
+  return required ? `${lead}${why}` : `${lead}${why} — или закончите без выбора`;
 };
 
 /** Кнопка окна выбора карты из руки: подтвердить отметку, выбрать карту или пропустить выбор. */
@@ -207,6 +212,16 @@ export const stageClockLabel = ({ placement = false, placementMs = 0, playMs = 0
 
 /** Полка героев: свёрнутый вид её прячет всегда, а полка расстановки от свёрнутого вида не зависит. */
 export const railShown = ({ compact = false, modalOpen = false } = {}) => !modalOpen && !compact;
+
+/**
+ * Остаток действий в окне итога битвы. Счётчик держим снимком боя только когда ход уже перешёл;
+ * пока ход тот же, свойство «получите 1 действие» прибавляется сразу, не дожидаясь закрытия окна.
+ */
+export const frozenActionsOf = ({ frozen = null, livePlayerId = null } = {}) => {
+  if (!frozen) return null;
+  if (livePlayerId != null && String(livePlayerId) === frozen.currentPlayerId) return null;
+  return frozen;
+};
 
 export const useGameHelpers = () => {
   const { view, playerId } = useGameView();
@@ -242,6 +257,10 @@ export const useGameHelpers = () => {
 
   const frozenTurn = computed(() => (battleResult.value ? battleTurn.value : null));
 
+  const frozenActions = computed(() =>
+    frozenActionsOf({ frozen: frozenTurn.value, livePlayerId: view.value?.currentPlayer }),
+  );
+
   const currentPlayerId = computed(() =>
     frozenTurn.value
       ? frozenTurn.value.currentPlayerId
@@ -259,10 +278,10 @@ export const useGameHelpers = () => {
   const turn = computed(() => view.value?.turn ?? 0);
   const phase = computed(() => view.value?.phase ?? null);
   const actionsLeft = computed(() =>
-    frozenTurn.value ? frozenTurn.value.actionsLeft : (view.value?.actionsLeft ?? 0),
+    frozenActions.value ? frozenActions.value.actionsLeft : (view.value?.actionsLeft ?? 0),
   );
   const actionsTotal = computed(() =>
-    frozenTurn.value ? frozenTurn.value.actionsTotal : (view.value?.actionsTotal ?? 0),
+    frozenActions.value ? frozenActions.value.actionsTotal : (view.value?.actionsTotal ?? 0),
   );
   const actionsBonus = computed(() => view.value?.actionsBonus ?? 0);
   const winner = computed(() => view.value?.winner ?? null);

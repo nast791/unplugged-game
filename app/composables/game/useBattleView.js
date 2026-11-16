@@ -49,6 +49,9 @@ export const BATTLE_STEP_STATUSES = {
 
 const FALLBACK_STEP = { label: 'шаг', icon: 'lucide:circle-help', tone: 'text-dim' };
 
+/** Род карты в строке результата — строчными, как в тексте свойства: «· атака · значение 5». */
+const cardTypeLabel = type => cardType(type).label.toLowerCase();
+
 export const battleStageLabel = stage => BATTLE_STAGES[String(stage ?? '')] ?? '';
 export const battleMomentLabel = moment =>
   BATTLE_MOMENTS[String(moment ?? '')] ?? String(moment ?? '');
@@ -124,24 +127,6 @@ export const battleSides = (combat, players = []) =>
       ]
     : [];
 
-/** Заголовки карт битвы: шаг очереди хранит только ключи, а «Результат» пишет имя карты. */
-const titlesOf = (combat, players = []) => {
-  const titles = new Map();
-  const keep = card => {
-    if (!card) return;
-    const key = cardKey(card);
-    if (key && !titles.has(key)) titles.set(key, String(card.title ?? ''));
-  };
-
-  keep(combat?.attackCard);
-  keep(combat?.defenseCard);
-  for (const player of players ?? []) {
-    for (const card of [...(player?.hand ?? []), ...(player?.discard ?? [])]) keep(card);
-  }
-
-  return key => titles.get(String(key ?? '')) ?? '';
-};
-
 /** Имя бойца по id — для строки «Результат: урон получил …». */
 const fighterNameOf = (players = [], fighterId) => {
   for (const player of players ?? []) {
@@ -152,25 +137,67 @@ const fighterNameOf = (players = [], fighterId) => {
   return '';
 };
 
-/** Что шаг сделал по факту: выбор игрока, сброшенная карта, снятое здоровье. */
-const stepResult = (step, titleOf) => {
+/** Карта в строке результата: имя с подсказкой и рядом тип, значение и бонус — как у раскрытой. */
+const cardLine = (lead, card) => ({
+  before: `${lead}«`,
+  card: {
+    name: String(card?.title ?? card?.name ?? ''),
+    text: String(card?.text ?? ''),
+  },
+  after: `» · ${cardTypeLabel(card?.type)} · значение ${Number(card?.value) || 0} · бонус ${Number(card?.bonus) || 0}`,
+});
+
+/** Раскрытая карта строкой: «Раскрыта карта «Песчаная буря» · атака · значение 5 · бонус 3». */
+export const revealLine = card => cardLine('Раскрыта карта ', card);
+
+/** То же одной строкой — для ленты подсказок, где нет подсказки по имени карты. */
+export const revealText = card => {
+  const line = revealLine(card);
+  return `${line.before}${line.card.name}${line.after}`;
+};
+
+/** Имя игрока по id — раскрытую карту в ленте подписывает её владелец. */
+const playerNameOf = (players = [], playerId) => {
+  const player = (players ?? []).find(entry => String(entry?.id) === String(playerId));
+  return String(player?.name ?? '');
+};
+
+/**
+ * Что шаг сделал по факту: выбор игрока, сброшенная карта, раскрытие колоды, снятое здоровье.
+ * Части собираются в куски: текст и имя карты (у имени — подсказка с текстом карты).
+ */
+const stepResultParts = step => {
   const parts = [];
-  const picked = (step.cards ?? []).map(titleOf).filter(Boolean);
-  if (picked.length) parts.push(`выбрана карта «${picked.join('», «')}»`);
+  // выбранная и сброшенная карта — те же строки, что и раскрытая: у имени подсказка с текстом,
+  // рядом тип, значение и бонус (снимок карты движок кладёт в шаг)
+  const chosen = (step.cards ?? []).filter(Boolean);
+  for (const card of chosen) parts.push(cardLine('выбрана карта ', card));
+  if (step.picked?.length) parts.push({ text: `выбрано «${step.picked.join('», «')}»` });
   for (const card of step.discarded ?? []) {
-    if (card.title) parts.push(`в сброс ушла карта «${card.title}»`);
+    if (card.title) parts.push(cardLine('в сброс ушла карта ', card));
+  }
+  // раскрытую карту показывает результат её свойства, а не отдельная плашка сбоку
+  for (const reveal of step.reveal ?? []) {
+    for (const card of reveal.cards ?? []) parts.push(revealLine(card));
   }
   // род бойца не угадать («Дороти», «Тото»), поэтому урон пишется без глагола
   for (const hit of step.hurt ?? []) {
-    parts.push(`${hit.name || 'боец'}: урон ${hit.amount}`);
+    parts.push({ text: `${hit.name || 'боец'}: урон ${hit.amount}` });
   }
 
-  return parts.join('; ');
+  return parts.flatMap((part, index) => (index === 0 ? [part] : [{ text: '; ' }, part]));
 };
+
+/** Тот же результат одной строкой: его читают тесты и лента подсказок. */
+const stepResultText = parts =>
+  parts
+    .map(part =>
+      part.card ? `${part.before ?? ''}${part.card.name}${part.after ?? ''}` : part.text,
+    )
+    .join('');
 
 export const battleSteps = (combat, players = []) => {
   const groups = new Map();
-  const titleOf = titlesOf(combat, players);
 
   return (combat?.effects ?? []).map((step, index) => {
     const side = step.side === 'defender' ? 'defender' : 'attacker';
@@ -181,6 +208,14 @@ export const battleSteps = (combat, players = []) => {
     const group = `${side}|${step.moment}`;
     const propertyIndex = groups.get(group) ?? 0;
     groups.set(group, propertyIndex + 1);
+    const hurt = (Array.isArray(step.hurt) ? step.hurt : []).map(hit => ({
+      ...hit,
+      name: fighterNameOf(players, hit.fighterId),
+    }));
+    // лечение считает итог: вылеченный в битве боец урона не получает
+    const heal = (Array.isArray(step.heal) ? step.heal : []).map(entry => ({ ...entry }));
+    // текст правила приходит из движка: у веток одного свойства он свой, угадывать по номеру нельзя
+    const resultParts = stepResultParts({ ...step, hurt });
 
     return {
       key: `${step.order ?? index + 1}-${side}-${step.moment}-${step.cardId}`,
@@ -188,14 +223,18 @@ export const battleSteps = (combat, players = []) => {
       moment: step.moment ?? null,
       status: String(step.status ?? ''),
       cardTitle,
-      property: card ? cardPropertyText(card.text, step.moment, propertyIndex) : null,
+      property:
+        step.text ?? (card ? cardPropertyText(card.text, step.moment, propertyIndex) : null),
       line: `${battleMomentLabel(step.moment)} · ${sideLabel} · «${cardTitle}»`,
       damage: Number(step.damage) || 0,
-      hurt: (Array.isArray(step.hurt) ? step.hurt : []).map(hit => ({
-        ...hit,
-        name: fighterNameOf(players, hit.fighterId),
+      hurt,
+      heal,
+      reveal: (step.reveal ?? []).map(entry => ({
+        ownerName: playerNameOf(players, entry.playerId),
+        cards: entry.cards ?? [],
       })),
-      result: stepResult(step, titleOf),
+      resultParts,
+      result: stepResultText(resultParts),
       statusLabel: status.label,
       statusIcon: status.icon,
       statusTone: status.tone,
@@ -224,20 +263,38 @@ export const isBattleSide = (combat, playerId) => {
   );
 };
 
-/** Итог для чужой ленты подсказок: сначала кто бил, потом кто сколько получил — «Анубис: Ифрит −5». */
+/** Итог для чужой ленты подсказок: раскрытые карты по владельцу, затем кто сколько получил. */
 export const battleSummaryOf = value => {
+  const parts = [];
+
+  for (const reveal of value?.reveals ?? []) {
+    for (const card of reveal.cards ?? []) {
+      parts.push(`${reveal.ownerName}: ${revealText(card)}`);
+    }
+  }
+
   const sides = (value?.sides ?? []).filter(side => side.damage > 0);
-  return sides
-    .map(side => {
-      const other = (value?.sides ?? []).find(item => item.key !== side.key)?.name ?? '';
-      return other ? `${other}: ${side.name} −${side.damage}` : `${side.name} −${side.damage}`;
-    })
-    .join('; ');
+  for (const side of sides) {
+    const other = (value?.sides ?? []).find(item => item.key !== side.key)?.name ?? '';
+    parts.push(other ? `${other}: ${side.name} −${side.damage}` : `${side.name} −${side.damage}`);
+  }
+
+  return parts.join('; ');
 };
 
 export const useBattleView = () => {
-  const { combat, players, you, lastCombat, targeting, movement, askingCard, isBattleParticipant } =
-    useGameSession();
+  const {
+    combat,
+    players,
+    you,
+    lastCombat,
+    targeting,
+    movement,
+    askingCard,
+    awaitingBattleClose,
+    onCloseBattle,
+    isBattleParticipant,
+  } = useGameSession();
   const { duration } = useSettings();
 
   const replay = ref(null);
@@ -478,7 +535,8 @@ export const useBattleView = () => {
     };
   });
 
-  // Урон стороны: карты бьют проигравшего битву, свойства — каждого, кому сняли здоровье
+  // Урон стороны — по записи боя: снятое свойствами и картами минус лечение внутри битвы.
+  // Вылеченный после битвы боец урона не получает, поэтому строки «урон N» у него нет вовсе.
   const taken = computed(() => {
     const out = {};
     if (!damageShown.value) return out;
@@ -488,6 +546,10 @@ export const useBattleView = () => {
       for (const hit of step.hurt) {
         const key = String(hit.fighterId);
         byFighter.set(key, (byFighter.get(key) ?? 0) + (Number(hit.amount) || 0));
+      }
+      for (const heal of step.heal ?? []) {
+        const key = String(heal.fighterId);
+        byFighter.set(key, (byFighter.get(key) ?? 0) - (Number(heal.amount) || 0));
       }
     }
 
@@ -501,7 +563,7 @@ export const useBattleView = () => {
     for (const side of sides.value) {
       let value = byFighter.get(String(side.fighterId)) ?? 0;
       if (side.side === loser) value += Number(outcomeValue.combatDamage) || 0;
-      out[side.side] = value;
+      out[side.side] = Math.max(0, value);
     }
     return out;
   });
@@ -518,7 +580,14 @@ export const useBattleView = () => {
       damage: Number(taken.value[side.side]) || 0,
     }));
 
-    return { damage: list.reduce((total, side) => total + side.damage, 0), sides: list };
+    // раскрытие колоды — тоже итог битвы: о нём узнают и те, кто в ней не участвовал
+    const reveals = steps.value.flatMap(step => step.reveal ?? []);
+
+    return {
+      damage: list.reduce((total, side) => total + side.damage, 0),
+      sides: list,
+      reveals,
+    };
   });
 
   const damage = computed(() => {
@@ -596,6 +665,8 @@ export const useBattleView = () => {
     setBattleResultShown(false);
     setBattleResultSummary('');
     wasMine = false;
+    // закрытие окна — это конец действия: движок держит ход за атакующим, пока не придёт этот клик
+    if (awaitingBattleClose.value) void onCloseBattle();
   };
 
   registerBattleDismiss(dismiss);

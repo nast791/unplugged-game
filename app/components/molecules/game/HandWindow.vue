@@ -20,7 +20,7 @@
     <template v-if="picking" #footer>
       <span class="text-16 text-dim mr-auto">{{ status }}</span>
 
-      <AButton data-hand-choice-ok :disabled="!confirmEnabled" @click="onFinishAction()">
+      <AButton data-hand-choice-ok :disabled="!confirmEnabled" @click="onConfirm()">
         {{ confirmLabel }}
       </AButton>
     </template>
@@ -41,6 +41,9 @@ import { closeModal, openModal, useModalPayload } from '~/composables/ui/useModa
 
 const {
   players,
+  you,
+  combat,
+  targeting,
   choiceHand,
   choicePicked,
   choiceRequired,
@@ -51,6 +54,8 @@ const {
 
 const payload = useModalPayload('hand');
 const autoOpened = ref(false);
+// мгновенный выбор в паузе боя (карта сразу уходит в сброс) сначала отмечается рамкой, применяет «Подтвердить»
+const staged = ref(null);
 
 const picking = computed(() => choiceHand.value != null);
 
@@ -69,8 +74,50 @@ const cards = computed(() =>
 );
 
 const keyOf = card => String(card?.optionId ?? card?.instanceId ?? card?.id ?? '');
-const pickedOf = card => choicePicked.value.includes(String(card?.optionId ?? ''));
-const pick = card => (picking.value ? pickChoiceCard(card) : undefined);
+
+const stagedKey = computed(() => (staged.value ? keyOf(staged.value) : ''));
+
+const pickedOf = card =>
+  choicePicked.value.includes(String(card?.optionId ?? '')) || stagedKey.value === keyOf(card);
+
+const pick = card => {
+  if (!picking.value) return;
+  // выбор из руки всегда подтверждают кнопкой: клик только обводит карту рамкой
+  staged.value = stagedKey.value === keyOf(card) ? null : card;
+};
+
+const marked = computed(() => {
+  const extra = staged.value && !choicePicked.value.includes(stagedKey.value) ? 1 : 0;
+  return choicePicked.value.length + extra;
+});
+
+const nameOf = id => {
+  const entry = (players.value ?? []).find(item => String(item.id) === String(id));
+  const hero = [...(entry?.fighters ?? []), ...(entry?.lost ?? [])].find(
+    fighter => fighter.type === 'hero',
+  );
+  return hero?.name || entry?.name || '';
+};
+
+const chooserId = computed(
+  () => combat.value?.choice?.playerId ?? targeting.value?.playerId ?? you.value,
+);
+
+const who = computed(() => {
+  const name = nameOf(chooserId.value);
+  return name && String(chooserId.value) === String(you.value) ? 'Вы' : name || 'Игрок';
+});
+
+const reason = computed(() => {
+  const effect = combat.value?.choice?.effect;
+  if (effect === 'bonus') return 'её бонус добавится к вашей карте боя';
+  if (effect === 'discard') return 'она уйдёт в сброс';
+  // окно по чужой руке (обзор, «Клёв в темноте»): карта уходит из руки противника
+  if (String(choiceHand.value?.playerId ?? '') !== String(you.value ?? '')) {
+    return 'это рука противника: карта уйдёт в сброс';
+  }
+  return '';
+});
 
 const title = computed(() => {
   const hero = [...(player.value?.fighters ?? []), ...(player.value?.lost ?? [])].find(
@@ -83,14 +130,29 @@ const title = computed(() => {
 const closeLabel = computed(() => (picking.value ? 'Свернуть руку' : 'Закрыть руку'));
 
 const status = computed(() =>
-  handChoiceStatus({ picked: choicePicked.value.length, required: choiceRequired.value }),
+  handChoiceStatus({
+    picked: marked.value,
+    required: choiceRequired.value,
+    who: who.value,
+    reason: reason.value,
+  }),
 );
 
 const confirmLabel = computed(() =>
-  handChoiceConfirmLabel({ picked: choicePicked.value.length, required: choiceRequired.value }),
+  handChoiceConfirmLabel({ picked: marked.value, required: choiceRequired.value }),
 );
 
-const confirmEnabled = computed(() => choiceConfirmEnabled.value);
+const confirmEnabled = computed(() => staged.value != null || choiceConfirmEnabled.value);
+
+const onConfirm = () => {
+  const card = staged.value;
+  if (!card) {
+    onFinishAction();
+    return;
+  }
+  staged.value = null;
+  pickChoiceCard(card);
+};
 
 const emptyText = computed(() =>
   picking.value
@@ -99,8 +161,9 @@ const emptyText = computed(() =>
 );
 
 watch(
-  () => choiceHand.value?.playerId ?? '',
-  id => {
+  () => [choiceHand.value?.playerId ?? '', combat.value?.choice?.source ?? ''],
+  ([id]) => {
+    staged.value = null;
     if (id) {
       autoOpened.value = true;
       openModal('hand', { playerId: id, picking: true });

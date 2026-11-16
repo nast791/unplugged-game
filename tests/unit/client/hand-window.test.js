@@ -35,6 +35,9 @@ const players = ref([
 ]);
 
 const payload = ref({ playerId: 'dorothy' });
+const you = ref('dorothy');
+const combat = ref(null);
+const targeting = ref(null);
 const choiceHand = ref(null);
 const choicePicked = ref([]);
 const choiceRequired = ref(false);
@@ -47,6 +50,9 @@ const closeModal = vi.fn();
 vi.mock('~/composables/game/useGameSession.js', () => ({
   useGameSession: () => ({
     players,
+    you,
+    combat,
+    targeting,
     choiceHand,
     choicePicked,
     choiceRequired,
@@ -152,6 +158,9 @@ beforeEach(() => {
     },
   ];
   payload.value = { playerId: 'dorothy' };
+  you.value = 'dorothy';
+  combat.value = null;
+  targeting.value = null;
   choiceHand.value = null;
   choicePicked.value = [];
   choiceRequired.value = false;
@@ -220,17 +229,14 @@ describe('окно руки выбирает карту из руки', () => {
     expect(confirm().attributes('disabled')).toBeDefined();
 
     await wrapper.findAll('[data-hand-choice]')[1].trigger('click');
-    expect(pickChoiceCard).toHaveBeenCalledTimes(1);
-    expect(pickChoiceCard.mock.calls[0][0].optionId).toBe('barrier_1');
-
-    choicePicked.value = ['barrier_1'];
-    choiceConfirmEnabled.value = true;
-    await nextTick();
-
+    expect(pickChoiceCard).not.toHaveBeenCalled();
+    expect(wrapper.findAll('[data-hand-choice]')[1].classes().join(' ')).toContain('ring-accent');
     expect(confirm().attributes('disabled')).toBeUndefined();
     expect(confirm().text()).toBe('Подтвердить');
+
     await confirm().trigger('click');
-    expect(onFinishAction).toHaveBeenCalled();
+    expect(pickChoiceCard).toHaveBeenCalledTimes(1);
+    expect(pickChoiceCard.mock.calls[0][0].optionId).toBe('barrier_1');
   });
 
   it('окно закрывается само, когда выбор из руки закончен', async () => {
@@ -242,5 +248,44 @@ describe('окно руки выбирает карту из руки', () => {
     await nextTick();
 
     expect(closeModal).toHaveBeenCalledWith('hand');
+  });
+
+  it('в паузе боя клик только отмечает карту: сбрасывает её кнопка «Подтвердить»', async () => {
+    choiceHand.value = { playerId: 'medusa', name: 'Медуза', cards: enemyCards() };
+    combat.value = { choice: { playerId: 'medusa', source: 'mirror_1', effect: 'discard' } };
+    const wrapper = mount(HandWindow);
+    const first = wrapper.findAll('[data-hand-choice]')[0];
+    const confirm = () => wrapper.find('[data-hand-choice-ok]');
+
+    expect(confirm().attributes('disabled')).toBeDefined();
+
+    await first.trigger('click');
+    expect(pickChoiceCard).not.toHaveBeenCalled();
+    expect(first.classes().join(' ')).toContain('ring-accent');
+    expect(confirm().attributes('disabled')).toBeUndefined();
+
+    await confirm().trigger('click');
+    expect(pickChoiceCard).toHaveBeenCalledTimes(1);
+    expect(pickChoiceCard.mock.calls[0][0].optionId).toBe('mirror_1');
+  });
+
+  it('говорит, кто выбирает карту из руки и что с ней станет', () => {
+    players.value = [
+      ...players.value,
+      {
+        id: 'medusa',
+        order: 2,
+        name: 'Игрок 2',
+        hand: enemyCards(),
+        fighters: [{ id: 'medusa-hero', type: 'hero', name: 'Медуза' }],
+        lost: [],
+      },
+    ];
+    choiceHand.value = { playerId: 'medusa', name: 'Медуза', cards: enemyCards() };
+    combat.value = { choice: { playerId: 'medusa', source: 'mirror_1', effect: 'discard' } };
+    const wrapper = mount(HandWindow);
+    expect(wrapper.text()).toContain('Медуза выбирает карту из руки');
+    expect(wrapper.text()).toContain('она уйдёт в сброс');
+    expect(wrapper.text()).toContain('она уйдёт в сброс');
   });
 });

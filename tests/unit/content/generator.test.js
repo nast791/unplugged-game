@@ -3,6 +3,7 @@ import { createGame } from '../../../server/create.js';
 import { load } from '../../../server/party.js';
 import {
   BOARD_PRESETS,
+  CELLS_LIMIT,
   CELL_JITTER,
   CELL_SIZE,
   CELL_STEP,
@@ -21,6 +22,7 @@ import {
 } from '#shared/helpers/mapGenerator.js';
 import { TERRAIN_IDS } from '#shared/constants/terrain.js';
 import { SEAT_SIDES } from '#shared/constants/seats.js';
+import { BOARD } from '#shared/constants/tuning.js';
 import { numberedCellId, placementRejection, startAreaCellIds } from '#shared/helpers/placement.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -91,6 +93,14 @@ describe('генератор полей: детерминизм', () => {
     expect(wide.zoneSizes.length).toBe(MAX_TERRAIN_COUNT);
     const narrow = generateMap({ players: 2, seed: 3, zones: 1 });
     expect(narrow.zoneSizes.length).toBe(MIN_TERRAIN_COUNT);
+  });
+
+  it('берёт размеры поля из `tuning.js`: правка одна на весь проект', () => {
+    expect(BOARD_PRESETS).toBe(BOARD.presets);
+    expect(CELLS_LIMIT).toBe(BOARD.cells);
+    expect(MAX_TERRAIN_CELLS).toBe(BOARD.terrainCells);
+    expect(MIN_TERRAIN_COUNT).toBe(BOARD.terrains.min);
+    expect(MAX_TERRAIN_COUNT).toBe(BOARD.terrains.max);
   });
 });
 

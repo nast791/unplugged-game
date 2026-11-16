@@ -140,8 +140,27 @@
               <span v-if="step.property" data-battle-step-property class="text-13 text-ink">
                 {{ step.property }}
               </span>
-              <span v-if="shown(index) && step.result" data-battle-step-result class="text-13">
-                <span class="text-dim">Результат: </span>{{ step.result }}
+              <span
+                v-if="shown(index) && step.resultParts.length"
+                data-battle-step-result
+                class="text-13"
+              >
+                <span class="text-dim">Результат: </span>
+                <template v-for="(part, partIndex) in step.resultParts" :key="partIndex">
+                  <template v-if="part.card">
+                    <span>{{ part.before }}</span>
+                    <ATooltip :text="part.card.text">
+                      <span
+                        data-battle-step-card
+                        class="underline decoration-dotted underline-offset-2"
+                      >
+                        {{ part.card.name }}
+                      </span>
+                    </ATooltip>
+                    <span>{{ part.after }}</span>
+                  </template>
+                  <span v-else>{{ part.text }}</span>
+                </template>
               </span>
             </div>
 
@@ -257,7 +276,6 @@ const KEY_STEP = 24;
 const root = ref(null);
 
 const minimized = ref(false);
-const askedCollapsed = ref(false);
 const place = ref(null);
 const size = ref(null);
 const grabbed = ref({ width: 0, height: 0 });
@@ -271,11 +289,10 @@ const askingCard = computed(() => asking.value?.card ?? null);
 const boostCard = computed(() => boost.value?.card ?? null);
 const boostSide = computed(() => boost.value?.side ?? null);
 
-const collapsed = computed(() => minimized.value || askedCollapsed.value);
+const collapsed = computed(() => minimized.value);
 
 const expand = () => {
   minimized.value = false;
-  askedCollapsed.value = false;
 };
 
 const collapse = () => {
@@ -472,17 +489,6 @@ watch(visible, open => {
   if (props.focus) collapse();
   else expand();
 });
-
-watch(
-  () => Boolean(asking.value),
-  (now, before) => {
-    if (now) {
-      askedCollapsed.value = true;
-      return;
-    }
-    if (before && !props.focus) expand();
-  },
-);
 
 watch(finished, done => {
   if (done && !props.focus) expand();

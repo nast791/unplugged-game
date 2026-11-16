@@ -77,6 +77,11 @@ const openTargeting = (partyState, action) => {
     throw new Error(`SET_TARGETING: kind "${action.kind}" (нужны fighters | cells | options)`);
   }
 
+  // auto и manual отвечают на один вопрос («кто решает») с разных сторон — вместе их не бывает
+  if (action.auto === true && action.manual === true) {
+    throw new Error('SET_TARGETING: auto и manual — взаимоисключающие');
+  }
+
   const candidates = normalizeCandidates(action.candidates, kind);
   if (candidates.length === 0) {
     throw new Error('SET_TARGETING: нужны candidates (хотя бы один)');
@@ -96,6 +101,8 @@ const openTargeting = (partyState, action) => {
     required: action.required === true,
     // окно открыто «без выбора»: если кандидатов ровно столько, сколько просит окно, движок отметит их сам (autoPick в runRules)
     auto: action.auto === true,
+    // окно «решает игрок»: движок цель не отмечает сам даже при единственном кандидате (`manual` в правилах карты)
+    ...(action.manual === true ? { manual: true } : {}),
     // окно-переключатель: клик только отмечает или снимает цель, применяет отметку общая кнопка (UI_OK)
     ...(action.toggle === true ? { toggle: true } : {}),
     kind,
@@ -191,11 +198,14 @@ const closeTargeting = (partyState, action) => {
  * SET_TARGETING — выбор цели: подсветка кандидатов и клик по одному из них.
  * Движок открывает окно (`open` с кандидатами и `count`), отмечает клик (`pick`) и закрывает окно (`close`).
  * Эффект применяет тот, кто открыл выбор, а не сам выбор.
- * params: { op: 'open' | 'pick' | 'close', playerId?, source?, candidates?, count?, required?, auto?, toggle?, fighterId? }
+ * params: { op: 'open' | 'pick' | 'close', playerId?, source?, candidates?, count?, required?, auto?, manual?, toggle?, fighterId? }
  * `count` (`max` — синоним) — сколько целей отметить. Одна цель — отметка закрывает окно;
  * несколько — окно собирает список (`picked` — массив id, `complete` — набран ли весь набор):
  * закрывает такое окно общая кнопка (`UI_OK`), а `required: false` позволяет закрыть его раньше срока.
  * `auto: true` — выбора нет: если кандидатов ровно столько, сколько просит окно, движок отмечает их сам.
+ * `manual: true` — решает игрок: кандидата движок не отмечает сам даже при единственном выборе.
+ * Отсутствие `auto` означает то же, но `manual` пишут там, где автовыбор был бы соблазнителен
+ * (жертва своего бойца): признак стоит в самой карте, а не в памяти того, кто правит движок.
  * `toggle: true` — окно-переключатель: клик только отмечает цель или снимает отметку с неё,
  * а применяет выбор общая кнопка (у необязательного окна без отметки она отказывается от выбора).
  */

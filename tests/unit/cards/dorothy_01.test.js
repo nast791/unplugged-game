@@ -108,20 +108,21 @@ const freeze = (state, playerId, fighterId) => {
 
 describe('карта dorothy_01 «Тото отвлекает»', () => {
   it('описана правилами, момент — из списка', () => {
-    expect(card.rules).toHaveLength(3);
+    // обмен и действие — одно свойство, поэтому одна ветка; «обмен не сложился» — вторая
+    expect(card.rules).toHaveLength(2);
     for (const rule of card.rules) {
       expect(rule.moment).toBe('afterCombat');
       expect(isMoment(rule.moment)).toBe(true);
     }
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({ type: 'attack', value: 4, bonus: 4, fighter: 'dorothy' });
-    expect(card.rules[0].then.map(step => step.action)).toEqual(['SWAP_FIGHTERS']);
+    expect(card.rules[0].then.map(step => step.action)).toEqual(['SWAP_FIGHTERS', 'SET_ACTIONS']);
     // обмен сложился — одно действие; обмен не сложился (нет кого-то из пары или он заморожен) — два
-    expect(card.rules[1].then).toEqual([{ action: 'SET_ACTIONS', delta: 1 }]);
-    expect(card.rules[2].then).toEqual([{ action: 'SET_ACTIONS', delta: 2 }]);
-    expect(card.rules[2].any).toHaveLength(4);
+    expect(card.rules[0].then[1]).toEqual({ action: 'SET_ACTIONS', delta: 1 });
+    expect(card.rules[1].then).toEqual([{ action: 'SET_ACTIONS', delta: 2 }]);
+    expect(card.rules[1].any).toHaveLength(4);
     // «Тото или боец противника уже не на поле» — `max` пишется на самом факте
-    expect(card.rules[2].any[0][0]).toMatchObject({
+    expect(card.rules[1].any[0][0]).toMatchObject({
       fact: 'FIGHTERS',
       params: { group: 'toto' },
       max: 0,

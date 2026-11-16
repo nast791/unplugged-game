@@ -147,7 +147,10 @@ export const HAND_OVER_LIMIT = (ctx, params = {}) => {
  * params: { is, min } — `is` проверяет конкретный отмеченный id («выбран вариант discharge»).
  */
 export const PICKED = (ctx, params = {}) => {
-  const picked = ctx.state?.targeting?.picked ?? null;
+  // выбор карты в паузе эффекта закрывает само действие: окна нет, а выбранные карты лежат в `_picked`,
+  // пока движок разыгрывает правила `picked` (см. shared/cards/run.js: runChoicePicked)
+  const served = ctx.state?._picked ?? null;
+  const picked = served ?? ctx.state?.targeting?.picked ?? null;
   const ids = picked == null ? [] : (Array.isArray(picked) ? picked : [picked]).map(String);
 
   if (params.is != null) {

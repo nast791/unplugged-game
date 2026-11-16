@@ -106,7 +106,15 @@ describe('карта medusa_02 «Град стрел»', () => {
     // бой встал на окне усиления: игрок 0 выбирает карту из руки
     expect(paused.combat.choice.playerId).toBe('0');
     expect(paused.combat.choice.side).toBe('attack');
-    expect(paused.combat.choice.candidates).toEqual([{ cardId: 'quiet_1', bonus: 2 }]);
+    // кандидат приходит картой из руки (зона и владелец): по ним клиент открывает окно руки
+    expect(
+      paused.combat.choice.candidates.map(entry => ({
+        cardId: entry.cardId,
+        bonus: entry.bonus,
+        zone: entry.zone,
+        ownerId: entry.ownerId,
+      })),
+    ).toEqual([{ cardId: 'quiet_1', bonus: 2, zone: 'hand', ownerId: '0' }]);
     expect(effectsOf(paused)).toEqual([
       {
         order: 1,

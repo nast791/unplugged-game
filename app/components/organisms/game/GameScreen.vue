@@ -52,15 +52,6 @@
         >
           {{ props.limitText }}
         </p>
-
-        <p
-          v-for="card in revealedCards"
-          :key="`reveal-${card.cardId}`"
-          class="text-13 border-violet/50 bg-violet/10 rounded-4 pointer-events-auto max-w-340 border-2 px-10 py-4"
-        >
-          Раскрыта карта ({{ card.ownerName }}): «{{ card.name }}» · значение {{ card.value }} ·
-          бонус {{ card.bonus }}
-        </p>
       </div>
 
       <div class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-24">
@@ -166,7 +157,6 @@ const anyModalOpen = isAnyModalOpen();
 const {
   isPlacement,
   myHeroes,
-  revealedCards,
   showPickNumHero,
   selectedNumHeroId,
   onPickNumHero,

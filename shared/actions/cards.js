@@ -1,12 +1,6 @@
 import { SET_HEALTH } from '#shared/actions/health.js';
 import { rules } from '#shared/constants/rules.js';
-import {
-  findPlayer,
-  playerByRole,
-  playerHeroes,
-  setZoneCards,
-  zoneCards,
-} from '#shared/helpers/base.js';
+import { findPlayer, playerByRole, setZoneCards, zoneCards } from '#shared/helpers/base.js';
 import { cardKey } from '#shared/helpers/cards.js';
 import { randomPick, randomValue } from '#shared/helpers/random.js';
 
@@ -72,14 +66,14 @@ const putCards = (player, name, cards) => {
   setZoneCards(player, name, zone);
 };
 
-/** Истощение: за карту, которой не нашлось в колоде, платит главный герой (помощники — нет). */
+/** Истощение: за карту, которой не нашлось в колоде, платят все бойцы игрока на поле — герой и помощники. */
 const exhaust = (partyState, player) => {
-  const heroIds = playerHeroes(player)
+  const fighterIds = (player.fighters ?? [])
     .filter(fighter => Number(fighter.currentHp) > 0)
     .map(fighter => String(fighter.id));
-  if (heroIds.length === 0) return;
+  if (fighterIds.length === 0) return;
 
-  SET_HEALTH(partyState, { fighterIds: heroIds, delta: -rules.exhaustionDamage });
+  SET_HEALTH(partyState, { fighterIds, delta: -rules.exhaustionDamage });
 };
 
 /**
@@ -91,7 +85,7 @@ const exhaust = (partyState, player) => {
  * `'self'`) — так правило момента `picked` называет противника, не заводя переменную: `$enemy` из
  * условия другого правила не переносится (правила независимы, `shared/helpers/base.js: playerByRole`).
  * Добор обязательный: если колода кончилась, за каждую недостающую
- * карту главный герой игрока получает rules.exhaustionDamage (истощение), помощники урон не получают.
+ * карту все бойцы игрока на поле — герой и помощники — получают rules.exhaustionDamage (истощение).
  * Сброс колоду не перетасовывает. `random: true` берёт карту из зоны случайно (последовательность партии,
  * helpers/random.js) — так работает «сбрасывает 1 случайную карту»: игрок её не выбирает.
  * Переносом discard → deck | hand закрываются эффекты «вернуть карту из сброса» (верх колоды — конец массива).
@@ -166,7 +160,9 @@ export const SET_CARDS = (partyState, action = {}) => {
         return card?.noReturn === true;
       });
       if (locked != null) {
-        throw new Error(`SET_CARDS: карту ${locked} нельзя вернуть в руку — она остаётся в сбросе навсегда`);
+        throw new Error(
+          `SET_CARDS: карту ${locked} нельзя вернуть в руку — она остаётся в сбросе навсегда`,
+        );
       }
     }
     putCards(player, to, takeCards(player, from, moving));

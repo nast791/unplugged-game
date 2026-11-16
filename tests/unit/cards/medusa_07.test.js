@@ -138,9 +138,9 @@ describe('карта medusa_07 «Ядовитая стрела»', () => {
     const after = playAttack([]);
 
     expect(handIds(after, '0')).toEqual([]);
-    // истощение — 2 урона главному герою, помощник не страдает
+    // истощение — 2 урона каждому своему бойцу на поле: герой теряет здоровье, помощник гибнет
     expect(heroHp(after, '0', 'medusa')).toBe(14);
-    expect(heroHp(after, '0', 'harpies_1')).toBe(1);
+    expect(player(after, '0').fighters.map(entry => entry.id)).toEqual(['medusa']);
     expect(after.hook).toBe(PHASES.turn);
   });
 
@@ -150,7 +150,8 @@ describe('карта medusa_07 «Ядовитая стрела»', () => {
     });
 
     expect(after.combat).toBeNull();
-    expect(player(after, '0').fighters.map(entry => entry.id)).toEqual(['harpies_1']);
+    // герой повержен — свита уходит с поля вместе с ним (не командная игра)
+    expect(player(after, '0').fighters).toEqual([]);
     expect(after.hook).toBe(PHASES.gameEnd);
     expect(after.winner).toBe('1');
   });

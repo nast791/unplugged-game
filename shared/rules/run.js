@@ -167,8 +167,9 @@ export const runRules = (
     for (const { rule, vars } of matched) {
       state = runActionList(state, rule.then, { playerId, source, vars, card });
 
-      // выбор без выбора: кандидат один — отмечаем его сами и доигрываем момент picked
-      if (autoPick && state.targeting?.auto === true) {
+      // выбор без выбора: кандидат один — отмечаем его сами и доигрываем момент picked.
+      // Окно с `manual: true` сюда не попадает: там решает игрок, сколько бы кандидатов ни было
+      if (autoPick && state.targeting?.auto === true && state.targeting.manual !== true) {
         state = autoPick(state, playerId);
       }
     }

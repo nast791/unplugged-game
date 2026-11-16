@@ -1,5 +1,6 @@
 import { SET_CARDS } from '#shared/actions/cards.js';
 import { HINTS } from '#shared/constants/hints.js';
+import { rules } from '#shared/constants/rules.js';
 import {
   handCardIds,
   handLimitFor,
@@ -20,6 +21,7 @@ export default {
         HINTS.handLimit.discardCards({
           limit: handLimitFor(partyState, playerId),
           count: mustDiscardCount(partyState, playerId),
+          base: rules.maxHandSize,
         }),
     },
   },

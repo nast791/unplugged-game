@@ -46,7 +46,7 @@ const slot = (id, name, order, fighters, hand = []) => ({
 });
 
 /** Эффектная карта «выберите двух вражеских бойцов — каждому 1 урон»; `count` и `required` — параметры окна. */
-const twinCard = (count, required, auto = false) => ({
+const twinCard = (count, required, auto = false, manual = false) => ({
   id: 'test_twin',
   instanceId: 'test_twin_1',
   title: 'Двойной удар',
@@ -66,6 +66,7 @@ const twinCard = (count, required, auto = false) => ({
           count,
           required,
           auto,
+          ...(manual ? { manual: true } : {}),
         },
       ],
     },
@@ -288,6 +289,33 @@ describe('окно без выбора (auto: true)', () => {
     expect(played.targeting.kind).toBe('fighters');
     expect(played.targeting.complete).toBe(false);
     expect(hps(played)).toEqual([10, 10, 10]);
+  });
+});
+
+/**
+ * Окно «решает игрок»: `manual: true` в самой карте. Даже единственного кандидата движок не отмечает —
+ * так жертва своего бойца остаётся решением игрока, а не побочным эффектом автоматизации.
+ */
+describe('окно «решает игрок» (manual: true)', () => {
+  it('единственный кандидат: движок его не отмечает, окно ждёт игрока', () => {
+    const played = play(state(twinCard(1, true, false, true), 1));
+
+    expect(played.targeting).toMatchObject({ manual: true, auto: false });
+    expect(played.targeting.picked ?? null).toBeNull();
+    expect(hps(played)).toEqual([10, null, null]);
+  });
+
+  it('игрок отмечает цель сам — правило picked применяется', () => {
+    const played = play(state(twinCard(1, true, false, true), 1));
+
+    const picked = pickFighter(played, 'beta');
+
+    expect(hps(picked)).toEqual([9, null, null]);
+    expect(picked.targeting ?? null).toBeNull();
+  });
+
+  it('auto и manual вместе — ошибка движка: кто-то решает один', () => {
+    expect(() => play(state(twinCard(1, true, true, true), 1))).toThrow(/auto и manual/);
   });
 });
 

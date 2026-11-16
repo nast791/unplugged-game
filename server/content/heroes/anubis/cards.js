@@ -77,6 +77,7 @@ export default [
       {
         // усиление чужой карты не больше нашего — суд милует и даёт карту
         moment: 'afterCombat',
+        text: 'Помилование: возьмите 1 карту.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -87,6 +88,7 @@ export default [
       {
         // враг защищался картой сильнее нашей — суд карает и опустошает руку до конца
         moment: 'afterCombat',
+        text: 'Наказание: оппонент сбрасывает ещё 1 случайную карту.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -112,11 +114,13 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Значение карты становится равным бонусу карты, которой напали на вас.',
         when: [{ fact: 'COMBAT', params: { bonus: 'opponent' }, var: 'bonus' }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: '$bonus' }],
       },
       {
         moment: 'afterCombat',
+        text: 'Помилование: восстановите Анубису 2 здоровья.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -129,6 +133,7 @@ export default [
       {
         // яростная атака (усиление строго больше нашего зеркала) — и саван укрепляется на +3
         moment: 'duringCombat',
+        text: 'Наказание: значение этой карты +3 (прибавляется к скопированному бонусу).',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -189,6 +194,7 @@ export default [
       {
         // помилование обнуляет чужую карту: враг защищается не сильнее нашей — его число становится 0
         moment: 'duringCombat',
+        text: 'Помилование: значение карты оппонента становится равным 0.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -199,6 +205,7 @@ export default [
       {
         // наказание отменяет свойства чужой карты: тяжёлая атака объявляется незаконной
         moment: 'duringCombat',
+        text: 'Наказание: свойства карты оппонента не действуют.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -223,6 +230,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Если в руке оппонента 1 карта или меньше, нанесите герою оппонента 4 урона.',
         when: [
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
           { fact: 'HAND', params: { of: '$enemy', max: 1 } },
@@ -238,6 +246,7 @@ export default [
       {
         // помилование щитом: в защиту урон боя меньше на 1 (значение своей карты выше на 1)
         moment: 'duringCombat',
+        text: 'Если вы защищаетесь, уменьшите боевой урон на 1.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -249,6 +258,7 @@ export default [
       {
         // помилование двигает своих: окно перемещения выбирает, кого из двоих вести
         moment: 'afterCombat',
+        text: 'Помилование: переместите Анубиса или Амат на расстояние до 2 клеток (без прохода).',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -268,12 +278,15 @@ export default [
             budget: 2,
             optional: true,
             teleport: true,
+            // ведут одного из двоих: шаг второго возвращает первого на исходную клетку
+            oneOf: true,
           },
         ],
       },
       {
         // наказание бьёт бойца, которым враг пытался спастись от приговора
         moment: 'afterCombat',
+        text: 'Наказание: нанесите участвовавшему в битве бойцу оппонента 2 урона.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -345,10 +358,11 @@ export default [
     bonus: 3,
     quantity: 3,
     fighter: 'anubis',
-    text: 'ПОСЛЕ БИТВЫ: Раскройте верхнюю карту своей колоды. Анубис может пройти на расстояние, равное усилению раскрытой карты, затем положите раскрытую карту под низ колоды.',
+    text: 'ПОСЛЕ БИТВЫ: Раскройте верхнюю карту своей колоды. Анубис может пройти на расстояние, равное бонусу раскрытой карты, затем положите раскрытую карту под низ колоды.',
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Раскройте верхнюю карту своей колоды.',
         // колода уже раскрыта (второй «Канопой» в той же битве, «Раскрытием» противника): раскрывать
         // её заново нельзя — `SET_REVEAL open` на открытую колоду падает. Свойства тогда просто нет
         when: [
@@ -362,6 +376,7 @@ export default [
         // движение — своим правилом: `budget` читается из снимка (`REVEALED → $bonus`), а снимок
         // появляется только после того, как предыдущее правило его открыло
         moment: 'afterCombat',
+        text: 'Анубис может пройти на расстояние, равное бонусу раскрытой карты.',
         when: [
           { fact: 'REVEALED', params: { of: 'self', select: 'bonus' }, min: 1, var: 'bonus' },
           // погибшего в бою двигать нечем, а окно перемещения открывать некому
@@ -383,6 +398,7 @@ export default [
         // исходы: два «убирающих» сработали бы подряд — первое снимает снимок, второе убирает то,
         // чего в раскрытии уже нет
         moment: 'afterCombat',
+        text: 'Положите раскрытую карту под низ колоды.',
         when: [{ fact: 'REVEALED', params: { of: 'self', select: 'cards' }, min: 1 }],
         then: [{ action: 'SET_REVEAL', op: 'bottom', of: 'self' }],
       },
@@ -562,6 +578,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Если вы победили, оппонент сбрасывает 1 случайную карту.',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
@@ -571,6 +588,7 @@ export default [
       {
         // высокий бонус карты делает помилование обычным исходом: лечат любого из двоих, кого выберут
         moment: 'afterCombat',
+        text: 'Помилование: восстановите 2 здоровья Анубису или Амат.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
@@ -609,6 +627,7 @@ export default [
       {
         // наказание — только против сильнейших козырей: прямой урон герою оппонента
         moment: 'afterCombat',
+        text: 'Наказание: нанесите герою оппонента 3 урона.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },

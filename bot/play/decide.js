@@ -607,9 +607,7 @@ export const PROPOSER_POLICY = 'trade';
  * совпадает.
  */
 export const proposalPolicy = policy =>
-  SEARCH_POLICIES.has(policy) || PLAN_POLICIES.has(policy)
-    ? PROPOSER_POLICY
-    : policy;
+  SEARCH_POLICIES.has(policy) || PLAN_POLICIES.has(policy) ? PROPOSER_POLICY : policy;
 
 export const actionsFor = (
   state,
@@ -732,6 +730,11 @@ const enumerateActions = (
 ) => {
   if (state.hook === 'gameStart') return placementActions(state, playerId);
 
+  // Итог битвы ждёт кнопки «Закрыть»: без неё действие не закончено и ход не передаётся — закрываем
+  if (state.awaitingBattleClose != null) {
+    return [{ weight: 1, action: { type: 'UI_CLOSE_BATTLE' } }];
+  }
+
   const situation = {
     style,
     hand: playerCards(state, playerId).length,
@@ -798,7 +801,13 @@ const enumerateActions = (
       .filter(choice => !marked.includes(String(choice.optionId)))
       .map(choice => ({
         weight: optionPickWeight(weights, choice.optionId),
-        action: { type: 'PICK', kind: 'option', id: choice.optionId },
+        // в паузе боя карта из руки — это выбор карты (`kind: 'card'`), а окно вариантов свойства
+        // по-прежнему отмечает вариант (`kind: 'option'`)
+        action: {
+          type: 'PICK',
+          kind: state.combat?.choice && choice.zone === 'hand' ? 'card' : 'option',
+          id: choice.optionId,
+        },
       }));
     // без отметки общая кнопка — это отказ от необязательного свойства (или закрытие неполного набора):
     // его берём только в «осторожных» прогонах, а подтверждение готового выбора всегда доступно

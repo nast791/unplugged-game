@@ -1,4 +1,4 @@
-import { findFighter } from '#shared/helpers/base.js';
+import { findFighter, isTeamFormat } from '#shared/helpers/base.js';
 import { noteDamageDealt } from '#shared/helpers/damage.js';
 import { runDeathMoment } from '#shared/helpers/death.js';
 
@@ -44,8 +44,7 @@ export const SET_HEALTH = (partyState, action = {}) => {
 
   // `damage` — урон положительным числом: «урон, равный числу карт эффектов в сбросе».
   // DSL не умеет арифметику, поэтому знак ставит действие, а не текст правила.
-  const delta =
-    action.delta != null ? Number(action.delta) : -Math.abs(Number(action.damage ?? 0));
+  const delta = action.delta != null ? Number(action.delta) : -Math.abs(Number(action.damage ?? 0));
   if (!Number.isFinite(delta) || delta === 0) {
     throw new Error('SET_HEALTH: нужен ненулевой delta (или damage)');
   }
@@ -73,6 +72,20 @@ export const SET_HEALTH = (partyState, action = {}) => {
         playedCard: action.playedCard ?? null,
         playerId: action.playerId ?? null,
       });
+
+      // герой повержен — его свита уходит с поля вместе с ним. В командной игре (2 на 2) помощники
+      // остаются: партнёр продолжает бой, и терять фигуры на его ходу нельзя
+      if (fighter.type === 'hero' && !isTeamFormat(partyState) && player.fighters.length > 0) {
+        player.lost = [
+          ...(player.lost ?? []),
+          ...player.fighters.map(assistant => ({
+            ...assistant,
+            currentHp: 0,
+            currentPosition: null,
+          })),
+        ];
+        player.fighters = [];
+      }
       continue;
     }
 

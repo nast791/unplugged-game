@@ -194,7 +194,7 @@ describe('выбор карты из руки: окно руки, а не спи
     const window = panel();
     // карта — не строка подписи: списка вариантов нет вовсе
     expect(window.findAll('[data-icon="lucide:circle"]')).toHaveLength(0);
-    expect(window.text()).toContain('Выберите карту в окне руки');
+    expect(window.text()).toContain('Выберите карту из руки');
     expect(window.text()).not.toContain('Ледяное зеркало');
 
     await window.find('[data-hand-open]').trigger('click');

@@ -6,6 +6,10 @@ import { load, remove } from '../../server/party.js';
 import { actionsFor, actorOf } from '../../bot/play/decide.js';
 import { signature } from '../../bot/play/duel.js';
 import { hotseatSlots } from '../../bot/play/hotseat.js';
+import {
+  battleResultShown,
+  dismissBattleResult,
+} from '../../app/composables/game/useBattleGate.js';
 
 /**
  * Клиентский прогон стола: партию ведёт **настоящий клиент** — `useGameSession` со своей проекцией
@@ -93,6 +97,16 @@ const mountPanels = async problems => {
 /** Что игрок видит и может нажать сейчас: от окна выбора к обычному ходу, минуя уже отказ. */
 const visibleClick = (session, skip) => {
   const candidates = [];
+
+  // итог битвы: «Закрыть» на окне — то же самое, что dismissBattleResult (окно смонтировано в панелях)
+  if (session.awaitingBattleClose.value || battleResultShown().value) {
+    return {
+      kind: 'close-battle',
+      action: { type: 'UI_CLOSE_BATTLE' },
+      run: () => dismissBattleResult(),
+    };
+  }
+
   const freePlacementCells = (session.placementCells.value ?? [])
     .filter(cell => cell.occupied !== true)
     .map(cell => String(cell.id));

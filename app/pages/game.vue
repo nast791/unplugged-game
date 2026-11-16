@@ -131,6 +131,18 @@ watch(
   { immediate: true },
 );
 
+// партия кончилась — часы стоят: время партии фиксируется в момент завершения, а не тикает на итогах
+watch(
+  isGameOver,
+  over => {
+    if (!over) return;
+    playClock.stop();
+    placementClock.stop();
+    actionClock.stop();
+  },
+  { immediate: true },
+);
+
 const stageTime = computed(() =>
   stageClockLabel({
     placement: isPlacement.value,

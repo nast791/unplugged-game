@@ -307,7 +307,11 @@ const setCombatValue = (partyState, action) => {
   return partyState;
 };
 
-/** Кандидаты выбора — карты руки: принимаем объекты HAND ({ cardId, bonus }) и просто id. */
+/**
+ * Кандидаты выбора — карты руки: принимаем объекты HAND ({ cardId, bonus }) и просто id.
+ * Вид карты (зона, владелец, текст) сохраняем: по нему клиент открывает окно руки с настоящими картами,
+ * иначе игрок выбирает из строки подписей и не видит, из чьей руки выбор.
+ */
 const choiceCandidates = candidates => {
   const list = Array.isArray(candidates) ? candidates : [];
 
@@ -317,9 +321,16 @@ const choiceCandidates = candidates => {
       if (typeof entry === 'object') {
         const cardId = entry.cardId ?? entry.instanceId ?? entry.id;
         if (cardId == null) return null;
-        return { cardId: String(cardId), bonus: Number(entry.bonus) || 0 };
+
+        return {
+          ...entry,
+          cardId: String(cardId),
+          optionId: String(entry.optionId ?? cardId),
+          bonus: Number(entry.bonus) || 0,
+        };
       }
-      return { cardId: String(entry), bonus: 0 };
+
+      return { cardId: String(entry), optionId: String(entry), bonus: 0 };
     })
     .filter(Boolean);
 };
@@ -330,10 +341,11 @@ const choiceCandidates = candidates => {
  */
 const finishWaitingEffect = (partyState, status, cards = null) => {
   const waiting = (partyState.combat?.effects ?? []).find(entry => entry.status === 'waiting');
-  if (!waiting) return;
+  if (!waiting) return null;
 
   waiting.status = status;
   if (cards) waiting.cards = [...(waiting.cards ?? []), ...cards];
+  return waiting;
 };
 
 /** Закрыть выбор: шаг очереди получает итог, пауза снимается. */
@@ -342,7 +354,21 @@ const closeCombatChoice = (partyState, status) => {
   const choice = combat?.choice;
   if (!choice) return partyState;
 
-  finishWaitingEffect(partyState, status, choice.picked);
+  const waiting = finishWaitingEffect(partyState, status, choice.picked);
+  if (waiting && choice.pickedCards?.length) {
+    waiting.pickedCards = [...(waiting.pickedCards ?? []), ...choice.pickedCards];
+  }
+  // выбранные карты помним до прогона правил `picked`: окно выбора закрывается прямо здесь, и без
+  // этой записи свойство «после выбора» не узнало бы, что выбрали (advanceCombat доиграет его).
+  // Шаг помним номером: у одной карты бывает несколько `picked`, и доигрывает только своё свойство
+  const picked = choice.picked ?? [];
+  if (waiting && choice.source != null && picked.length > 0) {
+    combat.choicePicked = {
+      cardId: String(choice.source),
+      order: waiting.order,
+      cards: [...picked],
+    };
+  }
   combat.choice = null;
   return partyState;
 };
@@ -558,6 +584,8 @@ const pickCombatChoice = (partyState, action) => {
 
   choice.used += 1;
   choice.picked = [...choice.picked, String(action.cardId)];
+  // вид выбранной карты: «Результат» показывает её как обычную — с типом, значением и бонусом
+  choice.pickedCards = [...(choice.pickedCards ?? []), { ...chosen }];
   choice.candidates = choice.candidates.filter(
     entry => String(entry.cardId) !== String(action.cardId),
   );
@@ -683,6 +711,15 @@ const closeCombat = partyState => {
   partyState.combat = null;
   // раскрытые карты — публичный снимок этой битвы: бой кончился, снимок снимается
   partyState.reveal = null;
+  /**
+   * Итог битвы ждёт закрытия окна: пока игрок не нажал «Закрыть», действие не закончено — ход остаётся
+   * за атакующим, счётчик действий показывает несписанную единицу, и только `UI_CLOSE_BATTLE` отдаёт ход.
+   */
+  partyState.awaitingBattleClose = {
+    playerId: String(partyState.turn?.playerId ?? combat.attackerPlayerId),
+    attackerPlayerId: String(combat.attackerPlayerId),
+    defenderPlayerId: String(combat.defenderPlayerId),
+  };
   return partyState;
 };
 

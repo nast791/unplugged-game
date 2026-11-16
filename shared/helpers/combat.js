@@ -119,7 +119,21 @@ export const buildCombatEffects = combat => {
 
       const playerId = combat[entry.playerKey];
 
+      // Ветки одного свойства (`property`) идут одним шагом: у свойства с ветками в окне битвы одна
+      // строка, а не по строке на ветку, и текст в ней — той ветки, что сработала.
+      const groups = [];
       for (let index = 0; index < rules.length; index += 1) {
+        const rule = rules[index];
+        const last = groups[groups.length - 1];
+        if (rule.property != null && last?.property === rule.property) {
+          last.rules.push(index);
+          continue;
+        }
+        groups.push({ property: rule.property ?? null, rules: [index] });
+      }
+
+      for (const group of groups) {
+        const only = group.rules.length === 1 ? rules[group.rules[0]] : null;
         effects.push({
           order: effects.length + 1,
           moment,
@@ -127,6 +141,10 @@ export const buildCombatEffects = combat => {
           cardId: cardKey(card),
           playerId: playerId == null ? null : String(playerId),
           status: 'pending',
+          // ветки одного свойства разыгрываются одним шагом: порядок правил нужен, чтобы
+          // прогон знал все ветки, а в строке осталась та, чьи условия сошлись
+          ...(group.rules.length > 1 ? { rules: [...group.rules] } : {}),
+          ...(only?.text ? { text: only.text } : {}),
         });
       }
     }

@@ -19,6 +19,8 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        property: 'trace',
+        text: 'Поменяйте местами бойца оппонента, участвовавшего в битве, и Тото. Получите 1 дополнительное действие.',
         when: [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
           // боец противника мог погибнуть в бою, а Тото — не стоять на поле: тогда меняться не с кем;
@@ -26,22 +28,17 @@ export default [
           { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: false }, min: 1, var: 'foes' },
           { fact: 'FIGHTERS', params: { group: 'toto', frozen: false }, min: 1, var: 'toto' },
         ],
-        then: [{ action: 'SWAP_FIGHTERS', a: 'toto', b: '$foe' }],
-      },
-      {
-        // обмен состоялся — одно действие
-        moment: 'afterCombat',
-        when: [
-          { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
-          { fact: 'FIGHTERS', params: { fighterIds: '$foe', frozen: false }, min: 1 },
-          { fact: 'FIGHTERS', params: { group: 'toto', frozen: false }, min: 1 },
+        then: [
+          { action: 'SWAP_FIGHTERS', a: 'toto', b: '$foe' },
+          { action: 'SET_ACTIONS', delta: 1 },
         ],
-        then: [{ action: 'SET_ACTIONS', delta: 1 }],
       },
       {
         // обмен не сложился (нет Тото или бойца противника, либо кто-то из них заморожен) —
         // два действия вместо одного
         moment: 'afterCombat',
+        property: 'trace',
+        text: 'Если обмен не состоялся, получите 2 дополнительных действия вместо 1.',
         any: [
           [{ fact: 'FIGHTERS', params: { group: 'toto' }, max: 0 }],
           [{ fact: 'FIGHTERS', params: { group: 'toto', frozen: true }, min: 1 }],
@@ -113,7 +110,7 @@ export default [
     bonus: 1,
     quantity: 2,
     fighter: 'dorothy',
-    text: 'ПОСЛЕ БИТВЫ: Выберите одно свойство:',
+    text: 'ПОСЛЕ БИТВЫ: Выберите одно свойство',
     options: [
       { id: 'heal', text: 'Восстановите Дороти 2 здоровья.' },
       { id: 'draw', text: 'Возьмите 1 карту.' },
@@ -201,7 +198,8 @@ export default [
     ],
   },
   {
-    // темп: выигранная битва не заканчивает ход, а двигает собаку
+    // след не теряется: собака догоняет в любом исходе, а победа ещё и обновляет руку.
+    // Действие гибридной карте не даём — добавочное действие принадлежит только атаке
     id: 'dorothy_07',
     title: 'Взять след',
     type: 'hybrid',
@@ -209,19 +207,27 @@ export default [
     bonus: 2,
     quantity: 3,
     fighter: 'toto',
-    text: 'ПОСЛЕ БИТВЫ: Если вы победили, получите 1 действие и переместите Тото на расстояние до 3 клеток.',
+    text: 'ПОСЛЕ БИТВЫ: Переместите Тото на расстояние до 3 клеток. Если вы победили, доберите 1 карту.',
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Переместите Тото на расстояние до 3 клеток.',
         when: [
-          { fact: 'COMBAT', params: { winner: 'self' } },
-          // Тото убит — карта гаснет: это его карта, и действие не выдаётся
+          // Тото убит — карта гаснет: это его карта, и шаг некому делать
           { fact: 'FIGHTERS', params: { group: 'toto' }, min: 1, var: 'toto' },
         ],
         then: [
-          { action: 'SET_ACTIONS', delta: 1 },
           { action: 'SET_MOVEMENT', op: 'open', fighters: '$toto', budget: 3, optional: true },
         ],
+      },
+      {
+        moment: 'afterCombat',
+        text: 'Если вы победили, доберите 1 карту.',
+        when: [
+          { fact: 'COMBAT', params: { winner: 'self' } },
+          { fact: 'FIGHTERS', params: { group: 'toto' }, min: 1 },
+        ],
+        then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
     ],
   },
@@ -240,6 +246,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Нанесите 2 урона бойцу противника, участвовавшему в битве.',
         when: [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
           // боец противника мог погибнуть в бою — тогда добивать некого
@@ -249,6 +256,7 @@ export default [
       },
       {
         moment: 'afterCombat',
+        text: 'Если этот боец — помощник, нанесите также 1 урон герою этого противника.',
         when: [
           // помощник противника в этой битве: тип читается и у погибшего — из записи боя
           // (`COMBAT { select, type }`), поэтому ветка работает и когда 2 урона выше его уже сняли

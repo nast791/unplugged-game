@@ -1,12 +1,7 @@
 import { rules } from '#shared/constants/rules.js';
 import { finishedSides } from '#shared/facts/players.js';
-import { movementZoneIds } from '#shared/helpers/board.js';
-import {
-  findFighter,
-  findOwnedFighter,
-  findPlayer,
-  zoneCards,
-} from '#shared/helpers/base.js';
+import { movementZoneIds, pathInRadius } from '#shared/helpers/board.js';
+import { findFighter, findOwnedFighter, findPlayer, zoneCards } from '#shared/helpers/base.js';
 import { cardBonus, cardKey } from '#shared/helpers/cards.js';
 import { findNode } from '#shared/helpers/placement.js';
 
@@ -40,7 +35,13 @@ export const endGameIfFinished = partyState => {
 export const momentOf = (partyState, name) => partyState?.[name] ?? null;
 
 export const hasMoment = partyState =>
-  Boolean(partyState?.movement || partyState?.combat || partyState?.targeting);
+  Boolean(
+    partyState?.movement ||
+    partyState?.combat ||
+    partyState?.targeting ||
+    // итог битвы, который ещё не закрыт окном: действие не закончено, ход не передаётся
+    partyState?.awaitingBattleClose,
+  );
 
 /** Объявленное действие в работе: перемещение или бой. Выбор цели объявить действие не мешает. */
 export const hasAction = partyState => Boolean(partyState?.movement || partyState?.combat);
@@ -50,8 +51,9 @@ export const hasAction = partyState => Boolean(partyState?.movement || partyStat
  * завершения. Перемещение от эффекта (`movement.source`) — не объявленное действие, его карта уже заплатила.
  */
 export const pendingActionCount = partyState => {
-  const { effect, combat, movement } = partyState ?? {};
-  return effect || combat || (movement && movement.source == null) ? 1 : 0;
+  const { effect, combat, movement, awaitingBattleClose } = partyState ?? {};
+  // итог битвы ждёт кнопки «Закрыть»: единица действия ещё не списана — её видно на счётчике
+  return effect || combat || awaitingBattleClose || (movement && movement.source == null) ? 1 : 0;
 };
 
 /** Выбор цели открыт и открыт этим игроком. */
@@ -252,19 +254,50 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
   const budget = movementBudget(fighter, movement);
   const occupied = occupiedCellIds(partyState, fighterId);
 
+  // «один из двух»: прежний боец вернётся на исходную, поэтому его нынешняя клетка освободится, а
+  // исходная станет занятой. Подсветка обязана это учитывать, иначе клик упадёт на возвращённом бойце.
+  const activeId = movement.oneOf === true ? movement.activeFighterId : null;
+  if (activeId != null && String(activeId) !== String(fighterId)) {
+    const moves = (movement.moves ?? []).filter(
+      move => String(move.fighterId) === String(activeId),
+    );
+    const home = movement.origins?.[String(activeId)] ?? moves[0]?.from;
+    if (moves.length > 0) occupied.delete(String(moves[moves.length - 1].to));
+    if (home != null) occupied.add(String(home));
+  }
+
   if (budget <= 0) return [];
 
   const origin = movement.origins?.[String(fighterId)] ?? fighter.currentPosition;
-  const reach = movementZoneIds(
-    partyState.map?.nodes ?? [],
-    origin,
-    budget,
-    blockedCellsForStep(partyState, player, fighterId, movement),
-  );
+  const blocked = blockedCellsForStep(partyState, player, fighterId, movement);
+  const nodes = partyState.map?.nodes ?? [];
+  const reach = movementZoneIds(nodes, origin, budget, blocked);
 
-  const cells = [...reach]
-    .map(String)
-    .filter(cellId => cellId !== String(fighter.currentPosition) && !occupied.has(cellId));
+  // Проход с уроном: клик по клетке врага — боец идёт сквозь неё и возвращается назад. Своих так
+  // не подсвечиваем: сквозь своего пройти можно, но урон на проходе бьёт только врагов, и клик был бы
+  // пустым. Остальные занятые клетки по-прежнему цель не подсвечивают: встать на них нельзя.
+  const transitCells = new Set();
+  if (movement.transit === true) {
+    for (const other of partyState.players ?? []) {
+      if (String(other.id) === String(player?.id)) continue;
+      for (const rival of other.fighters ?? []) {
+        if (rival.currentPosition != null) transitCells.add(String(rival.currentPosition));
+      }
+    }
+  }
+
+  const cells = [...reach].map(String).filter(cellId => {
+    if (cellId === String(fighter.currentPosition)) return false;
+    if (!occupied.has(cellId)) return true;
+    if (!transitCells.has(cellId)) return false;
+
+    // путь сквозь бойца и обратно обязан уложиться в радиус: иначе клик падал бы на движке.
+    // Сама клетка бойца из запретных убирается: в неё и ведёт проход.
+    const pathBlocked = new Set(blocked);
+    pathBlocked.delete(cellId);
+    const route = pathInRadius(nodes, origin, cellId, origin, budget, pathBlocked);
+    return Array.isArray(route) && route.length > 0 && route.length * 2 <= budget;
+  });
 
   return [...new Set(cells)].sort(byCellId);
 };

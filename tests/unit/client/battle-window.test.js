@@ -53,6 +53,8 @@ vi.mock('~/composables/game/useGameSession.js', async () => {
     isGameOver: ref(false),
     choicePicked: ref([]),
     choiceComplete: ref(false),
+    awaitingBattleClose: ref(false),
+    onCloseBattle: vi.fn(),
     onFinishAction: vi.fn(),
     isBattleParticipant: id => {
       const current = session.combat.value;
@@ -675,6 +677,89 @@ describe('окно битвы: лента шагов с паузами', () => {
     expect(wrapper.find('[data-battle-totals]').exists()).toBe(false);
   });
 
+  it('свойство, раскрывшее карту, пишет её результатом: тип, значение, бонус и подсказка', async () => {
+    openBattle();
+    const wrapper = mountWindow();
+    await nextTick();
+
+    session.combat.value = null;
+    session.lastCombat.value = {
+      ...finishedRecord(),
+      effects: [
+        {
+          order: 1,
+          moment: 'afterCombat',
+          side: 'defender',
+          cardId: 'd1',
+          status: 'applied',
+          reveal: [
+            {
+              playerId: 'p2',
+              cards: [
+                {
+                  cardId: 'sand_1',
+                  name: 'Песчаная буря',
+                  type: 'attack',
+                  value: 5,
+                  bonus: 3,
+                  text: 'ПОСЛЕ БИТВЫ: нанесите 2 урона.',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    await nextTick();
+
+    await passTime(ANIMATION_DURATIONS.battleReveal);
+    await passTime(ANIMATION_DURATIONS.battleStep);
+
+    // раскрытие — результат свойства, а не отдельная плашка сбоку
+    const result = wrapper.find('[data-battle-step-result]');
+    expect(result.exists()).toBe(true);
+    expect(result.text()).toContain('Раскрыта карта «Песчаная буря»');
+    expect(result.text()).toContain('· атака · значение 5 · бонус 3');
+
+    // по названию карты — подсказка с её текстом
+    const cardName = wrapper.find('[data-battle-step-card]');
+    expect(cardName.text()).toBe('Песчаная буря');
+    const { default: ATooltip } = await import('~/components/atoms/ATooltip.vue');
+    const tips = wrapper.findAllComponents(ATooltip).map(entry => entry.props('text'));
+    expect(tips).toContain('ПОСЛЕ БИТВЫ: нанесите 2 урона.');
+  });
+
+  it('вылеченный в битве боец урона не получает: строки «урон» у него нет', async () => {
+    openBattle();
+    const wrapper = mountWindow();
+    await nextTick();
+
+    session.combat.value = null;
+    session.lastCombat.value = {
+      ...finishedRecord(),
+      effects: [
+        {
+          order: 1,
+          moment: 'afterCombat',
+          side: 'defender',
+          cardId: 'd1',
+          status: 'applied',
+          hurt: [],
+          heal: [{ fighterId: 'f2', amount: 3 }],
+        },
+      ],
+    };
+    await nextTick();
+
+    await passTime(ANIMATION_DURATIONS.battleReveal);
+    await passTime(ANIMATION_DURATIONS.battleStep);
+    await passTime(ANIMATION_DURATIONS.battleDamage);
+
+    // урон 3 от разницы чисел погасило лечение на 3: показывать нечего
+    expect(wrapper.find('[data-battle-taken]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-battle-result]')).toHaveLength(0);
+  });
+
   it('пока итог на экране, об этом знает композиция: компьютер ждёт кнопку', async () => {
     openBattle();
     const wrapper = mountWindow();
@@ -881,8 +966,8 @@ describe('окно битвы: лента шагов с паузами', () => {
   });
 });
 
-describe('окно битвы: окна выбора сворачивают его', () => {
-  it('выбор цели сворачивает окно в карту-вопрос и разворачивает обратно', async () => {
+describe('окно битвы: пауза решения не меняет его вид', () => {
+  it('пауза выбора оставляет развёрнутое окно развёрнутым', async () => {
     openBattle();
     const wrapper = mountWindow();
     await nextTick();
@@ -892,9 +977,9 @@ describe('окно битвы: окна выбора сворачивают ег
     session.askingCard.value = session.combat.value.attackCard;
     await nextTick();
 
-    expect(wrapper.find('[data-battle-body]').exists()).toBe(false);
-    expect(wrapper.find('[data-battle-asking]').exists()).toBe(true);
-    expect(wrapper.find('[data-battle-asking]').text()).toContain('Наотмашь');
+    // окно остаётся полным: игрок видит ленту и карту, карта-вопрос не подменяет его
+    expect(wrapper.find('[data-battle-body]').exists()).toBe(true);
+    expect(wrapper.find('[data-battle-asking]').exists()).toBe(false);
 
     session.targeting.value = null;
     session.askingCard.value = null;
@@ -914,22 +999,24 @@ describe('окно битвы: окна выбора сворачивают ег
     expect(wrapper.find('[data-battle-body]').exists()).toBe(true);
   });
 
-  it('карту-вопрос можно развернуть в полное окно прямо посреди выбора', async () => {
+  it('свёрнутое вручную окно и на паузе остаётся миниатюрой с картой-вопросом', async () => {
     openBattle();
     const wrapper = mountWindow();
     await nextTick();
 
+    await wrapper.find(`[aria-label="${TOOLTIPS.battle.minimize()}"]`).trigger('click');
+    expect(wrapper.find('[data-battle-body]').exists()).toBe(false);
+
     session.targeting.value = { kind: 'fighters', source: 'a1', playerId: 'p1', required: true };
     session.askingCard.value = session.combat.value.attackCard;
     await nextTick();
+    // пауза не разворачивает окно само: каким игрок его оставил, таким оно и остаётся
     expect(wrapper.find('[data-battle-body]').exists()).toBe(false);
+    expect(wrapper.find('[data-battle-asking]').exists()).toBe(true);
+    expect(wrapper.find('[data-battle-asking]').text()).toContain('Наотмашь');
 
     await wrapper.find('[data-battle-mini]').trigger('click');
     expect(wrapper.find('[data-battle-body]').exists()).toBe(true);
-
-    await wrapper.find(`[aria-label="${TOOLTIPS.battle.minimize()}"]`).trigger('click');
-    expect(wrapper.find('[data-battle-asking]').exists()).toBe(true);
-    expect(wrapper.find('[data-battle-body]').exists()).toBe(false);
   });
 
   it('свёрнутое вручную окно показывает миниатюру со стадией и числами и разворачивается кликом', async () => {

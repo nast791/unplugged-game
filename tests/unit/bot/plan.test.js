@@ -71,7 +71,8 @@ const opponentTurnState = seed => {
   return found;
 };
 
-describe('план на ход', () => {
+// прогон тяжёлый: пять партий и планирование; под полной параллельной загрузкой пяти секунд не хватает
+describe('план на ход', { timeout: 30000 }, () => {
   it('возвращает легальный ход и цепочку, которую движок принимает шаг за шагом', () => {
     const start = myTurnState(1);
     expect(start).not.toBeNull();

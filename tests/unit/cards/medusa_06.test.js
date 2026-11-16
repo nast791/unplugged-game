@@ -203,7 +203,8 @@ describe('карта medusa_06 «Ускорение»', () => {
     expect(queue.map(entry => entry.status)).toEqual(['skipped']);
     expect(after.combat).toBeNull();
     expect(after.movement).toBeNull();
-    expect(player(after, '0').fighters.map(entry => entry.id)).toEqual(['harpies_1']);
+    // герой повержен — свита уходит с поля вместе с ним (не командная игра)
+    expect(player(after, '0').fighters).toEqual([]);
     expect(after.hook).toBe(PHASES.gameEnd);
     expect(after.winner).toBe('1');
   });

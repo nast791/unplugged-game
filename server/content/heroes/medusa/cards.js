@@ -233,11 +233,15 @@ export default [
       // победа: вместо одной карты две. Условия правил взаимоисключающие, поэтому срабатывает ровно одно.
       {
         moment: 'afterCombat',
+        property: 'breath',
+        text: 'В случае вашей победы доберите две карты.',
         when: [{ fact: 'COMBAT', params: { winner: 'self' } }],
         then: [{ action: 'SET_CARDS', op: 'draw', count: 2 }],
       },
       {
         moment: 'afterCombat',
+        property: 'breath',
+        text: 'Доберите карту.',
         when: [{ fact: 'COMBAT', params: { winner: 'opponent' } }],
         then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },

@@ -69,3 +69,20 @@ describe('SlotCard: скин', () => {
     expect(skinOf(wrapper)).not.toContain('bg-danger');
   });
 });
+
+describe('SlotCard: счётчик', () => {
+  it('пишет руку и колоду дробью: число сверху, косая черта, число снизу', () => {
+    const wrapper = mountCard({ fraction: [5, 25], countClass: 'text-13' });
+
+    expect(wrapper.find('[data-count-top]').text()).toBe('5');
+    expect(wrapper.find('[data-count-bottom]').text()).toBe('25');
+    expect(wrapper.find('[data-count-top]').classes().join(' ')).not.toContain('text-13');
+  });
+
+  it('без дроби рисует простой счётчик одним числом', () => {
+    const wrapper = mountCard({ count: 5 });
+
+    expect(wrapper.find('[data-count-top]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('5');
+  });
+});

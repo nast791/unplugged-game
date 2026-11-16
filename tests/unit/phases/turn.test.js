@@ -93,7 +93,7 @@ describe('phase choose', () => {
     expect(movement.active(state, '0')).toBe(true);
   });
 
-  it('пустая колода: урон всем героям, помощнику — нет, перемещение доступно', () => {
+  it('пустая колода: урон всем своим бойцам, перемещение доступно', () => {
     const state = turnState();
     player(state, '0').deck.cards = [];
     player(state, '0').discard.cards = [];
@@ -108,9 +108,23 @@ describe('phase choose', () => {
 
     expect(fighterOf(state, '0', 'alpha').currentHp).toBe(15 - rules.exhaustionDamage);
     expect(fighterOf(state, '0', 'alpha2').currentHp).toBe(15 - rules.exhaustionDamage);
-    expect(fighterOf(state, '0', 'pawn').currentHp).toBe(4);
+    expect(fighterOf(state, '0', 'pawn').currentHp).toBe(4 - rules.exhaustionDamage);
     expect(state.movement).not.toBeNull();
     expect(ap(state)).toBe(1);
+  });
+
+  it('истощение добило героя — партия заканчивается сразу и не ждёт его хода', () => {
+    const state = turnState();
+    player(state, '0').deck.cards = [];
+    player(state, '0').discard.cards = [];
+    fighterOf(state, '0', 'alpha').currentHp = rules.exhaustionDamage;
+
+    choose.moves.PICK(state, { kind: 'deck', playerId: '0' });
+
+    expect(state.hook).toBe('gameEnd');
+    expect(String(state.winner)).toBe('1');
+    // не-2v2: помощники поверженного героя тоже покидают поле
+    expect(player(state, '0').fighters).toEqual([]);
   });
 
   it('отклоняет клик по полю в фазе объявления', () => {
@@ -128,7 +142,7 @@ describe('phase choose', () => {
     expect(ui.playableCardIds).toEqual([]);
     expect(ui.disabledCardIds).toHaveLength(3);
     expect(ui.controls.ok.visible).toBe(false);
-    expect(resolvePhaseHint(choose.hints, state, '0')).toMatch(/возьмите карту/);
+    expect(resolvePhaseHint(choose.hints, state, '0')).toMatch(/переместите бойца/);
   });
 
   it('выбор цели: подсветка кандидатов, подсказка и закрытие окна после отметки', () => {

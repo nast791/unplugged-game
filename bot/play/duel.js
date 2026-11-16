@@ -37,6 +37,8 @@ export const signature = state =>
       state.combat?.effects?.map(step => step.status),
     ],
     targeting: [state.targeting?.playerId, state.targeting?.picked ?? null],
+    // окно итога битвы: закрытие не меняет ничего другого, и без этого шаг выглядел бы пустым
+    battleClose: state.awaitingBattleClose != null,
     movement: [state.movement?.playerId, state.movement?.moves?.length ?? 0],
     effect: [state.effect?.source ?? null, state.effect?.steps?.map(step => step.status)],
     fighters: (state.players ?? []).map(player =>

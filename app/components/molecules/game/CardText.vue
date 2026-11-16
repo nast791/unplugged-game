@@ -4,11 +4,7 @@
       <div
         v-for="line in block.lines"
         :key="line.key"
-        :class="[
-          palette.text,
-          line.label && 'mt-4',
-          isActive(line, block) && 'text-accent font-semibold',
-        ]"
+        :class="[palette.text, line.label && 'mt-4', isActive(line, block) && 'text-accent']"
         :data-option="line.label || undefined"
       >
         <div v-if="line.label" class="mb-4 flex items-center gap-5" data-option-head>

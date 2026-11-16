@@ -102,7 +102,7 @@ describe('Card: значок состояния в углу арта', () => {
 
     expect(move(wrapper)).toBe(true);
     expect(lock(wrapper)).toBe(false);
-    expect(wrapper.html()).toContain('Усиление перемещения');
+    expect(wrapper.html()).toContain('Бонус перемещения');
   });
 
   it('обычная карта в игре — без значка', () => {

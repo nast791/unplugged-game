@@ -10,10 +10,18 @@ import { heroes } from '../../../server/content/index.js';
  * Машинно проверяется только то, что названо в правилах явно:
  * - `COMBAT { role: 'attacker' | 'defender' }` — свойство живёт за эту сторону боя;
  * - `SET_COMBAT { op: 'replaceDefense' }` — шаг атакующего: в защиту правило падает
- *   (`anubis_14` был гибридом и объявлял замену чужой защиты — так его и поймали).
+ *   (`anubis_14` был гибридом и объявлял замену чужой защиты — так его и поймали);
+ * - добавочное действие (`SET_ACTIONS` с `delta > 0`) — только у атаки и эффекта: гибриду и защите
+ *   оно не выдаётся (см. AGENTS.md §3).
  * Остальное — глазами: прочитать свойство, поставив себя защитником.
  */
 const knownTypes = cardTypes.map(type => type.name);
+
+/** Даёт ли карта добавочное действие: положительный шаг `SET_ACTIONS` в любом правиле. */
+const grantsAction = card =>
+  (card.rules ?? []).some(rule =>
+    (rule.then ?? []).some(step => step.action === 'SET_ACTIONS' && Number(step.delta) > 0),
+  );
 
 const rolesIn = conditions =>
   (conditions ?? [])
@@ -85,5 +93,26 @@ describe('тип карты соответствует её свойству', (
     });
 
     expect(broken).toEqual([]);
+  });
+
+  it('добавочное действие не выдаётся гибриду и защите', () => {
+    const broken = wrong((deckId, card) => {
+      if (!grantsAction(card)) return null;
+      if (card.type !== 'hybrid' && card.type !== 'defense') return null;
+      return `${deckId}/${card.id}: добавочное действие у карты типа "${card.type}" — нельзя`;
+    });
+
+    expect(broken).toEqual([]);
+  });
+
+  it('добавочное действие у атаки и эффекта разрешено и в колоде есть', () => {
+    const givers = decks.flatMap(deck =>
+      deck.cards
+        .filter(card => grantsAction(card))
+        .map(card => `${deck.id}/${card.id}:${card.type}`),
+    );
+
+    expect(givers.length).toBeGreaterThan(0);
+    expect(givers.every(entry => /:(attack|effect)$/.test(entry))).toBe(true);
   });
 });

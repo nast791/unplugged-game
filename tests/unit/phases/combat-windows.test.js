@@ -328,7 +328,13 @@ describe('окна эффектов боя', () => {
 
     expect(first.combat.choice.used).toBe(1);
     expect(first.combat.attackValue).toBe(4);
-    expect(first.combat.choice.candidates).toEqual([{ cardId: 'loud_1', bonus: 3 }]);
+    expect(
+      first.combat.choice.candidates.map(entry => ({
+        cardId: entry.cardId,
+        bonus: entry.bonus,
+        zone: entry.zone,
+      })),
+    ).toEqual([{ cardId: 'loud_1', bonus: 3, zone: 'hand' }]);
     expect(runUi(first, '0').controls.ok.label).toBe('Закончить эффект');
     expect(runUi(first, '0').controls.ok.enabled).toBe(true);
 
@@ -445,7 +451,18 @@ describe('запись боя: что шаг сделал по факту', () =
     const after = playDefense(state);
     const discarded = steps(after).flatMap(step => step.discarded ?? []);
 
-    expect(discarded).toEqual([{ playerId: '0', key: 'spare_1', title: 'spare' }]);
+    // карта в записи шага несёт и вид карты: клиент печатает тип, значение и бонус сброшенной карты
+    expect(discarded).toEqual([
+      {
+        playerId: '0',
+        key: 'spare_1',
+        title: 'spare',
+        type: 'effect',
+        value: 0,
+        bonus: 1,
+        text: '',
+      },
+    ]);
     // в руке было две карты: сыгранная в бой и сброшенная свойством
     expect(handSize(after, '0')).toBe(0);
   });

@@ -115,6 +115,22 @@ export const hurtSince = (partyState, snapshot) => {
 };
 
 /**
+ * Кого именно подлечили с момента снимка: список `{ fighterId, amount }` по бойцам, у которых
+ * здоровье выросло. Лечение выше стартового не считается — там здоровье не менялось.
+ */
+export const healedSince = (partyState, snapshot) => {
+  const after = healthSnapshot(partyState);
+  const healed = [];
+
+  for (const [fighterId, hp] of snapshot) {
+    const now = after.has(fighterId) ? after.get(fighterId) : 0;
+    if (now > hp) healed.push({ fighterId, amount: now - hp });
+  }
+
+  return healed;
+};
+
+/**
  * Снять отметку начала хода — у всех бойцов: «в этом ходу» значит ровно один ход.
  * Зовётся рядом со снятием `movedThisTurn` (`shared/lifecycle/turnStart.js`) и возвращает новое
  * состояние: кирпичи этого хода правят вложенные объекты на месте, а флаг живёт на бойце.

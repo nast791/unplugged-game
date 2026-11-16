@@ -132,8 +132,10 @@ describe('карта tesla_05 «Рентгеновское излучение»'
       {
         cardId: 'beta_top_1',
         name: 'Верхняя карта',
+        type: 'defense',
         value: 2,
         bonus: 3,
+        text: '',
       },
     ]);
     expect(paused.combat.stage).toBe('reveal');

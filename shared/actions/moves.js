@@ -20,6 +20,26 @@ export const UI_BACK = (partyState, action, phase) => {
 };
 
 /**
+ * Итог битвы закрывает сам игрок кнопкой «Закрыть»: пока окно открыто, действие не закончено
+ * (`state.awaitingBattleClose`), поэтому ход не передаётся. Закрыть может участник битвы.
+ */
+export const UI_CLOSE_BATTLE = (partyState, action) => {
+  const pending = partyState.awaitingBattleClose;
+  if (!pending) throw new Error('UI_CLOSE_BATTLE: итог битвы уже закрыт');
+
+  const allowed = [pending.playerId, pending.attackerPlayerId, pending.defenderPlayerId].map(
+    String,
+  );
+  if (!allowed.includes(String(action.playerId))) {
+    throw new Error('UI_CLOSE_BATTLE: итог битвы закрывает её участник');
+  }
+
+  const state = { ...partyState };
+  delete state.awaitingBattleClose;
+  return state;
+};
+
+/**
  * RESIGN доступен в любой фазе любого core-хука: сдаться можно в любой момент.
  * Незакрытые моменты сдавшегося закрываются: бой отменяется (карты в сброс, урона нет),
  * его перемещение и выбор цели снимаются, а если он был активным игроком — ход передаётся дальше.
@@ -46,10 +66,11 @@ export const RESIGN = (partyState, action) => {
   return endGameIfFinished(state);
 };
 
-/** Общие moves клиента: UI_OK, UI_BACK и RESIGN — делегируют в phase или в экшен. */
+/** Общие moves клиента: UI_OK, UI_BACK, UI_CLOSE_BATTLE и RESIGN — делегируют в phase или в экшен. */
 export const commonMoves = {
   UI_OK,
   UI_BACK,
+  UI_CLOSE_BATTLE,
   RESIGN,
 };
 

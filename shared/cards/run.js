@@ -3,10 +3,14 @@ import { actions } from '#shared/actions/index.js';
 import { combatMomentsAt } from '#shared/constants/moments.js';
 import { runConditions } from '#shared/facts/run.js';
 import { zoneCards } from '#shared/helpers/base.js';
-import { cardKey } from '#shared/helpers/cards.js';
-import { damagedSince, healthSnapshot, hurtSince } from '#shared/helpers/damage.js';
+import { cardKey, cardOptionText } from '#shared/helpers/cards.js';
+import { damagedSince, healedSince, healthSnapshot, hurtSince } from '#shared/helpers/damage.js';
 import { forkState } from '#shared/helpers/fork.js';
-import { closeTargetingWindow, pickAutoCandidates } from '#shared/helpers/targeting.js';
+import {
+  closeTargetingWindow,
+  pickAutoCandidates,
+  windowPicked,
+} from '#shared/helpers/targeting.js';
 import { hasMissing, resolveVars } from '#shared/helpers/vars.js';
 import { ruleMatches, runRules } from '#shared/rules/run.js';
 
@@ -80,15 +84,74 @@ const stepStatus = (state, before) => {
  * Правило, за которое отвечает шаг: шагов столько же, сколько правил карты в этом моменте,
  * и идут они в том же порядке — индекс шага среди шагов той же стороны и момента даёт правило.
  */
-const ruleOfStep = (combat, step) => {
+/** Правила, за которые отвечает шаг: ветки одного свойства (`step.rules`) или одно правило по порядку. */
+const rulesOfStep = (combat, step) => {
   const rules = (cardOf(combat, step.side)?.rules ?? []).filter(
     rule => rule.moment === step.moment,
   );
+
+  if (Array.isArray(step.rules) && step.rules.length > 0) {
+    return step.rules.map(index => rules[index]).filter(Boolean);
+  }
+
   const index = (combat.effects ?? [])
     .filter(entry => entry.side === step.side && entry.moment === step.moment)
     .findIndex(entry => entry === step);
 
-  return index < 0 ? null : (rules[index] ?? null);
+  return index < 0 ? [] : [rules[index]].filter(Boolean);
+};
+
+/**
+ * Индексы правил шага в полном списке `card.rules`: по ним видно, какое правило открыло паузу.
+ * `step.rules` — ветки одного свойства, они считаются по правилам своего момента.
+ */
+const ruleIndexesOf = (combat, step) => {
+  const rules = cardOf(combat, step.side)?.rules ?? [];
+  const indexes = rules
+    .map((rule, index) => (rule.moment === step.moment ? index : -1))
+    .filter(index => index >= 0);
+
+  if (Array.isArray(step.rules) && step.rules.length > 0) {
+    return step.rules.map(index => indexes[index]).filter(index => index != null);
+  }
+
+  const ordinal = (combat.effects ?? [])
+    .filter(entry => entry.side === step.side && entry.moment === step.moment)
+    .findIndex(entry => entry === step);
+
+  return ordinal < 0 ? [] : [indexes[ordinal]].filter(index => index != null);
+};
+
+/**
+ * Правила `picked`, которые доигрывают именно этот шаг: они идут подряд сразу после правила,
+ * открывшего окно. Свои `picked` есть у разных свойств одной карты («Зеркальный скол»: сброс чужой
+ * карты и перенос бойца), и прогон всех `picked` подряд отправлял выбор карты в чужое правило.
+ */
+const pickedRulesOf = (card, indexes = []) => {
+  const rules = card?.rules ?? [];
+  if (indexes.length === 0) return [];
+
+  // у сгруппированного свойства открывателей несколько (весы: помилование и наказание), поэтому
+  // `picked` ищем после КАЖДОГО из них: иначе свойство одного открывателя не доигрывалось бы
+  const out = [];
+  const seen = new Set();
+  for (const from of [...indexes].sort((left, right) => left - right)) {
+    for (let index = from + 1; index < rules.length; index += 1) {
+      if (rules[index].moment !== 'picked') break;
+      if (seen.has(index)) continue;
+      seen.add(index);
+      out.push(rules[index]);
+    }
+  }
+  return out;
+};
+
+/** Правила `picked`, которые доигрывает шаг. Если открывателя в очереди нет (шаг-пауза без своего
+ * правила), берём все `picked` карты — иначе ответ игрока никуда не уходил бы. */
+const pickedRulesForStep = (combat, step, card) => {
+  const indexes = ruleIndexesOf(combat, step);
+  if (indexes.length === 0) return (card?.rules ?? []).filter(rule => rule.moment === 'picked');
+  return pickedRulesOf(card, indexes);
 };
 
 /** Сколько каких карт лежит в сбросах: по нему видно, что именно ушло в сброс за шаг свойства. */
@@ -116,19 +179,43 @@ const discardedSince = (partyState, snapshot) => {
         counts.set(key, left - 1);
         continue;
       }
-      list.push({ playerId: String(player.id), key, title: String(card.title ?? '') });
+      list.push({
+        playerId: String(player.id),
+        key,
+        title: String(card.title ?? ''),
+        // снимок карты: окно битвы показывает у сброшенной карты тип, число и подсказку с текстом
+        type: card.type ?? null,
+        value: Number(card.value) || 0,
+        bonus: Number(card.bonus) || 0,
+        text: String(card.text ?? ''),
+      });
     }
   }
   return list;
 };
 
-/** Запись шага для окна битвы: кого ранило и какая карта ушла в сброс — «Результат» пишется по факту. */
+/** Запись шага для окна битвы: кого ранило, кого подлечило и какая карта ушла в сброс — «Результат» по факту. */
 const noteStepChanges = (step, state, health, discarded) => {
   const hurt = hurtSince(state, health);
   if (hurt.length > 0) step.hurt = [...(step.hurt ?? []), ...hurt];
 
+  const healed = healedSince(state, health);
+  if (healed.length > 0) step.heal = [...(step.heal ?? []), ...healed];
+
   const dropped = discardedSince(state, discarded);
   if (dropped.length > 0) step.discarded = [...(step.discarded ?? []), ...dropped];
+};
+
+/** Раскрытия, которые появились за шаг: их пишем в шаг, чтобы окно битвы показало карту результатом. */
+const noteReveals = (step, state, before) => {
+  const added = (state.reveal ?? []).filter(entry => !(before ?? []).includes(entry));
+  if (added.length === 0) return;
+
+  const shown = added.map(entry => ({
+    playerId: String(entry.playerId),
+    cards: (entry.cards ?? []).map(card => ({ ...card })),
+  }));
+  step.reveal = [...(step.reveal ?? []), ...shown];
 };
 
 /**
@@ -145,27 +232,39 @@ const runEffectStep = (partyState, step) => {
     return partyState;
   }
 
-  const rule = ruleOfStep(combat, step);
-  if (!rule || !ruleMatches(partyState, rule, { playerId: step.playerId })) {
+  const stepRules = rulesOfStep(combat, step);
+  const matchedRules = stepRules.filter(rule =>
+    ruleMatches(partyState, rule, { playerId: step.playerId }),
+  );
+  if (matchedRules.length === 0) {
     step.status = 'skipped';
+    // ветки одного свойства: если ни одна не сработала, показываем хотя бы общий текст свойства,
+    // иначе строка «не сработало» осталась бы без объяснения
+    if (stepRules.length > 1) step.text = stepRules[0].text ?? null;
     return partyState;
   }
 
   const before = fingerprint(partyState);
   const health = healthSnapshot(partyState);
   const discarded = discardSnapshot(partyState);
-  const state = runRules(partyState, [rule], step.moment, {
+  const revealBefore = partyState.reveal ?? null;
+  const stepCard = cardOf(combat, step.side);
+  const state = runRules(partyState, matchedRules, step.moment, {
     playerId: step.playerId,
     source: step.cardId,
-    card: cardOf(combat, step.side),
-    autoPick: autoPickFor(cardOf(combat, step.side)),
+    card: stepCard,
+    autoPick: autoPickFor(stepCard, pickedRulesForStep(combat, step, stepCard)),
   });
+
+  // у свойства с ветками в строке пишем ту ветку, что сработала (своё свойство — свой текст)
+  if (stepRules.length > 1) step.text = matchedRules[0].text ?? step.text ?? null;
 
   step.status = stepStatus(state, before);
   // урон шага: в окне битвы урон карт и урон свойств — разные слагаемые, и свойство показывает своё
   const damage = damagedSince(state, health);
   if (damage > 0) step.damage = damage;
   noteStepChanges(step, state, health, discarded);
+  noteReveals(step, state, revealBefore);
   return state;
 };
 
@@ -175,18 +274,91 @@ const waitingForPlayer = partyState =>
 
 /**
  * Окно без выбора карта закрывает сама: отмечаем кандидатов и разыгрываем момент `picked`.
- * Так свойство карты, у которого нет выбора, не спрашивает игрока о клике.
+ * Так свойство карты, у которого нет выбора, не спрашивает игрока о клике. Доигрываются только
+ * правила `picked` этого свойства: у карты их бывает несколько, и чужое правило ждёт чужой отметки.
  */
-const autoPickFor = card => (state, ownerId) => {
-  const picked = pickAutoCandidates(state, ownerId);
-  if (!picked) return state;
+const autoPickFor =
+  (card, pickedRules = []) =>
+  (state, ownerId) => {
+    const picked = pickAutoCandidates(state, ownerId);
+    if (!picked) return state;
 
-  const afterPicked = runRules(picked, card?.rules ?? [], 'picked', {
-    playerId: ownerId,
-    source: cardKey(card),
-    card,
-  });
-  return closeTargetingWindow(afterPicked, ownerId);
+    const afterPicked = runRules(picked, pickedRules, 'picked', {
+      playerId: ownerId,
+      source: cardKey(card),
+      card,
+    });
+    return closeTargetingWindow(afterPicked, ownerId);
+  };
+
+/** Подписи отмеченного в окне выбора: «Результат» показывает то, что игрок выбрал, а не номер правила. */
+const pickedLabelsOf = (window, card = null) => {
+  const ids = windowPicked(window).map(String);
+  if (ids.length === 0) return [];
+
+  const candidates = window?.candidates ?? [];
+  return ids
+    .map(id => {
+      const entry = candidates.find(item =>
+        [item.optionId, item.fighterId, item.cellId, item.id].some(
+          value => value != null && String(value) === id,
+        ),
+      );
+      return String(entry?.title ?? entry?.name ?? cardOptionText(card, id) ?? '').trim();
+    })
+    .filter(Boolean);
+};
+
+/** Шаг очереди, чьё окно открыло выбор карты: шаг помним номером, у одной карты пауз бывает несколько. */
+const stepOfCard = (combat, pending) => {
+  const list = combat?.effects ?? [];
+  if (pending?.order != null) {
+    const byOrder = list.find(
+      entry =>
+        Number(entry.order) === Number(pending.order) &&
+        String(entry.cardId) === String(pending.cardId),
+    );
+    if (byOrder) return byOrder;
+  }
+
+  const sameCard = list.filter(entry => String(entry.cardId) === String(pending?.cardId));
+  return sameCard[sameCard.length - 1] ?? null;
+};
+
+/**
+ * Доиграть карту после выбора карты в паузе эффекта (`SET_COMBAT pick`): выбор закрывает само действие,
+ * окна выбора к этому моменту уже нет, поэтому правила `picked` разыгрываются здесь — выбранные карты
+ * видит факт `PICKED` (служебный `_picked` живёт только на время прогона, как `_death`).
+ */
+const runChoicePicked = partyState => {
+  const combat = partyState.combat;
+  const pending = combat?.choicePicked;
+  if (!pending) return partyState;
+
+  combat.choicePicked = null;
+  const step = stepOfCard(combat, pending);
+  if (!step) return partyState;
+
+  const card = cardOf(combat, step.side);
+  const health = healthSnapshot(partyState);
+  const discarded = discardSnapshot(partyState);
+
+  partyState._picked = [...(pending.cards ?? [])];
+  try {
+    const state = runRules(partyState, pickedRulesForStep(combat, step, card), 'picked', {
+      playerId: step.playerId,
+      source: step.cardId,
+      card,
+    });
+
+    step.status = waitingForPlayer(state) ? 'waiting' : 'applied';
+    const damage = damagedSince(state, health);
+    if (damage > 0) step.damage = (Number(step.damage) || 0) + damage;
+    noteStepChanges(step, state, health, discarded);
+    return state;
+  } finally {
+    delete partyState._picked;
+  }
 };
 
 /**
@@ -234,18 +406,28 @@ export const runCombatPicked = partyState => {
   const card = cardOf(combat, step.side);
   const health = healthSnapshot(partyState);
   const discarded = discardSnapshot(partyState);
-  const state = runRules(partyState, card?.rules ?? [], 'picked', {
+  const revealBefore = partyState.reveal ?? null;
+  // окно, открытое шагом: его отметка — это и есть «Результат» свойства
+  const answered = partyState.targeting ?? null;
+  const labels = pickedLabelsOf(answered, card);
+  const state = runRules(partyState, pickedRulesForStep(combat, step, card), 'picked', {
     playerId: step.playerId,
     source: step.cardId,
     card,
   });
 
-  step.status = waitingForPlayer(state) ? 'waiting' : 'applied';
+  if (labels.length > 0) step.picked = [...(step.picked ?? []), ...labels];
+
+  // выбор сделан — отметка больше не ждёт игрока: окно закрываем до проверки паузы, иначе шаг
+  // навсегда останется «пауза: решает игрок» (окно `picked` уже не нужно, а пауза держит бой)
+  const settled = state.targeting === answered ? closeTargetingWindow(state, step.playerId) : state;
+  step.status = waitingForPlayer(settled) ? 'waiting' : 'applied';
   // шаг ждал решения игрока: урон свойства считается здесь, когда выбор сделан
-  const damage = damagedSince(state, health);
+  const damage = damagedSince(settled, health);
   if (damage > 0) step.damage = (Number(step.damage) || 0) + damage;
-  noteStepChanges(step, state, health, discarded);
-  return state;
+  noteStepChanges(step, settled, health, discarded);
+  noteReveals(step, settled, revealBefore);
+  return settled;
 };
 
 /**
@@ -302,7 +484,7 @@ export const runEffectMoment = (partyState, moment) => {
       playerId: state.effect.playerId,
       source: cardKey(state.effect.card),
       card: state.effect.card,
-      autoPick: autoPickFor(state.effect.card),
+      autoPick: autoPickFor(state.effect.card, pickedRulesOf(state.effect.card, [index])),
     });
 
     step.status = stepStatus(state, before);
@@ -326,6 +508,12 @@ export const advanceCombat = partyState => {
 
   for (let step = 0; step < MAX_COMBAT_STEPS; step += 1) {
     const combat = state.combat;
+    // выбор карты в паузе закрыт действием: доигрываем правило `picked` его карты, иначе свойство,
+    // которое обещало сработать после выбора, молчит («Хрустальный барьер» не поднимал защиту до 4)
+    if (combat?.choicePicked) {
+      state = runChoicePicked(state);
+      continue;
+    }
     // пауза: выбор эффекта, окно выбора (вариант, цель, клетка) или черновик перемещения
     if (!combat || waitingForPlayer(state)) return state;
     // замена защиты («Амат разрывает»): бой вернулся на шаг выбора защиты — ждём клика защитника,

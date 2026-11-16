@@ -335,7 +335,7 @@ describe('карта «Метель из осколков»: эффект отк
     // перемещение открыто эффектом: подсветка, кнопка эффекта, источник — сама карта
     const ui = runUi(played, '0', { selectedFighterId: 'queen' });
     expect(ui.phase).toBe('movement');
-    expect(ui.highlightedCellIds).toEqual(['2', '5']);
+    expect(ui.highlightedCellIds).toEqual(['2', '3', '5']);
     expect(ui.controls.ok.label).toBe('Закончить эффект');
     expect(played.movement.source).toBe('snow-queen_11_0');
     expect(played.movement.playedCard.id).toBe('snow-queen_11');
@@ -366,8 +366,9 @@ describe('клиентское окно движения: подсветка и 
 
     const ui = runUi(state, '0', { selectedFighterId: 'queen' });
     expect(ui.phase).toBe('movement');
-    // клетки врагов не предлагаются (встать на них нельзя), а клетка за ними — да: проход идёт «сквозь»
-    expect(ui.highlightedCellIds).toEqual(['2', '5']);
+    // занятые клетки врагов тоже подсвечены: клик по ним — проход сквозь и возврат назад.
+    // Клетка 4 не подсвечена: сквозь неё и обратно нужно 6 шагов при радиусе 4
+    expect(ui.highlightedCellIds).toEqual(['2', '3', '5']);
     expect(ui.highlightedFighterIds).toEqual(['queen']);
 
     const moved = runAction(state, {
@@ -391,15 +392,27 @@ describe('клиентское окно движения: подсветка и 
     expect(runUi(moved, '0', { selectedFighterId: 'queen' }).highlightedCellIds).toEqual([
       '1',
       '2',
+      '3',
     ]);
   });
 
-  it('клик по занятой врагом клетке отклоняется, как и раньше', () => {
+  it('клик по занятой врагом клетке — проход сквозь бойца и возврат: боец остаётся на месте', () => {
     const state = blizzard(lineState());
 
-    expect(() =>
-      runAction(state, { type: 'PICK', kind: 'cell', id: 3, fighterId: 'queen', playerId: '0' }),
-    ).toThrow(/занята/);
+    const through = runAction(state, {
+      type: 'PICK',
+      kind: 'cell',
+      id: 3,
+      fighterId: 'queen',
+      playerId: '0',
+    });
+
+    // королева не встала на занятую клетку: она прошла сквозь и вернулась
+    expect(fighterOf(through, '0', 'queen').currentPosition).toBe(1);
+    expect(hpOf(through, '1', 'rival')).toBe(13);
+    expect(through.movement.moves).toEqual([
+      { fighterId: 'queen', from: 1, to: 1, route: [2, 3], transit: true },
+    ]);
   });
 });
 

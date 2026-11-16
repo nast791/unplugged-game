@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
 import { runAction } from '#shared/publicApi.js';
 import { movementDestinations, movementRejection } from '#shared/helpers/turn.js';
@@ -136,7 +136,7 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
       fighters: ['ifrit'],
     });
     // Ифрит на 1, враг на 2, духи на 4 и 5: пройти можно на 2 и 3, встать — на 3
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
   });
 
   it('проход сквозь врага — именно свойство карты: без него дальше двойки не уйти', () => {
@@ -146,7 +146,7 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
     const noPass = structuredClone(played);
     noPass.movement.throughEnemies = false;
 
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
     expect(movementDestinations(noPass, '0', 'ifrit')).toEqual([]);
     expect(movementRejection(noPass, '0', 'ifrit', '3')).toMatch(/нет доступных клеток/);
   });
@@ -155,7 +155,7 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
     const played = play(buildState({ spirits: [1, 2] }));
 
     expect(played.movement.budget).toBe(4);
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
   });
 
   it('один дух — бюджет 3: окно открывается, за спину врага встать можно', () => {
@@ -163,7 +163,7 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
 
     // клетка 2 занята врагом: она проходима, а встать можно на 3 — свойство не гаснет
     expect(played.movement.budget).toBe(3);
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
   });
 
   it('духов нет — бюджет 2: за спину врага встать всё равно можно', () => {
@@ -174,7 +174,7 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
 
     // «духов + 2» = две клетки: клетка 2 проходима, встать можно на 3
     expect(played.movement.movementBudget ?? played.movement.budget).toBe(2);
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['3']);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
     expect(played.turn.actionsLeft).toBe(1);
     expect(discard(player(played, '0')).map(entry => entry.id)).toEqual(['ifrit_11']);
   });
@@ -186,7 +186,7 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
     expect(String(fighterOf(moved, '0', 'ifrit').currentPosition)).toBe('3');
     expect(fighterOf(moved, '0', 'ifrit').movedThisTurn).toBe(true);
     // бюджет считается от исходной клетки: от 3 можно вернуться на 1, но не дальше
-    expect(movementDestinations(moved, '0', 'ifrit')).toEqual(['1']);
+    expect(movementDestinations(moved, '0', 'ifrit')).toEqual(['1', '2']);
   });
 
   it('проход сквозь врага крадёт здоровье: враг теряет 1, Ифрит получает 1', () => {

@@ -34,7 +34,20 @@
       />
 
       <span
-        v-if="props.count != null"
+        v-if="props.fraction"
+        class="flex -translate-y-2 flex-col items-stretch leading-none font-semibold lining-nums"
+        :class="props.countClass || countSize"
+      >
+        <span data-count-top class="text-center">{{ fractionTop }}</span>
+        <span
+          class="my-1 h-1.5 w-full shrink-0 -rotate-30 rounded-full bg-current"
+          aria-hidden="true"
+        />
+        <span data-count-bottom class="text-center">{{ fractionBottom }}</span>
+      </span>
+
+      <span
+        v-else-if="props.count != null"
         class="leading-none font-semibold lining-nums"
         :class="props.countClass || countSize"
       >
@@ -52,7 +65,8 @@ const props = defineProps({
   glyph: { type: [Object, Function], default: null },
   iconClass: { type: String, default: '' },
   countClass: { type: String, default: '' },
-  count: { type: Number, default: null },
+  count: { type: [Number, String], default: null },
+  fraction: { type: Array, default: null },
 
   label: { type: String, default: '' },
   side: { type: String, default: 'bottom' },
@@ -75,12 +89,16 @@ const emit = defineEmits(['click']);
 const SIZES = {
   xs: { box: 'h-28 w-24 gap-0 rounded-5', icon: 'size-12', count: 'text-9' },
   sm: { box: 'h-38 w-30 gap-0 rounded-5', icon: 'size-13', count: 'text-9' },
+  md: { box: 'h-54 w-40 gap-0 rounded-7', icon: 'size-16', count: 'text-15' },
 };
 
 const shape = computed(() => SIZES[props.size] ?? SIZES.sm);
 const box = computed(() => shape.value.box);
 const iconSize = computed(() => shape.value.icon);
 const countSize = computed(() => shape.value.count);
+
+const fractionTop = computed(() => String(props.fraction?.[0] ?? ''));
+const fractionBottom = computed(() => String(props.fraction?.[1] ?? ''));
 
 const active = computed(() => props.out || props.pulse);
 

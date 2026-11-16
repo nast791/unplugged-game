@@ -117,6 +117,14 @@ describe('scenario: ход через publicApi.runAction', () => {
     expect(state.lastCombat.defenderPlayerId).toBe('1');
     expect(fighterOf(state, '1', 'beta').currentHp).toBe(12);
 
+    // итог битвы ещё не закрыт окном: действие не закончено, ход остаётся за атакующим
+    expect(state.awaitingBattleClose.attackerPlayerId).toBe('0');
+    expect(state.turn.playerId).toBe('0');
+    expect(ap(state)).toBe(0);
+
+    state = runAction(state, { type: 'UI_CLOSE_BATTLE', playerId: '0' });
+
+    expect(state.awaitingBattleClose).toBeUndefined();
     expect(state.hook).toBe(PHASES.turn);
     expect(state.turn.playerId).toBe('1');
     expect(state.turn.index).toBe(2);
@@ -148,6 +156,10 @@ describe('scenario: ход через publicApi.runAction', () => {
     expect(state.lastCombat.combatDamage).toBe(4);
     expect(state.lastCombat.defendedWithCard).toBe(false);
     expect(fighterOf(state, '1', 'beta').currentHp).toBe(9);
+    // защитник ответил, но окно итога открыто: ход ещё не перешёл, действия не начислены
+    expect(ap(state)).toBe(0);
+
+    state = runAction(state, { type: 'UI_CLOSE_BATTLE', playerId: '0' });
     expect(ap(state)).toBe(2);
   });
 

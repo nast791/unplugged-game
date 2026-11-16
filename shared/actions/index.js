@@ -1,4 +1,4 @@
-export { commonMoves, UI_OK, UI_BACK, RESIGN } from './moves.js';
+export { commonMoves, UI_OK, UI_BACK, UI_CLOSE_BATTLE, RESIGN } from './moves.js';
 export { SET_ACTIONS, SET_RESIGNED } from './base.js';
 export { SET_CARDS } from './cards.js';
 export { SET_HEALTH } from './health.js';

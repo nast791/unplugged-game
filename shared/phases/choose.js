@@ -6,12 +6,7 @@ import { SET_TARGETING } from '#shared/actions/targeting.js';
 import { effectBrings, openEffect, runEffectMoment } from '#shared/cards/run.js';
 import { HINTS } from '#shared/constants/hints.js';
 import { findPlayer } from '#shared/helpers/base.js';
-import {
-  cardKey,
-  hasFighterForCard,
-  isAttackCard,
-  isEffectCard,
-} from '#shared/helpers/cards.js';
+import { cardKey, hasFighterForCard, isAttackCard, isEffectCard } from '#shared/helpers/cards.js';
 import { attackCandidates, attackRejection } from '#shared/helpers/combat.js';
 import { windowCount, windowPicked, windowReady } from '#shared/helpers/targeting.js';
 import {
@@ -147,9 +142,10 @@ const startMovement = (partyState, playerId) => {
   });
   SET_MOVEMENT(state, { op: 'open', playerId });
 
-  // пустая колода сама бьёт главного героя истощением — это правило действия SET_CARDS
+  // пустая колода сама бьёт своих бойцов истощением — это правило действия SET_CARDS
   SET_CARDS(state, { playerId, op: 'draw', count: 1 });
-  return state;
+  // истощение могло добить героя: партия заканчивается сразу, а не в конце хода мёртвого
+  return endGameIfFinished(state);
 };
 
 /** Клик по карте атаки = объявление боя: −1 действие, карта в закрытую. */
@@ -435,8 +431,9 @@ export default {
     картами после добора терял бы возможность ходить. Открытый выбор цели объявить действие не мешает —
     так способность пропускается началом другого действия.
  2. Клик по колоде — объявление перемещения: −1 действие, открывается черновик перемещения
-    (SET_MOVEMENT open), затем добор 1 карты; при пустой колоде вместо добора все свои герои получают
-    rules.exhaustionDamage (помощники урон не получают), а перемещение всё равно доступно.
+    (SET_MOVEMENT open), затем добор 1 карты; при пустой колоде вместо добора все свои бойцы на поле
+    (герой и помощники) получают rules.exhaustionDamage, а перемещение всё равно доступно. Если истощение
+    добило героя, партия завершается сразу (`endGameIfFinished`).
  3. Клик по карте attack|hybrid, которой хоть кто-то из своих бойцов достаёт врага, — объявление боя:
     −1 действие и SET_COMBAT open (карта уходит из руки в закрытую). Карты, которыми никто не достаёт,
     и карты других типов отдаются в ui как disabledCardIds.

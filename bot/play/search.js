@@ -346,6 +346,7 @@ const stateFingerprint = state =>
     combat: [state.combat?.stage, state.combat?.attackerFighterId, state.combat?.targetFighterId],
     movement: [state.movement?.playerId ?? null, state.movement?.moves?.length ?? 0],
     targeting: [state.targeting?.playerId ?? null, state.targeting?.picked ?? null],
+    battleClose: state.awaitingBattleClose != null,
     fighters: (state.players ?? []).map(player =>
       (player.fighters ?? []).map(fighter => [
         fighter.id,
@@ -458,7 +459,7 @@ export const searchBudget = () => {
     // так поиск думает ход целиком, а не первые `depth` шагов (политика `turn`, §25)
     turnEnd: env.SEARCH_TURN_END === '1',
     replyTurn: env.SEARCH_TURN_REPLY === '1',
-    
+
     // читают его, поэтому в матче «версия против версии» артефакт обязан быть у каждой стороны свой
   };
 };
@@ -511,7 +512,9 @@ export const pairedRootValues = (state, viewerId, entries, rawBudget = searchBud
   let broken = 0;
   let timedOut = 0;
   for (let round = 0; round < budget.iterations; round += 1) {
-    if (deadline > 0 && Date.now() >= deadline) break;
+    // хотя бы одно доигрывание делаем всегда: под нагрузкой срок может истечь до старта, а решение
+    // без оценки (нулевые итерации, действие null) оставило бы компьютер без хода
+    if (round > 0 && deadline > 0 && Date.now() >= deadline) break;
     const world = makeWorld(rng);
     let counted = 0;
     for (const row of rows) {
@@ -725,7 +728,9 @@ export const searchAction = (state, viewerId, entries, rawBudget = searchBudget(
   // доигрывания, срезанные пределом времени: по счётчику видно, держал ли бюджет ход или нет
   let timedOut = 0;
   for (let round = 0; round < budget.iterations; round += 1) {
-    if (deadline > 0 && Date.now() >= deadline) break;
+    // хотя бы одно доигрывание делаем всегда: под нагрузкой срок может истечь до старта, а решение
+    // без оценки (нулевые итерации, действие null) оставило бы компьютер без хода
+    if (round > 0 && deadline > 0 && Date.now() >= deadline) break;
     let current = worldPool == null ? makeWorld(rng) : poolWorld(round);
     let node = root;
     const path = [node];

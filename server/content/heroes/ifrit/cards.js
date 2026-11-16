@@ -87,8 +87,9 @@ export default [
             candidates: '$spirits',
             count: 1,
             required: false,
-            // дух остался один — движок отмечает его сам, окна игрок не видит
-            auto: true,
+            // жертва своего духа — всегда решение игрока: движок его не выбирает сам (manual),
+            // а «Закончить эффект» отказывается от свойства и оставляет духа живым
+            manual: true,
           },
         ],
       },
@@ -142,17 +143,24 @@ export default [
     text: 'ВО ВРЕМЯ БИТВЫ: Если на поле три пепельных духа, значение карты +3; если два — +2; если один — +1.',
     rules: [
       {
+        // три ветки одного свойства: одна строка в окне боя и текст той ветки, что сработала
         moment: 'duringCombat',
+        property: 'swarm',
+        text: 'Если на поле три пепельных духа, значение карты +3.',
         when: [{ fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 3, max: 3 } }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 3 }],
       },
       {
         moment: 'duringCombat',
+        property: 'swarm',
+        text: 'Если на поле два пепельных духа, значение карты +2.',
         when: [{ fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 2, max: 2 } }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
       },
       {
         moment: 'duringCombat',
+        property: 'swarm',
+        text: 'Если на поле один пепельный дух, значение карты +1.',
         when: [{ fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 1, max: 1 } }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 1 }],
       },
@@ -190,10 +198,12 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Доберите 1 карту.',
         then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
       {
         moment: 'afterCombat',
+        text: 'Если вы победили, клетка Ифрита до конца вашего хода получает дополнительную стихию лавы, если на ней меньше 3 стихий.',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'FIGHTERS', params: { fighterIds: ['ifrit'] }, var: 'hero' },
@@ -413,6 +423,8 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        property: 'score',
+        text: 'В защиту значение карты противника снижается на 1.',
         when: [{ fact: 'COMBAT', params: { role: 'defender' } }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'opponent', delta: -1 }],
       },
@@ -420,6 +432,7 @@ export default [
         // первое действие хода (потрачено ровно одно действие, см. AP { spentMin, spentMax }):
         // добить выбранного бойца противника — выбор настоящий, поэтому окно обязательное
         moment: 'afterCombat',
+        text: 'Первым действием: нанесите 1 урон выбранному бойцу противника.',
         when: [
           { fact: 'AP', params: { min: 0, spentMin: 1, spentMax: 1 } },
           { fact: 'COMBAT', params: { role: 'attacker' } },
@@ -444,6 +457,8 @@ export default [
       },
       {
         moment: 'immediately',
+        property: 'score',
+        text: 'Вторым действием: свойства карты оппонента не действуют.',
         when: [
           { fact: 'AP', params: { min: 0, spentMin: 2, spentMax: 2 } },
           { fact: 'COMBAT', params: { role: 'attacker' } },
@@ -453,6 +468,8 @@ export default [
       },
       {
         moment: 'duringCombat',
+        property: 'score',
+        text: 'Третьим действием: значение карты +2, если ваш боец начал ход на другой клетке.',
         when: [
           { fact: 'AP', params: { min: 0, spentMin: 3, spentMax: 3 } },
           { fact: 'COMBAT', params: { role: 'attacker' } },
@@ -463,8 +480,7 @@ export default [
     ],
   },
   {
-    // по площади и без выбора: достаётся и своим — Ифрит бьёт по клеткам, а не по названной цели.
-    // Ифриту урон не достаётся: его собственная клетка в радиус не входит
+    // по площади и без выбора: достаётся и своим — Ифрит бьёт по клеткам, а не по названной цели.    // Ифриту урон не достаётся: его собственная клетка в радиус не входит
     id: 'ifrit_14',
     title: 'Сжечь всех дотла',
     type: 'effect',

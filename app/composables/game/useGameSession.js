@@ -109,6 +109,8 @@ export const useGameSession = () => {
   const targeting = computed(() => view.value?.targeting ?? null);
   const lastCombat = computed(() => view.value?.lastCombat ?? null);
   const lastSkill = computed(() => view.value?.lastSkill ?? null);
+  // итог битвы ещё не закрыт окном: ход держится за атакующим, пока не нажали «Закрыть»
+  const awaitingBattleClose = computed(() => view.value?.awaitingBattleClose ?? null);
 
   const battleRoles = computed(() => {
     const current = combat.value;
@@ -544,14 +546,22 @@ export const useGameSession = () => {
 
   const onFinishAction = () => send({ type: 'UI_OK' });
 
+  /** «Закрыть» в окне битвы: действие заканчивается, и только теперь движок передаёт ход. */
+  const onCloseBattle = () =>
+    run(async () => {
+      if (!awaitingBattleClose.value) return;
+      await sendAction({ type: 'UI_CLOSE_BATTLE' });
+      await syncHotseat();
+    });
+
   const armBonusCard = card => {
     const key = cardKey(card);
     if (!canDiscardBonus.value) {
-      message.value = 'Усиление перемещения сейчас недоступно';
+      message.value = 'Бонус перемещения сейчас недоступен';
       return false;
     }
     if (!isCardPlayable(card)) {
-      message.value = 'У этой карты нет усиления перемещения';
+      message.value = 'У этой карты нет бонуса перемещения';
       return false;
     }
     if (bonusArmedKey.value === key) {
@@ -573,11 +583,11 @@ export const useGameSession = () => {
   const onBonusDiscard = () => {
     const card = armedBonusCard.value;
     if (!card) {
-      message.value = 'Сначала выберите карту для усиления';
+      message.value = 'Сначала выберите карту для бонуса';
       return undefined;
     }
     if (!canDiscardBonus.value) {
-      message.value = 'Усиление перемещения сейчас недоступно';
+      message.value = 'Бонус перемещения сейчас недоступен';
       return undefined;
     }
     const key = cardKey(card);
@@ -606,6 +616,9 @@ export const useGameSession = () => {
       message.value = 'Этой карты нет среди вариантов';
       return undefined;
     }
+    // выбор карты из руки в паузе эффекта — это клик по карте (`kind: 'card'`), а не отметка варианта:
+    // движок сразу сбрасывает её в сброс владельца
+    if (combat.value?.choice) return pick({ kind: 'card', id: entry.optionId });
     return onChoiceClick(entry.optionId);
   };
 
@@ -744,6 +757,7 @@ export const useGameSession = () => {
     targeting,
     lastCombat,
     lastSkill,
+    awaitingBattleClose,
     battleRoles,
     isBattleParticipant,
     inBattle,
@@ -807,6 +821,7 @@ export const useGameSession = () => {
     onCardClick,
     onChoiceClick,
     onFinishAction,
+    onCloseBattle,
     onUiBack,
     onResign,
     onBackToMenu,

@@ -5,15 +5,30 @@
     <ATabs v-else v-model="activeType" :items="tabs">
       <template v-for="group in groups" :key="group.type" #[group.type]>
         <div class="flex flex-wrap items-start gap-12">
-          <div v-for="stack in group.stacks" :key="stack.id" class="flex flex-col items-start">
+          <div
+            v-for="stack in group.stacks"
+            :key="stack.id"
+            class="relative"
+            :data-card-stack="stack.cards.length"
+            :style="stackStyle(stack.cards.length)"
+          >
             <Card
               v-for="(card, index) in stack.cards"
               :key="card.instanceId"
               :card="card"
               mode="window"
-              :class="index ? '-mt-[260px] ml-12' : ''"
-              :style="{ zIndex: index + 1 }"
+              class="absolute top-0 left-0"
+              :data-card-stack-layer="index"
+              :style="{ zIndex: index + 1, transform: stackShift(index) }"
             />
+
+            <span
+              v-if="stack.cards.length > 1"
+              class="text-12 text-dim absolute right-0 lining-nums"
+              data-card-stack-count
+            >
+              ×{{ stack.cards.length }}
+            </span>
           </div>
         </div>
       </template>
@@ -73,6 +88,16 @@ const tabs = computed(() =>
   groups.value.map(group => ({ id: group.type, label: tabLabel(group) })),
 );
 const activeType = ref('');
+
+/** Стопка дублей: верхняя карта лежит как одиночная, каждая следующая — ниже на один шаг. */
+const STACK_STEP = 16;
+const CARD_WIDTH = 200;
+const CARD_HEIGHT = 295;
+const stackShift = index => `translateY(${index * STACK_STEP}px)`;
+const stackStyle = count => ({
+  width: `${CARD_WIDTH}px`,
+  height: `${CARD_HEIGHT + Math.max(0, count - 1) * STACK_STEP}px`,
+});
 
 watch(
   groups,

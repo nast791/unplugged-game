@@ -201,6 +201,15 @@ describe('карта dorothy_04 «Смена караула»', () => {
     expect(healed.combat).toBeNull();
   });
 
+  it('выбор сделан — шаг сработал: ни паузы, ни «ждёт очереди», в результате текст варианта', () => {
+    const healed = choose(optionWindow(), 'heal');
+
+    const effect = healed.lastCombat.effects[0];
+    expect(effect.status).toBe('applied');
+    // «Результат: выбрано «Восстановите Дороти 2 здоровья.»» — подпись берётся с карты, не из id
+    expect(effect.picked).toEqual(['Восстановите Дороти 2 здоровья.']);
+  });
+
   it('вариант «draw» берёт карту из колоды', () => {
     const paused = optionWindow();
     expect(player(paused, '0').deck.cards).toHaveLength(2);

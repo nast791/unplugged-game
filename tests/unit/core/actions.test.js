@@ -58,12 +58,12 @@ describe('SET_CARDS', () => {
     expect(deck(player(state, '0'))).toHaveLength(0);
     expect(hand(player(state, '0'))).toHaveLength(5);
 
-    // колода была из 2 карт: 5 − 2 = 3 недостающие карты, по 2 урона за каждую — главному герою
+    // колода была из 2 карт: 5 − 2 = 3 недостающие карты, по 2 урона за каждую — каждому своему бойцу
     const before = player(state, '0').fighters.find(f => f.id === 'alpha').currentHp;
     SET_CARDS(state, { playerId: '0', op: 'draw', count: 3 });
     expect(player(state, '0').fighters.find(f => f.id === 'alpha').currentHp).toBe(before - 6);
-    // помощник истощение не получает
-    expect(player(state, '0').fighters.find(f => f.id === 'pawn').currentHp).toBe(4);
+    // истощение платят все бойцы на поле: помощник с 4 здоровья его не пережил
+    expect(player(state, '0').fighters.map(f => f.id)).toEqual(['alpha']);
     expect(hand(player(state, '0'))).toHaveLength(5);
   });
 

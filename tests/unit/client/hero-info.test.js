@@ -288,6 +288,54 @@ describe('окно информации о герое', () => {
 
     expect(wrapper.text()).toContain('Пелена');
     expect(labels).toEqual(['активна', 'не активна']);
+    // неактивный предмет — серая иконка, цвет стихии/героя остаётся только у активного
+    expect(wrapper.findAll('[data-item-inactive]')).toHaveLength(1);
+  });
+
+  it('свёртывает предметы-счётчики в одну строку: имя и число копий', () => {
+    const shard = {
+      group: 'shard',
+      display: 'counter',
+      name: 'Осколки',
+      color: '#BAE6FD',
+      icon: 'lucide:snowflake',
+      state: 'collected',
+      states: { ice: 'во льду', collected: 'собраны' },
+    };
+    const wrapper = mountInfo('items', {
+      player: {
+        ...player,
+        items: [
+          { ...shard, id: 'shard_1' },
+          { ...shard, id: 'shard_2' },
+          { ...shard, id: 'shard_3' },
+        ],
+      },
+    });
+    const rows = wrapper.findAll('[data-item-counter]');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].text()).toContain('Осколки');
+    expect(rows[0].find('[data-item-count]').text()).toBe('× 3');
+    expect(rows[0].find('[data-item-state]').exists()).toBe(false);
+  });
+
+  it('ставит рядом счётчик и обычный предмет, не склеивая их', () => {
+    const shard = {
+      id: 'shard_1',
+      group: 'shard',
+      display: 'counter',
+      name: 'Осколки',
+      state: 'collected',
+    };
+    const coil = { id: 'coil_1', name: 'Катушка Теслы', state: 'inactive' };
+    const wrapper = mountInfo('items', {
+      player: { ...player, items: [shard, coil] },
+    });
+
+    expect(wrapper.findAll('[data-item-counter]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-item-state]').map(span => span.text())).toEqual(['не активна']);
+    expect(wrapper.text()).toContain('Катушка Теслы');
   });
 
   it('пишет шаг и удар с бонусом через дробь, когда бонус есть', () => {

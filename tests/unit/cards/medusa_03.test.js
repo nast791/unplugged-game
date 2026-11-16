@@ -102,9 +102,17 @@ describe('карта medusa_03 «Шепот змей»', () => {
     expect(state.combat.choice.effect).toBe('discard');
     expect(state.combat.choice.max).toBe(1);
     expect(state.combat.choice.optional).toBe(false);
-    expect(state.combat.choice.candidates).toEqual([
-      { cardId: 'spare_1', bonus: 1 },
-      { cardId: 'other_1', bonus: 1 },
+    // кандидаты — настоящие карты руки врага: окно открывается у него, а не у владельца карты
+    expect(
+      state.combat.choice.candidates.map(entry => ({
+        cardId: entry.cardId,
+        bonus: entry.bonus,
+        zone: entry.zone,
+        ownerId: entry.ownerId,
+      })),
+    ).toEqual([
+      { cardId: 'spare_1', bonus: 1, zone: 'hand', ownerId: '1' },
+      { cardId: 'other_1', bonus: 1, zone: 'hand', ownerId: '1' },
     ]);
     expect(state.combat.effects).toEqual([
       {

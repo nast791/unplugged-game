@@ -42,17 +42,28 @@ const unit = (id, cell, hp, extra = {}) => ({
   ...extra,
 });
 
-const slot = (id, name, order, fighters, hand = [], lost = []) => ({
+const slot = (id, name, order, fighters, hand = [], lost = [], deck = []) => ({
   id,
   name,
   order,
   placementReady: true,
-  deck: zone([]),
+  deck: zone(deck),
   hand: zone(hand),
   discard: zone([]),
   fighters,
   lost,
 });
+
+/** Верх колоды: победа в битве обновляет руку, и добирать надо из чего-то. */
+const deckCard = {
+  id: 'test_extra',
+  instanceId: 'test_extra_1',
+  title: 'Запасная',
+  type: 'effect',
+  value: 0,
+  bonus: 1,
+  text: '',
+};
 
 /** Тото бьёт Бету «Взять след»; у Дороти два действия на ход. */
 const buildState = () =>
@@ -66,6 +77,8 @@ const buildState = () =>
         1,
         [unit('dorothy', 6, 12), unit('toto', 3, 6, { type: 'assistant', group: 'toto' })],
         [{ ...card, instanceId: 'dorothy_07_1' }],
+        [],
+        [deckCard],
       ),
       slot('1', 'Бета', 2, [unit('beta', 4, 13)]),
     ],
@@ -98,22 +111,28 @@ const fighterOf = (state, playerId, fighterId) =>
 
 describe('карта dorothy_07 «Взять след»', () => {
   it('описана правилами, момент — из списка', () => {
-    expect(card.rules).toHaveLength(1);
-    expect(card.rules[0].moment).toBe('afterCombat');
-    expect(isMoment(card.rules[0].moment)).toBe(true);
+    // перемещение работает и в защиту, добор карты — только за победу: два свойства, два правила
+    expect(card.rules).toHaveLength(2);
+    for (const rule of card.rules) {
+      expect(rule.moment).toBe('afterCombat');
+      expect(isMoment(rule.moment)).toBe(true);
+      expect(rule.text).toBeTruthy();
+    }
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({ type: 'hybrid', value: 2, bonus: 2, fighter: 'toto' });
+    // добавочного действия у гибридной карты быть не может
+    expect(JSON.stringify(card.rules)).not.toContain('SET_ACTIONS');
   });
 
-  it('после победы даёт действие и перемещение Тото до 3 клеток', () => {
+  it('после победы перемещает Тото до 3 клеток и добирает карту', () => {
     const state = buildState();
     const before = state.turn.actionsLeft;
 
     const after = battle(state);
 
     expect(after.lastCombat.winner).toBe('attacker');
-    // карта стоит действие и отдаёт его обратно
-    expect(after.turn.actionsLeft).toBe(before);
+    // карта стоит действие и добавочного не возвращает (гибрид)
+    expect(after.turn.actionsLeft).toBe(before - 1);
     expect(after.movement).toMatchObject({
       playerId: '0',
       budget: 3,
@@ -130,6 +149,11 @@ describe('карта dorothy_07 «Взять след»', () => {
     expect(finished.movement).toBeNull();
     expect(finished.combat).toBeNull();
     expect(fighterOf(finished, '0', 'toto').currentPosition).toBe('1');
+    // победа обновила руку: верхняя карта колоды ушла в руку
+    expect(player(finished, '0').hand.cards.map(entry => entry.instanceId)).toContain(
+      'test_extra_1',
+    );
+    expect(player(finished, '0').deck.cards).toHaveLength(0);
   });
 
   it('перемещение необязательно: «до 3 клеток» включает 0', () => {
@@ -139,7 +163,9 @@ describe('карта dorothy_07 «Взять след»', () => {
 
     expect(finished.movement).toBeNull();
     expect(fighterOf(finished, '0', 'toto').currentPosition).toBe(3);
-    expect(finished.turn.actionsLeft).toBe(2);
+    expect(finished.turn.actionsLeft).toBe(1);
+    // «до 3 клеток» — это 0 шагов: отказ от перемещения карту не отменяет
+    expect(player(finished, '0').hand.cards).toHaveLength(1);
   });
 
   it('Тото убит — карту нельзя даже объявить: она привязана к нему', () => {
@@ -156,7 +182,7 @@ describe('карта dorothy_07 «Взять след»', () => {
     ).toThrow(/привязана к бойцу/);
   });
 
-  it('Тото убит в бою — правило «после битвы» гаснет: ни действия, ни перемещения', () => {
+  it('Тото убит в бою — правило «после битвы» гаснет: ни перемещения, ни добора', () => {
     const state = buildState();
     SET_HEALTH(state, { fighterId: 'toto', delta: -6 });
     // бой игрок 0 выиграл, но собаки на поле уже нет: правило ждёт FIGHTERS { group: 'toto' }
@@ -181,5 +207,7 @@ describe('карта dorothy_07 «Взять след»', () => {
 
     expect(after.turn.actionsLeft).toBe(before);
     expect(after.movement).toBeNull();
+    // добор за победу тоже принадлежит собаке: её нет — свойства нет, верх колоды на месте
+    expect(player(after, '0').deck.cards).toHaveLength(1);
   });
 });

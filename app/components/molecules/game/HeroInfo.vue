@@ -147,7 +147,13 @@
         </template>
 
         <template v-else>
-          <div v-for="item in items" :key="item.id" class="flex items-center gap-10">
+          <div
+            v-for="item in itemRows"
+            :key="item.id"
+            class="flex items-center gap-10"
+            :data-item-counter="item.counter ? '' : undefined"
+            :data-item-inactive="itemInactive(item) ? '' : undefined"
+          >
             <span
               class="flex size-26 shrink-0 items-center justify-center"
               :style="{ '--item-color': props.color || item.color }"
@@ -155,14 +161,18 @@
               <Icon
                 v-if="itemIcon(item)"
                 :name="itemIcon(item)"
-                class="size-26! text-[var(--item-color)]"
+                class="size-26!"
+                :class="itemInactive(item) ? 'text-dim' : 'text-[var(--item-color)]'"
                 aria-hidden="true"
               />
             </span>
 
             <span class="text-14 min-w-0 flex-1 truncate">{{ item.name || item.id }}</span>
 
-            <span class="text-12 text-dim shrink-0" data-item-state>{{
+            <span v-if="item.counter" class="text-12 text-dim shrink-0 lining-nums" data-item-count>
+              × {{ item.count }}
+            </span>
+            <span v-else class="text-12 text-dim shrink-0" data-item-state>{{
               itemStateLabel(item, item.state)
             }}</span>
           </div>
@@ -178,6 +188,7 @@ import APicture from '~/components/atoms/APicture.vue';
 import AScroll from '~/components/atoms/AScroll.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
 import { HERO_INFO_TONE } from '~/constants/colors.js';
+import { ITEM_STATE_LABELS } from '~/constants/items.js';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 import { hpLabel, itemStateLabel } from '~/composables/game/useGameHelpers.js';
 import { TAB_LABEL } from '~/ui/tabs.js';
@@ -208,6 +219,27 @@ const alive = computed(
 
 const items = computed(() => props.player?.items ?? []);
 
+// Предметы-счётчики (осколки) стоят одной строкой «× N»: копии — это запас, а не отдельные предметы.
+const itemRows = computed(() => {
+  const counters = new Map();
+  const plain = [];
+
+  for (const item of items.value) {
+    if (String(item?.display ?? '') !== 'counter') {
+      plain.push({ ...item, counter: false });
+      continue;
+    }
+
+    const key = String(item.group ?? item.id);
+    const row = counters.get(key);
+
+    if (row) row.count += 1;
+    else counters.set(key, { ...item, id: `counter-${key}`, counter: true, count: 1 });
+  }
+
+  return [...counters.values(), ...plain];
+});
+
 // Число живых помощников стоит в самой вкладке: панель одна, и заголовку незачем повторять раздел.
 const tabs = computed(() => [
   { key: 'hero', title: 'Герой', label: TOOLTIPS.rail.hero(), disabled: !props.hero },
@@ -217,7 +249,12 @@ const tabs = computed(() => [
     label: TOOLTIPS.rail.fighters(),
     disabled: !sidekicks.value.length,
   },
-  { key: 'items', title: 'Предметы', label: TOOLTIPS.rail.items(), disabled: !items.value.length },
+  {
+    key: 'items',
+    title: 'Предметы',
+    label: TOOLTIPS.rail.items(),
+    disabled: !itemRows.value.length,
+  },
 ]);
 
 const tabClass = tab => [
@@ -336,6 +373,9 @@ const itemIcon = item => {
   const entry = itemCatalog.value.get(String(item?.group ?? item?.id));
   return entry?.icon || item?.icon || '';
 };
+
+/** Выключенный предмет теряет цвет: серая иконка говорит «сейчас не работает» без чтения подписи. */
+const itemInactive = item => itemStateLabel(item, item.state) === ITEM_STATE_LABELS.inactive;
 
 const step = delta => {
   const count = sidekicks.value.length;

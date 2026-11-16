@@ -127,8 +127,10 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
       candidates: '$spirits',
       count: 1,
       required: false,
-      auto: true,
     });
+    // жертва духа — решение игрока, и оно записано в самой карте: manual запрещает автовыбор
+    expect(card.rules[0].then[0].manual).toBe(true);
+    expect(card.rules[0].then[0].auto).toBeUndefined();
     expect(card.rules[1].when[0]).toMatchObject({ fact: 'PICKED', var: 'picked' });
     expect(card.rules[1].then.map(step => step.action)).toEqual(['SET_HEALTH', 'SET_COMBAT']);
     // «значение этой карты становится 6» — не прибавка, а новое значение
@@ -148,7 +150,6 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
       playerId: '0',
       kind: 'fighters',
       required: false,
-      auto: true,
     });
     expect(state.targeting.candidates.map(entry => entry.fighterId)).toEqual([
       'ash_1',
@@ -212,17 +213,20 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
     expect(handIds(after)).toEqual(['ifdraw']);
   });
 
-  it('один живой дух — окна не видно, движок отмечает его сам', () => {
+  it('один живой дух — окно открыто, но дух не сгорает без клика игрока', () => {
     const auto = openBattle(buildState({ spirits: [2], lost: [1, 3] }));
 
-    // окно закрылось само: кандидат один, и бой сразу доигран
-    expect(auto.targeting ?? null).toBeNull();
-    expect(auto.combat ?? null).toBeNull();
-    expect(aliveIds(auto)).toEqual(['ifrit']);
-    expect(lostIds(auto)).toEqual(['ash_1', 'ash_3', 'ash_2']);
-    expect(auto.lastCombat.attackValue).toBe(6);
-    expect(fighterOf(auto, '1', 'beta').currentHp).toBe(8);
-    expect(handIds(auto)).toEqual(['ifdraw']);
+    // кандидат один, но выбор разрушительный: движок ждёт клика по духу или отказа
+    expect(auto.targeting).toMatchObject({ kind: 'fighters', required: false });
+    expect(auto.targeting.candidates.map(entry => entry.fighterId)).toEqual(['ash_2']);
+    expect(auto.combat).not.toBeNull();
+
+    const after = decline(auto);
+
+    expect(aliveIds(after)).toEqual(['ifrit', 'ash_2']);
+    expect(lostIds(after)).toEqual(['ash_1', 'ash_3']);
+    expect(after.lastCombat.attackValue).toBe(4);
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
   });
 
   it('духов нет — окна нет вовсе, атака идёт без свойства', () => {

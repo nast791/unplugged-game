@@ -207,7 +207,8 @@ vi.mock('~/components/molecules/game/SlotCard.vue', async () => {
         icon: { type: String, default: '' },
         iconClass: { type: String, default: '' },
         countClass: { type: String, default: '' },
-        count: { type: Number, default: null },
+        count: { type: [Number, String], default: null },
+        fraction: { type: Array, default: null },
         label: { type: String, default: '' },
         disabled: { type: Boolean, default: false },
         empty: { type: Boolean, default: false },
@@ -220,7 +221,11 @@ vi.mock('~/components/molecules/game/SlotCard.vue', async () => {
             'type': 'button',
             'data-slot': props.label,
             'data-icon': props.icon,
-            'data-count': props.count == null ? '' : String(props.count),
+            'data-count': props.fraction
+              ? props.fraction.join('/')
+              : props.count == null
+                ? ''
+                : String(props.count),
             'data-icon-class': props.iconClass,
             'data-count-class': props.countClass,
             'data-disabled': String(props.disabled),
@@ -443,7 +448,7 @@ describe('рельс героев', () => {
 
   it('держит над гексом две карты-кнопки: сведения и стопки', () => {
     const wrapper = mountRail();
-    const top = wrapper.findAll('.-top-31');
+    const top = wrapper.findAll('.-top-45');
 
     expect(top).toHaveLength(2);
     expect(wrapper.findAll('.-rotate-60')).toHaveLength(0);
@@ -455,9 +460,9 @@ describe('рельс героев', () => {
 
   it('держит карты-кнопки над гексом, а не на его грани', () => {
     const wrapper = mountRail();
-    const top = wrapper.findAll('.-top-31');
+    const top = wrapper.findAll('.-top-45');
 
-    expect(top[0].classes()).toEqual(expect.arrayContaining(['absolute', '-top-31', 'left-1/2']));
+    expect(top[0].classes()).toEqual(expect.arrayContaining(['absolute', '-top-45', 'left-1/2']));
     expect(rowsOf(wrapper)[0].classes()).toContain('z-20');
     expect(rowsOf(wrapper)[1].classes()).toContain('z-20');
   });
@@ -552,12 +557,13 @@ describe('рельс героев', () => {
 });
 
 describe('стопки героя', () => {
-  it('держит карту-кнопку с числом карт в руке', () => {
+  it('держит карту-кнопку с числом карт в руке и в колоде', () => {
     const wrapper = mountRail();
     const piles = slotByLabel(wrapper, pilesLabel(players[0]));
 
-    expect(piles.attributes('data-count')).toBe(String(players[0].handCount));
-    expect(piles.attributes('data-count-class')).toBe('text-18');
+    // «рука/колода» дробью: игрок видит, когда колода кончается
+    expect(piles.attributes('data-count')).toBe(`${players[0].handCount}/${players[0].deckCount}`);
+    expect(piles.attributes('data-count-class')).toBe('text-15');
   });
 
   it('называет все три стопки в подсказке одной карты', () => {

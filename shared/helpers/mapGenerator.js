@@ -1,3 +1,4 @@
+import { BOARD } from '#shared/constants/tuning.js';
 import { MAP_TERRAIN_IDS, isTerrainId } from '#shared/constants/terrain.js';
 import { seatSide } from '#shared/constants/seats.js';
 
@@ -19,18 +20,17 @@ import { seatSide } from '#shared/constants/seats.js';
  * раскладки: кружки стоят не по сетке, связи разные (у клетки 2–5 соседей), зоны выходят неровными.
  * Клеток с двумя и тремя стихиями немного, но хотя бы одна двухцветная и одна трёхцветная обязательны.
  * Генератор чистый: тот же сид и те же параметры — та же карта.
+ *
+ * Размеры поля (`BOARD`) правятся в `shared/constants/tuning.js`: пресеты по числу игроков, границы
+ * ручного выбора, предел клеток на землю и число земель. Здесь они только переиздаются.
  */
-export const BOARD_PRESETS = {
-  2: { cells: [32, 36] },
-  3: { cells: [34, 40] },
-  4: { cells: [34, 42] },
-};
-
-/** Сколько разных земель бывает на поле: минимум 8, максимум 10 — по сиду. */
-export const MIN_TERRAIN_COUNT = 8;
-export const MAX_TERRAIN_COUNT = 10;
-/** Предел клеток на один тип земли: больше десяти клеток земля не занимает (правило владельца). */
-export const MAX_TERRAIN_CELLS = 10;
+/** Размеры поля — в `shared/constants/tuning.js` (`BOARD`): здесь тот же вход модуля, не второе число. */
+export const BOARD_PRESETS = BOARD.presets;
+/** Сколько разных земель бывает на поле — по сиду. */
+export const MIN_TERRAIN_COUNT = BOARD.terrains.min;
+export const MAX_TERRAIN_COUNT = BOARD.terrains.max;
+/** Предел клеток на один тип земли: больше этого земля не занимает (правило владельца). */
+export const MAX_TERRAIN_CELLS = BOARD.terrainCells;
 /**
  * Минимум шагов между номерными клетками (правило владельца). Считаем **шаги по связям**, а не
  * пиксели: дальность атаки и шага в правилах — это BFS по соседям, поэтому «четыре клетки» значит
@@ -39,10 +39,11 @@ export const MAX_TERRAIN_CELLS = 10;
  */
 export const START_GAP_STEPS = 4;
 /**
- * Границы **ручного** размера поля (клетки): «Авто» отдаёт размер сиду по пресетам выше, а игрок может
- * задать число сам. Меньше 32 — тесно стартовым землям и 4–6 малым, больше 42 — полотно вместо поля.
+ * Границы **ручного** размера поля (клетки): «Авто» отдаёт размер сиду по пресетам, а игрок может
+ * задать число сам. Числа — в `tuning.js` (`BOARD.cells`): уже границ поле мельчает под старты,
+ * шире — превращается в полотно.
  */
-export const CELLS_LIMIT = { min: 32, max: 42 };
+export const CELLS_LIMIT = BOARD.cells;
 /** Сколько цветных клеток бывает на поле: трёхцветных 1–4, двухцветных 2–8. */
 export const MULTI_CELL_COUNTS = { three: [1, 4], two: [2, 8] };
 /**

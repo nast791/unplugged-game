@@ -13,6 +13,7 @@ import {
   movementBudget,
   movementDestinations,
   movementFighterRejection,
+  occupiedCellIds,
 } from '#shared/helpers/turn.js';
 
 const playerIdOf = (partyState, action) => action.playerId ?? partyState.turn?.playerId;
@@ -211,6 +212,12 @@ const openMovement = (partyState, action) => {
     // обычный черновик этих полей не несёт, чтобы форма окна оставалась прежней
     ...(action.teleport === true ? { teleport: true } : {}),
     ...(action.once === true ? { once: true } : {}),
+    // одно перемещение на выбор из списка: шаг другого бойца возвращает первого на исходную клетку
+    ...(action.oneOf === true ? { oneOf: true } : {}),
+    // проход с уроном: занятую клетку можно кликнуть — боец идёт сквозь неё и возвращается назад
+    ...(action.throughEnemies === true && (damageOnPass > 0 || healOnPass > 0)
+      ? { transit: true }
+      : {}),
     throughEnemies: action.throughEnemies === true,
     damageOnPass,
     healOnPass,
@@ -243,6 +250,24 @@ const openMovement = (partyState, action) => {
   return partyState;
 };
 
+/**
+ * Один из двух: шаг другого бойца возвращает предыдущего на его исходную клетку. Выбор держится
+ * до подтверждения окна, поэтому «поводил Анубиса, поводил Амат» не оставляет на поле обоих.
+ */
+const rollbackOtherFighter = (partyState, movement, fighterId) => {
+  const activeId = movement.activeFighterId;
+  if (activeId == null || String(activeId) === String(fighterId)) return;
+
+  const moves = (movement.moves ?? []).filter(move => String(move.fighterId) === String(activeId));
+  if (moves.length === 0) return;
+
+  const home = movement.origins?.[String(activeId)] ?? moves[0].from;
+  SET_FIGHTER_CELL(partyState, { fighterId: activeId, cellId: home, teleport: true });
+  movement.moves = (movement.moves ?? []).filter(
+    move => String(move.fighterId) !== String(activeId),
+  );
+};
+
 /** Шаг бойца: origin запоминается при первом шаге, радиус считается от него. */
 const stepMovement = (partyState, action) => {
   const movement = partyState.movement;
@@ -262,6 +287,15 @@ const stepMovement = (partyState, action) => {
     throw new Error('SET_MOVEMENT: боец не расставлен');
   }
 
+  if (movement.oneOf === true) {
+    rollbackOtherFighter(partyState, movement, action.fighterId);
+    movement.activeFighterId = String(action.fighterId);
+    // возвращённый боец мог занять ту клетку, куда шагает выбранный: проверяем по новому полю
+    if (occupiedCellIds(partyState, action.fighterId).has(String(action.cellId))) {
+      throw new Error(`SET_MOVEMENT: клетка ${action.cellId} занята`);
+    }
+  }
+
   const fighterId = String(action.fighterId);
   if (movement.origins[fighterId] == null) {
     movement.origins[fighterId] = fighter.currentPosition;
@@ -273,6 +307,24 @@ const stepMovement = (partyState, action) => {
   const damage = Number(movement.damageOnPass) || 0;
   const heal = Number(movement.healOnPass) || 0;
   const placesTerrain = movement.terrainOnStep != null && movement.teleport !== true;
+
+  // клик по занятой клетке при проходе с уроном — боец идёт сквозь неё и возвращается: встать на неё нельзя
+  const blockers = fightersOnCell(partyState, action.cellId).filter(({ player }) =>
+    isEnemyPlayer(partyState, playerId, player),
+  );
+  if (movement.transit === true && blockers.length > 0) {
+    const through = stepRoute(partyState, movement, playerId, fighter, action.cellId);
+    const budget = movementBudget(fighter, movement);
+    if (!through || through.length * 2 > budget) {
+      throw new Error('SET_MOVEMENT: радиуса не хватает на путь сквозь бойца и обратно');
+    }
+    movement.moves.push({ fighterId, from, to: from, route: through, transit: true });
+    return damagePassedFighters(partyState, movement, playerId, through, damage, {
+      heal,
+      moverId: fighterId,
+    });
+  }
+
   const route =
     damage > 0 || heal > 0 || placesTerrain
       ? stepRoute(partyState, movement, playerId, fighter, action.cellId)
