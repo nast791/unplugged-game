@@ -264,8 +264,10 @@ export const useGameSession = () => {
   });
   const choiceComplete = computed(() => choicePicked.value.length >= choiceCount.value);
 
-  // окно выбора карт: кандидат-карта несёт зону и владельца, поэтому клиент показывает окно руки
-  // с настоящими картами, а не строку подписи
+  // окно выбора карт: кандидат-карта несёт зону и владельца, поэтому клиент показывает окно
+  // с настоящими картами, а не строку подписи. Карты берём из любой зоны: рука, колода, сброс
+  const CARD_ZONES = ['hand', 'deck', 'discard'];
+
   const choiceEntries = computed(() => {
     const byId = new Map();
 
@@ -277,7 +279,9 @@ export const useGameSession = () => {
     return [...byId.values()];
   });
 
-  const choiceCards = computed(() => choiceEntries.value.filter(entry => entry.zone === 'hand'));
+  const choiceCards = computed(() =>
+    choiceEntries.value.filter(entry => CARD_ZONES.includes(String(entry.zone ?? ''))),
+  );
 
   const choiceHand = computed(() => {
     const cards = choiceCards.value;
@@ -289,7 +293,12 @@ export const useGameSession = () => {
       fighter => fighter.type === 'hero',
     );
 
-    return { playerId: ownerId, name: hero?.name || owner?.name || '', cards };
+    return {
+      zone: String(cards[0].zone ?? 'hand'),
+      playerId: ownerId,
+      name: hero?.name || owner?.name || '',
+      cards,
+    };
   });
 
   const choiceRequired = computed(() => {
@@ -301,7 +310,9 @@ export const useGameSession = () => {
   const optionHint = computed(() => {
     const open = showTargetingOptions.value || Boolean(combat.value?.choice);
     if (!open) return '';
-    if (!choiceEntries.value.some(entry => entry.zone !== 'hand')) return '';
+    if (!choiceEntries.value.some(entry => !CARD_ZONES.includes(String(entry.zone ?? '')))) {
+      return '';
+    }
 
     return HINTS.defense.effectOption({
       required: choiceRequired.value,

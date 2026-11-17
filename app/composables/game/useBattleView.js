@@ -169,10 +169,23 @@ const playerNameOf = (players = [], playerId) => {
 const stepResultParts = step => {
   const parts = [];
   // выбранная и сброшенная карта — те же строки, что и раскрытая: у имени подсказка с текстом,
-  // рядом тип, значение и бонус (снимок карты движок кладёт в шаг)
-  const chosen = (step.cards ?? []).filter(Boolean);
+  // рядом тип, значение и бонус. Движок кладёт в шаг снимок карты (`pickedCards`), а в `cards` —
+  // её ключи: печатаем снимок, иначе ищем карту среди сброшенных этим шагом
+  const chosen = [...(step.pickedCards ?? [])];
+  for (const entry of step.cards ?? []) {
+    if (!entry) continue;
+    if (typeof entry === 'object') {
+      chosen.push(entry);
+      continue;
+    }
+    if (chosen.some(card => String(card?.key ?? card?.cardId ?? '') === String(entry))) continue;
+    const known = (step.discarded ?? []).find(card => String(card?.key ?? '') === String(entry));
+    if (known) chosen.push(known);
+  }
   for (const card of chosen) parts.push(cardLine('выбрана карта ', card));
-  if (step.picked?.length) parts.push({ text: `выбрано «${step.picked.join('», «')}»` });
+  if (!chosen.length && step.picked?.length) {
+    parts.push({ text: `выбрано «${step.picked.join('», «')}»` });
+  }
   for (const card of step.discarded ?? []) {
     if (card.title) parts.push(cardLine('в сброс ушла карта ', card));
   }
@@ -303,6 +316,9 @@ export const useBattleView = () => {
   const snapshot = ref(null);
   let wasMine = false;
   let seenFinish = null;
+  // Сколько шагов очереди игрок уже видел вживую: после паузы проход боя продолжается с этого места,
+  // а не начинается заново с первого пункта
+  let seenLive = 0;
   let timer = null;
 
   const clearTimer = () => {
@@ -339,9 +355,23 @@ export const useBattleView = () => {
       setBattleResultShown(false);
       setBattleResultSummary('');
       wasMine = true;
+      seenLive = 0;
       snapshot.value = { combat: live.value, players: players.value };
     },
     { immediate: true },
+  );
+
+  watch(
+    () => live.value?.effects,
+    effects => {
+      if (!live.value) return;
+      const shown = (effects ?? []).reduce(
+        (max, step, index) => (step?.status && step.status !== 'pending' ? index + 1 : max),
+        0,
+      );
+      seenLive = Math.max(seenLive, shown);
+    },
+    { immediate: true, deep: true },
   );
 
   const cardsIn = list =>
@@ -444,6 +474,14 @@ export const useBattleView = () => {
 
     if (record.effects.length === 0 && !record.damage) {
       persist(record);
+      return;
+    }
+
+    // шаги, которые игрок уже видел вживую, не проигрываем заново: проход продолжается с паузы
+    const resume = Math.min(seenLive, record.effects.length);
+    if (resume > 0) {
+      replay.value = { ...record, index: resume, phase: 'steps' };
+      later(duration('battleStep'), advance);
       return;
     }
 
@@ -665,6 +703,7 @@ export const useBattleView = () => {
     setBattleResultShown(false);
     setBattleResultSummary('');
     wasMine = false;
+    seenLive = 0;
     // закрытие окна — это конец действия: движок держит ход за атакующим, пока не придёт этот клик
     if (awaitingBattleClose.value) void onCloseBattle();
   };

@@ -309,6 +309,29 @@ const pickedLabelsOf = (window, card = null) => {
     .filter(Boolean);
 };
 
+/**
+ * Снимок отмеченных карт: строки результата печатают вид карты (название, текст, тип, значение,
+ * бонус), а не её ключ. Кандидаты окна руки уже несут полный вид карты (`zone`, `title`, `text`).
+ */
+const pickedCardsOf = window => {
+  const ids = windowPicked(window).map(String);
+  if (ids.length === 0) return [];
+
+  const candidates = window?.candidates ?? [];
+  return ids
+    .map(id =>
+      candidates.find(
+        entry =>
+          entry?.zone != null &&
+          [entry.optionId, entry.cardId, entry.id].some(
+            value => value != null && String(value) === id,
+          ),
+      ),
+    )
+    .filter(Boolean)
+    .map(entry => ({ ...entry }));
+};
+
 /** Шаг очереди, чьё окно открыло выбор карты: шаг помним номером, у одной карты пауз бывает несколько. */
 const stepOfCard = (combat, pending) => {
   const list = combat?.effects ?? [];
@@ -417,6 +440,8 @@ export const runCombatPicked = partyState => {
   });
 
   if (labels.length > 0) step.picked = [...(step.picked ?? []), ...labels];
+  const pickedCards = pickedCardsOf(answered);
+  if (pickedCards.length > 0) step.pickedCards = [...(step.pickedCards ?? []), ...pickedCards];
 
   // выбор сделан — отметка больше не ждёт игрока: окно закрываем до проверки паузы, иначе шаг
   // навсегда останется «пауза: решает игрок» (окно `picked` уже не нужно, а пауза держит бой)

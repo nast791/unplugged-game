@@ -103,15 +103,26 @@ const chooserId = computed(
   () => combat.value?.choice?.playerId ?? targeting.value?.playerId ?? you.value,
 );
 
-const who = computed(() => {
-  const name = nameOf(chooserId.value);
-  return name && String(chooserId.value) === String(you.value) ? 'Вы' : name || 'Игрок';
-});
+// кто выбирает — всегда имя героя: «Вы» в подсказке не говорит, чья это рука и чей выбор
+const who = computed(() => nameOf(chooserId.value) || 'Игрок');
+
+const ZONE_TITLES = { hand: 'Рука', deck: 'Колода', discard: 'Сброс' };
+const PLACE_NAMES = { hand: 'руки', deck: 'колоды', discard: 'сброса' };
+
+const zone = computed(() => String(choiceHand.value?.zone ?? 'hand'));
 
 const reason = computed(() => {
   const effect = combat.value?.choice?.effect;
-  if (effect === 'bonus') return 'её бонус добавится к вашей карте боя';
+  const own = String(chooserId.value) === String(you.value ?? '');
+  if (effect === 'bonus') {
+    return own ? 'её бонус добавится к вашей карте боя' : 'её бонус добавится к его карте боя';
+  }
   if (effect === 'discard') return 'она уйдёт в сброс';
+  // выбор карты не из руки: карта колоды или сброса — выбранная возвращается в руку владельцу
+  if (picking.value && zone.value === 'deck') return 'это карта колоды: выбранная уйдёт в руку';
+  if (picking.value && zone.value === 'discard') {
+    return 'это карта сброса: выбранная вернётся в руку';
+  }
   // окно по чужой руке (обзор, «Клёв в темноте»): карта уходит из руки противника
   if (String(choiceHand.value?.playerId ?? '') !== String(you.value ?? '')) {
     return 'это рука противника: карта уйдёт в сброс';
@@ -120,14 +131,15 @@ const reason = computed(() => {
 });
 
 const title = computed(() => {
+  const label = ZONE_TITLES[zone.value] ?? 'Рука';
   const hero = [...(player.value?.fighters ?? []), ...(player.value?.lost ?? [])].find(
     fighter => fighter.type === 'hero',
   );
   const name = hero?.name || player.value?.name || choiceHand.value?.name || '';
-  return name ? `Рука: ${name}` : 'Рука';
+  return name ? `${label}: ${name}` : label;
 });
 
-const closeLabel = computed(() => (picking.value ? 'Свернуть руку' : 'Закрыть руку'));
+const closeLabel = computed(() => (picking.value ? 'Свернуть окно' : 'Закрыть руку'));
 
 const status = computed(() =>
   handChoiceStatus({
@@ -135,6 +147,7 @@ const status = computed(() =>
     required: choiceRequired.value,
     who: who.value,
     reason: reason.value,
+    place: PLACE_NAMES[zone.value] ?? 'руки',
   }),
 );
 
@@ -144,19 +157,26 @@ const confirmLabel = computed(() =>
 
 const confirmEnabled = computed(() => staged.value != null || choiceConfirmEnabled.value);
 
-const onConfirm = () => {
+const onConfirm = async () => {
   const card = staged.value;
   if (!card) {
     onFinishAction();
     return;
   }
   staged.value = null;
-  pickChoiceCard(card);
+  // пауза боя применяет карту сразу (движок сам сбрасывает её), окно вариантов — отметкой и «Подтвердить»
+  if (combat.value?.choice) {
+    pickChoiceCard(card);
+    return;
+  }
+  await pickChoiceCard(card);
+  // окно вариантов ещё открыто — подтверждаем его тем же нажатием; если движок применил выбор сам, не шлём лишнего
+  if (targeting.value) await onFinishAction();
 };
 
 const emptyText = computed(() =>
   picking.value
-    ? 'В руке нечего выбрать'
+    ? `В ${(ZONE_TITLES[zone.value] ?? 'руке').toLowerCase()} нечего выбрать`
     : 'Эти карты сейчас скрыты от вас — видно только их число',
 );
 

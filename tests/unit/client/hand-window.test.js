@@ -43,6 +43,7 @@ const choicePicked = ref([]);
 const choiceRequired = ref(false);
 const choiceConfirmEnabled = ref(false);
 const pickChoiceCard = vi.fn();
+const onChoiceClick = vi.fn();
 const onFinishAction = vi.fn();
 const openModal = vi.fn();
 const closeModal = vi.fn();
@@ -58,6 +59,7 @@ vi.mock('~/composables/game/useGameSession.js', () => ({
     choiceRequired,
     choiceConfirmEnabled,
     pickChoiceCard,
+    onChoiceClick,
     onFinishAction,
   }),
 }));
@@ -166,6 +168,7 @@ beforeEach(() => {
   choiceRequired.value = false;
   choiceConfirmEnabled.value = false;
   pickChoiceCard.mockClear();
+  onChoiceClick.mockClear();
   onFinishAction.mockClear();
   openModal.mockClear();
   closeModal.mockClear();
@@ -286,6 +289,61 @@ describe('окно руки выбирает карту из руки', () => {
     const wrapper = mount(HandWindow);
     expect(wrapper.text()).toContain('Медуза выбирает карту из руки');
     expect(wrapper.text()).toContain('она уйдёт в сброс');
-    expect(wrapper.text()).toContain('она уйдёт в сброс');
+  });
+
+  it('и своего выбора тоже подписывает героем, а не словом «Вы»', () => {
+    choiceHand.value = { playerId: 'dorothy', name: 'Дороти', cards: enemyCards() };
+    combat.value = { choice: { playerId: 'dorothy', source: 'mirror_1', effect: 'discard' } };
+    const wrapper = mount(HandWindow);
+
+    expect(wrapper.text()).toContain('Дороти выбирает карту из руки');
+    expect(wrapper.text()).not.toContain('Вы выбирает');
+  });
+
+  it('выбор карты колоды или сброса открывает то же окно с настоящими картами', async () => {
+    const top = [
+      {
+        optionId: 'top_1',
+        cardId: 'top_1',
+        id: 'top_1',
+        title: 'Погребальный звон',
+        type: 'effect',
+        value: 0,
+        bonus: 2,
+        text: 'ВОЗЬМИТЕ КАРТУ В РУКУ.',
+        zone: 'deck',
+        ownerId: 'dorothy',
+      },
+      {
+        optionId: 'top_2',
+        cardId: 'top_2',
+        id: 'top_2',
+        title: 'Путь на закат',
+        type: 'effect',
+        value: 0,
+        bonus: 1,
+        text: 'ПОСЛЕ БИТВЫ: передвиньте бойца.',
+        zone: 'deck',
+        ownerId: 'dorothy',
+      },
+    ];
+    choiceHand.value = { zone: 'deck', playerId: 'dorothy', name: 'Дороти', cards: top };
+    targeting.value = { kind: 'options', count: 1, required: true, playerId: 'dorothy' };
+    const wrapper = mount(HandWindow);
+
+    // окно колоды, а не список строк: видно название и текст каждой карты
+    expect(wrapper.find('[data-pile-window]').attributes('data-pile-window')).toBe(
+      'Колода: Дороти',
+    );
+    expect(titlesOf(wrapper)).toEqual(['Погребальный звон', 'Путь на закат']);
+    expect(wrapper.text()).toContain('Дороти выбирает карту из колоды');
+    expect(wrapper.text()).toContain('это карта колоды');
+
+    await wrapper.findAll('[data-hand-choice]')[1].trigger('click');
+    await wrapper.find('[data-hand-choice-ok]').trigger('click');
+    expect(pickChoiceCard).toHaveBeenCalledTimes(1);
+    expect(pickChoiceCard.mock.calls[0][0].optionId).toBe('top_2');
+    // окно вариантов подтверждают тем же нажатием: отметка + «Подтвердить» — одно действие
+    expect(onFinishAction).toHaveBeenCalled();
   });
 });

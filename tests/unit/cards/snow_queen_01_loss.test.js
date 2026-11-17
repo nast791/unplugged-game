@@ -150,5 +150,10 @@ describe('«Зеркальный скол»: проигранная битва �
     expect(steps.map(entry => entry.status)).toEqual(['applied', 'skipped']);
     // шаг помнит, что именно сброшено: окно итога печатает карту, а не пустую строку
     expect(steps[0].cards ?? steps[0].discarded ?? []).toContain('rival_1');
+    // и её вид: название, тип, значение и бонус — без них в результате были пустые кавычки
+    expect(steps[0].pickedCards?.[0]?.title).toBe('Жар из-под земли');
+    expect(steps[0].pickedCards?.[0]?.type).toBe('effect');
+    expect(steps[0].pickedCards?.[0]?.value).toBe(0);
+    expect(steps[0].pickedCards?.[0]?.bonus).toBe(1);
   });
 });

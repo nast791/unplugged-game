@@ -190,11 +190,18 @@ export const momentsOfStage = stage => {
 };
 
 /**
- * Подпись окна выбора карты из руки: кто выбирает, зачем и что сделать, чтобы выбор применился.
- * `who` — имя выбирающего, `reason` — что случится с картой; без них подпись была непонятной.
+ * Подпись окна выбора карты: кто выбирает, зачем и что сделать, чтобы выбор применился.
+ * `who` — имя выбирающего, `reason` — что случится с картой, `place` — откуда карта
+ * («руки», «колоды», «сброса»); без них подпись была непонятной.
  */
-export const handChoiceStatus = ({ picked = 0, required = false, who = '', reason = '' } = {}) => {
-  const lead = who ? `${who} выбирает карту из руки` : 'Выберите карту из руки';
+export const handChoiceStatus = ({
+  picked = 0,
+  required = false,
+  who = '',
+  reason = '',
+  place = 'руки',
+} = {}) => {
+  const lead = who ? `${who} выбирает карту из ${place}` : `Выберите карту из ${place}`;
   const why = reason ? `: ${reason}` : '';
   if (picked > 0) return `${lead}${why}. Нажмите «Подтвердить»`;
   return required ? `${lead}${why}` : `${lead}${why} — или закончите без выбора`;

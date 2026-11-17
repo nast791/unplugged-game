@@ -591,26 +591,20 @@ describe('окно битвы: лента шагов с паузами', () => {
     await nextTick();
 
     await finishBattle();
-    // окно живо, но сначала пауза на вскрытые карты: обе карты видно, свойства ещё не пошли
+    // окно живо: шаги, которые игрок уже видел вживую, не проигрываются заново — лента продолжает с паузы
     expect(wrapper.find('[data-battle-body]').exists()).toBe(true);
-    expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(1);
     // карты закрытого боя окно нашло в сбросах — обе стороны видны
     expect(wrapper.text()).toContain('Наотмашь');
     expect(wrapper.text()).toContain('Клёпка');
 
-    await passTime(ANIMATION_DURATIONS.battleReveal);
-    // пошёл первый шаг: он играет, а статус откроется, когда его пауза пройдёт
-    expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(0);
-
-    await passTime(ANIMATION_DURATIONS.battleStep);
-    expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(1);
-    expect(wrapper.findAll('[data-battle-step-status]')[0].text()).toBe('сработало');
-    // урон ещё не показан: до него дойдёт лента
-    expect(wrapper.find('[data-battle-taken]').exists()).toBe(false);
-
+    // лента доигрывает оставшийся шаг и переходит к урону
     await passTime(ANIMATION_DURATIONS.battleStep);
     expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(2);
-    // шаги кончились — лента перешла к урону: у бойца появилась строка со снятым здоровьем
+    expect(wrapper.findAll('[data-battle-step-status]')[1].text()).toBe('сработало');
+
+    await passTime(ANIMATION_DURATIONS.battleDamage);
+    // последним — урон: у бойца появилась строка со снятым здоровьем
     expect(wrapper.find('[data-battle-taken]').text()).toBe('урон 3');
 
     await passTime(ANIMATION_DURATIONS.battleDamage);
@@ -729,6 +723,55 @@ describe('окно битвы: лента шагов с паузами', () => {
     expect(tips).toContain('ПОСЛЕ БИТВЫ: нанесите 2 урона.');
   });
 
+  it('выбранная карта в результате: название, подсказка, тип, значение и бонус', async () => {
+    openBattle();
+    const wrapper = mountWindow();
+    await nextTick();
+
+    session.combat.value = null;
+    session.lastCombat.value = {
+      ...finishedRecord(),
+      effects: [
+        {
+          order: 1,
+          moment: 'afterCombat',
+          side: 'attacker',
+          cardId: 'a1',
+          status: 'applied',
+          // ключи карты — отдельно, её вид — снимком: строку печатает снимок
+          cards: ['mirror_1'],
+          pickedCards: [
+            {
+              playerId: 'p2',
+              key: 'mirror_1',
+              title: 'Ни шагу назад',
+              type: 'defense',
+              value: 3,
+              bonus: 2,
+              text: 'ВО ВРЕМЯ БИТВЫ: значение карты +2.',
+            },
+          ],
+        },
+      ],
+    };
+    await nextTick();
+
+    await passTime(ANIMATION_DURATIONS.battleStep);
+
+    const result = wrapper.find('[data-battle-step-result]');
+    expect(result.exists()).toBe(true);
+    expect(result.text()).toContain('выбрана карта «Ни шагу назад»');
+    expect(result.text()).toContain('· защита · значение 3 · бонус 2');
+    // пустых кавычек больше нет: имя карты и её числа на месте
+    expect(result.text()).not.toContain('«»');
+
+    const cardName = wrapper.find('[data-battle-step-card]');
+    expect(cardName.text()).toBe('Ни шагу назад');
+    const { default: ATooltip } = await import('~/components/atoms/ATooltip.vue');
+    const tips = wrapper.findAllComponents(ATooltip).map(entry => entry.props('text'));
+    expect(tips).toContain('ВО ВРЕМЯ БИТВЫ: значение карты +2.');
+  });
+
   it('вылеченный в битве боец урона не получает: строки «урон» у него нет', async () => {
     openBattle();
     const wrapper = mountWindow();
@@ -829,14 +872,13 @@ describe('окно битвы: лента шагов с паузами', () => {
     await nextTick();
     await finishBattle();
 
-    // «быстро» — та же лента, но короче: паузы берём у настройки, а не у базовых чисел
-    await passTime(duration('battleReveal'));
+    // «быстро» — та же лента, но короче: паузы берём у настройки, а не у базовых чисел.
+    // Первый шаг уже виден (его игрок смотрел вживую), лента идёт со второго
     await passTime(duration('battleStep'));
-    expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-battle-step-status]')).toHaveLength(2);
     expect(duration('battleStep')).toBeLessThan(ANIMATION_DURATIONS.battleStep);
 
     // и до конца она доходит за поделённое время, а не за базовое
-    await passTime(duration('battleStep'));
     await passTime(duration('battleDamage'));
     expect(wrapper.find('[data-battle-close]').exists()).toBe(true);
   });
