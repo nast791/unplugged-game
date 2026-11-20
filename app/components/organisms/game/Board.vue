@@ -136,11 +136,26 @@
               <v-path :config="fighterHpGlossConfig(token)" />
               <v-text :config="fighterHpLabelConfig(token)" />
             </template>
+
+            <v-group
+              v-for="badge in fighterStatusBadges(token)"
+              :key="`s-${badge.id}`"
+              :config="{ listening: true }"
+              @mouseenter="hoverStatus(badge)"
+              @mouseleave="clearHoveredStatus"
+            >
+              <v-rect :config="badge.rect" />
+              <v-line v-for="(arm, armIndex) in badge.arms" :key="`a-${armIndex}`" :config="arm" />
+            </v-group>
           </v-group>
         </v-layer>
 
         <v-layer :config="{ listening: false }">
-          <v-label v-if="hoveredFighter" :config="fighterTipAnchorConfig(hoveredFighter)">
+          <v-label v-if="hoveredStatus" :config="statusTipAnchorConfig(hoveredStatus.anchor)">
+            <v-tag :config="fighterTipTagConfig()" />
+            <v-text :config="statusTipTextConfig(hoveredStatus)" />
+          </v-label>
+          <v-label v-else-if="hoveredFighter" :config="fighterTipAnchorConfig(hoveredFighter)">
             <v-tag :config="fighterTipTagConfig()" />
             <v-text :config="fighterTipTextConfig(hoveredFighter)" />
           </v-label>
@@ -176,6 +191,7 @@ const {
   you,
   phase,
   players,
+  movement,
   selectedFighterId,
   highlightedCellIds,
   highlightedFighterIds,
@@ -237,6 +253,9 @@ const {
   fighterTipAnchorConfig,
   fighterTipTagConfig,
   fighterTipTextConfig,
+  fighterStatusBadges,
+  statusTipAnchorConfig,
+  statusTipTextConfig,
   frameConfig,
   paperConfig,
   vignetteConfig,
@@ -249,6 +268,10 @@ const {
   players,
   viewerId: you,
   phase,
+  // кто сейчас идёт в пошаговом проходе: его токен рисуется парящим над стоящим (m02680)
+  movingFighterIds: computed(() =>
+    (movement?.value?.moves || []).map(move => String(move.fighterId)),
+  ),
   selectedFighterId,
   highlightedCellIds,
   highlightedFighterIds,
@@ -337,6 +360,21 @@ const hoverFighter = token => {
 
 const clearHoveredFighter = () => {
   hoveredFighter.value = null;
+};
+
+/**
+ * Плашка статуса у фишки: подсказка с описанием эффекта показывается **только** при наведении на саму
+ * плашку — в подсказке бойца статусов нет (правило владельца). Плашка внутри группы бойца, поэтому
+ * наведение на неё сначала поднимает `hoveredFighter`; слой подсказок выбирает статус первым.
+ */
+const hoveredStatus = ref(null);
+
+const hoverStatus = badge => {
+  hoveredStatus.value = badge;
+};
+
+const clearHoveredStatus = () => {
+  hoveredStatus.value = null;
 };
 
 const fitPadUnits = computed(() => {

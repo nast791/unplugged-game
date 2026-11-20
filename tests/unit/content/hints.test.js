@@ -39,6 +39,7 @@ const SAMPLE = {
   'finished.finished': { name: 'Дороти' },
   'client.timerExpired': { limit: '30 с' },
   'client.placementExpired': { limit: '2 мин' },
+  'client.noticeEffects': { text: 'Снижен лимит карт в руке до 5' },
 };
 
 /** Ветки подсказок: у каждой свой набор контекстов. */

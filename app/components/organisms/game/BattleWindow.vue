@@ -156,6 +156,21 @@
                       >
                         {{ part.card.name }}
                       </span>
+
+                      <template #content>
+                        <div
+                          class="flex max-h-[60dvh] w-260 flex-col gap-6 overflow-y-auto"
+                          data-battle-step-card-text
+                        >
+                          <CardText :text="part.card.text" tone="page" />
+
+                          <CardOptions
+                            v-if="part.card.options?.length"
+                            :options="part.card.options"
+                            tone="page"
+                          />
+                        </div>
+                      </template>
                     </ATooltip>
                     <span>{{ part.after }}</span>
                   </template>
@@ -231,6 +246,8 @@ import AScroll from '~/components/atoms/AScroll.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
 import BattleSide from '~/components/molecules/game/BattleSide.vue';
 import Card from '~/components/molecules/game/Card.vue';
+import CardOptions from '~/components/molecules/game/CardOptions.vue';
+import CardText from '~/components/molecules/game/CardText.vue';
 import { TOOLTIPS } from '~/constants/tooltips.js';
 import { useHeroPacks } from '~/composables/api/heroes.js';
 import { BATTLE_MIN_SIZE, useBattleView } from '~/composables/game/useBattleView.js';

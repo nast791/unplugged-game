@@ -65,10 +65,19 @@ export const signature = state =>
 /**
  * Проверки, которые должны выполняться в любой момент партии: бойцы на существующих клетках,
  * один боец на клетку, здоровье не выше начального. Нарушение — такой же баг, как падение.
+ *
+ * Исключение — **транзит**: в пошаговом перемещении с проходом сквозь бойцов боец стоит на клетке
+ * занявшего её бойца, пока не сделает следующий шаг (m02680). Совмещение разрешено только тому, кто
+ * двигается в открытом `stepwise`-окне, и только пока перемещение не закончено.
  */
 export const invariantViolation = state => {
   const nodes = new Set((state.map?.nodes ?? []).map(node => String(node.id)));
   const occupied = new Map();
+  const movement = state.movement;
+  const transit =
+    movement?.stepwise === true
+      ? new Set((movement.moves ?? []).map(move => String(move.fighterId)))
+      : new Set();
 
   for (const player of state.players ?? []) {
     for (const fighter of player.fighters ?? []) {
@@ -78,9 +87,14 @@ export const invariantViolation = state => {
         return `боец ${fighter.id} стоит на несуществующей клетке ${cell}`;
       }
       if (occupied.has(cell)) {
-        return `на клетке ${cell} двое: ${occupied.get(cell)} и ${fighter.id}`;
+        const first = occupied.get(cell);
+        const mover = transit.has(String(fighter.id)) || transit.has(String(first));
+        if (!mover) {
+          return `на клетке ${cell} двое: ${first} и ${fighter.id}`;
+        }
+      } else {
+        occupied.set(cell, fighter.id);
       }
-      occupied.set(cell, fighter.id);
 
       if (fighter.startHp != null && Number(fighter.currentHp) > Number(fighter.startHp)) {
         return `${fighter.id}: здоровье ${fighter.currentHp} выше начального ${fighter.startHp}`;
@@ -126,9 +140,16 @@ export const createDuel = (
  * `policy` — политика того, кто ходит первым, `policyB` — второго (по умолчанию та же): разные политики
  * нужны для «лестницы» — насколько осмысленная игра сильнее случайной.
  */
+/**
+ * Предел шагов партии по умолчанию. Поднят с 1200 до 4000: на живом боте (`search`, `SEARCH_TIME=400`)
+ * при 1200 обрезалось 7 партий из 5 984 — длинные партии Снежной королевы нуждаются в 1 500–2 500 шагах.
+ * Партия с таким пределом не «зависает»: истощение (2 урона за карту из пустой колоды) добивает её само.
+ */
+export const DEFAULT_MAX_STEPS = 4000;
+
 export const playDuel = ({
   seed = 1,
-  maxSteps = 1200,
+  maxSteps = DEFAULT_MAX_STEPS,
   testId = `fuzz_${seed}`,
   mapId = 'generated',
   heroA = 'medusa',
@@ -139,10 +160,12 @@ export const playDuel = ({
 } = {}) => {
   // предел шагов приходит и снаружи, и флагами CLI: `null`/0 значит «по умолчанию», иначе цикл ниже
   // не сделал бы ни шага (0 < null — ложь) и партия сразу считалась бы незавершённой.
-  // Значение поднято с 400 до 1200 (§42): замер эталона `greedy` против `greedy` давал 49 незавершённых
-  // из 1800, и все они кончались сами — самым длинным нужно 800–900 шагов. Это не тупик, а медленная
-  // партия: обе стороны ходят по кругу, колода кончается, дальше решает истощение (2 урона за карту).
-  const limit = Number.isFinite(Number(maxSteps)) && Number(maxSteps) > 0 ? Number(maxSteps) : 1200;
+  // 1200 → 4000 (m01170): при 1200 семь партий из 5 984 не доходили до конца, хотя это не тупик — обе
+  // стороны ходят по кругу, колода кончается и дальше решает истощение (2 урона за карту).
+  const limit =
+    Number.isFinite(Number(maxSteps)) && Number(maxSteps) > 0
+      ? Number(maxSteps)
+      : DEFAULT_MAX_STEPS;
   const rng = { value: (Number(seed) || 1) >>> 0 };
   const heroBFirst = (Number(seed) || 1) % 2 === 0;
   // стиль партии: одни сиды играют агрессивно, другие осторожно

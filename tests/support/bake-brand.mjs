@@ -1,7 +1,7 @@
 // Запекание **знака** UnPlugged: пиксельная сетка 3×3 и иконки.
 //
 // Знак — шесть квадратов 24×24 с шагом 29 (сетка 3×3) плюс улетевший квадрат 16: буква U, из которой
-// «вынули» верхний правый контакт. Цвета знака — из `docs/ui-plan.md` §9.2.
+// «вынули» верхний правый контакт. Цвета знака — из `.docs/ui-plan.md` §9.2.
 //
 // Здесь же рисуются иконки: `public/favicon.svg`, `favicon.ico` (16/32/48), `favicon-180/192/512.png`
 // и `icon-192/512.png` с запасом под круглую маску для манифеста.
@@ -191,7 +191,7 @@ const main = async () => {
   for (const size of [180, 192, 512]) {
     write(path.join(PUBLIC, `favicon-${size}.png`), await rasterOnApp(icon, size));
   }
-  // Манифест ссылается именно на эти имена (docs/ui-plan.md: иконок /icon-192.png и /icon-512.png не было).
+  // Манифест ссылается именно на эти имена (.docs/ui-plan.md: иконок /icon-192.png и /icon-512.png не было).
   for (const size of [192, 512]) {
     write(path.join(PUBLIC, `icon-${size}.png`), await rasterOnApp(maskable, size));
   }

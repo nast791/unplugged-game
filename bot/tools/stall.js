@@ -29,7 +29,7 @@ const games = numberArg('games', 40);
 const from = numberArg('from', 1);
 const workers = numberArg('workers', 1);
 const maxSteps = numberArg('max-steps', null);
-const policy = stringArg('policy', 'greedy');
+const policy = stringArg('policy', 'search');
 const policyB = stringArg('policy-b', null);
 const requested = (stringArg('heroes') ?? '')
   .split(',')
@@ -98,7 +98,8 @@ for (let index = 0; index < specs.length; index += 1) {
   const firstHero = Number(report.seed) % 2 === 0 ? spec.heroB : spec.heroA;
   const winner = String(report.state.winner);
   const firstPolicyWon = winner === String(firstHero);
-  const winnerPolicy = firstPolicyWon ? spec.policy : spec.policyB;
+  // одна политика на обе стороны (`--policy-b` не задан) — второй ключ помечаем местом, иначе он `undefined`
+  const winnerPolicy = firstPolicyWon ? spec.policy : (spec.policyB ?? `вторым (${spec.policy})`);
   wins.set(winnerPolicy, (wins.get(winnerPolicy) ?? 0) + 1);
 }
 

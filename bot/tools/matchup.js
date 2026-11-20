@@ -9,9 +9,9 @@ import {
 import { runSweep } from './sweep.js';
 /**
  * Матрица матчапов как данные: пары, винрейты и таблицы. Печатает её `bot/tools/matrix.js`
- * (`pnpm test:matrix`), а `docs/hero-balance.md` получает уже готовый markdown.
+ * (`pnpm test:matrix`), а `.docs/hero-balance.md` получает уже готовый markdown.
  *
- * Коридор из `docs/hero-balance.md` §5: герой держит 40–60% против среднего по пулу, отдельный
+ * Коридор из `.docs/hero-balance.md` §5: герой держит 40–60% против среднего по пулу, отдельный
  * матчап — 30–70%. Выход за коридор помечается `!`: это повод править числа, а не героя.
  */
 

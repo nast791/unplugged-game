@@ -22,6 +22,7 @@
 import { runMatrixParallel } from '../learn/parallel.js';
 import { heroIds as poolHeroIds, heroName } from '../play/pool.js';
 import { percent } from '../play/metrics.js';
+import { heroProfiles, cardStats, profileLines } from '../play/profile.js';
 import { failuresOf, groupByReason, plural, showReport } from './sweep.js';
 
 /** Числовой флаг вида `--имя=значение`. */
@@ -43,8 +44,9 @@ const from = numberArg('from', 1);
 const workers = numberArg('workers', 1);
 const maxSteps = numberArg('max-steps', null);
 const mapId = stringArg('map', 'generated');
-const policy = stringArg('policy', 'trade');
-const policyB = stringArg('policy-b', 'greedy');
+const policy = stringArg('policy', 'search');
+const policyB = stringArg('policy-b', 'trade');
+const showCards = process.argv.includes('--cards');
 const requested = (stringArg('heroes') ?? '')
   .split(',')
   .map(value => value.trim())
@@ -195,6 +197,40 @@ const runOne = async () => {
         'партиям',
       ])} на героя)`,
   );
+
+  console.log(profileLines(heroProfiles(main.reports, heroes)).join('\n'));
+
+  if (showCards) {
+    const cardTypes = { attack: 'атака', defense: 'защита', effect: 'эффект', hybrid: 'гибрид' };
+    for (const hero of cardStats(main.reports, heroes)) {
+      const rows = hero.rows.map(card => [
+        card.title,
+        cardTypes[card.type] ?? card.type,
+        String(card.drawn),
+        String(card.plays),
+        String(card.discarded),
+        card.rules.length > 0
+          ? card.rules.map(rule => `${rule.fires}/${rule.plays}`).join(' ')
+          : '—',
+        card.value == null ? '—' : String(card.value),
+      ]);
+      console.log(`\n### Карты: ${hero.name}\n`);
+      console.log(
+        table(
+          [
+            'карта',
+            'тип',
+            'добрано',
+            'сыграно',
+            'сброшено',
+            'правила (сработало/сыграно)',
+            'польза',
+          ],
+          rows,
+        ),
+      );
+    }
+  }
 
   const stuck = main.reports.filter(report => report.status === 'stuck').length;
   const failures = failuresOf(main.reports);

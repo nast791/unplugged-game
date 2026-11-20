@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { playDuel } from '../../../bot/play/duel.js';
+import { mechanicLossWeight } from '../../../bot/play/axes.js';
 import {
   baseFeatureNames,
   defaultWeights,
@@ -161,5 +162,45 @@ describe('признаки состояния', () => {
 
     player(state, '1').fighters[0].frozen = true;
     expect(featuresOf(state, '0')[indexOf('frozen')]).toBeCloseTo(-0.5);
+  });
+});
+
+/**
+ * Хрупкая механика пака (§72): пелена Анубиса гаснет **навсегда**, когда мертва Амат. Это не «ресурс убыл»,
+ * а выключенный двигатель пака (весы на пяти картах), поэтому потеря обязана опускать оценку, а не поднимать.
+ */
+describe('хрупкая механика пака', () => {
+  const indexOf = name => featureNames.indexOf(name);
+  const shroud = state => {
+    player(state, '0').items = [{ id: 'shroud', group: 'shroud', state: 'active', count: 1 }];
+    return state;
+  };
+  const alive = () => {
+    const state = stateOf();
+    player(state, '0').heroId = 'anubis';
+    player(state, '1').heroId = 'medusa';
+    return shroud(state);
+  };
+  const broken = () => {
+    const state = alive();
+    player(state, '0').items = [{ id: 'shroud', group: 'shroud', state: 'inactive', count: 1 }];
+    return state;
+  };
+
+  it('потеря пелены опускает оценку Анубиса и поднимает оценку соперника', () => {
+    expect(scoreOf(broken(), '0')).toBeLessThan(scoreOf(alive(), '0'));
+    expect(scoreOf(broken(), '1')).toBeGreaterThan(scoreOf(alive(), '1'));
+  });
+
+  it('пелена не считается запасом: признак ресурса от неё не зависит', () => {
+    const resource = indexOf('resource');
+    const on = indexOf('resourceOn');
+    expect(featuresOf(broken(), '0')[resource]).toBeCloseTo(featuresOf(alive(), '0')[resource]);
+    expect(featuresOf(broken(), '0')[on]).toBeCloseTo(featuresOf(alive(), '0')[on]);
+  });
+
+  it('цену задаёт пак: у Медузы терять нечего', () => {
+    expect(mechanicLossWeight('anubis')).toBeGreaterThan(0);
+    expect(mechanicLossWeight('medusa')).toBe(0);
   });
 });

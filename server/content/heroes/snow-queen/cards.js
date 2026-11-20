@@ -71,6 +71,7 @@ export default [
       {
         // клетка отмечена: враг уезжает на лёд (телепорт, а не шаг)
         moment: 'picked',
+        text: 'Поставьте бойца оппонента на выбранную клетку льда.',
         when: [
           { fact: 'PICKED', var: 'picked' },
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
@@ -94,6 +95,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'При 4 и более осколках атакующий заморожен — он не может перемещаться или телепортироваться до конца своего хода.',
         when: [
           { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 4 } },
           { fact: 'COMBAT', params: { select: 'attacker' }, var: 'foe' },
@@ -102,6 +104,7 @@ export default [
       },
       {
         moment: 'afterCombat',
+        text: 'При 5 и более осколках он ещё и получает 1 урон.',
         when: [
           { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } },
           { fact: 'COMBAT', params: { select: 'attacker' }, var: 'foe' },
@@ -126,6 +129,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Если ворона победила, посмотрите руку противника и выберите из неё 1 карту — противник сбрасывает её.',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
@@ -146,6 +150,7 @@ export default [
       {
         // противника называем ролью: переменная из условия другого правила сюда не переносится
         moment: 'picked',
+        text: 'Противник сбрасывает выбранную карту.',
         when: [{ fact: 'PICKED', var: 'choice' }],
         then: [{ action: 'SET_CARDS', of: 'opponent', op: 'discard', cardIds: '$choice' }],
       },
@@ -165,6 +170,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Можете сбросить карту с меткой осколка из руки — значение карты становится 4.',
         when: [{ fact: 'HAND', params: { tag: 'shard', min: 1 }, var: 'shards' }],
         then: [
           {
@@ -180,6 +186,7 @@ export default [
       {
         // карта отмечена и ушла в сброс — защита выросла (это же и осколок: сброс стал на карту длиннее)
         moment: 'picked',
+        text: 'Значение карты становится 4.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', to: 4 }],
       },
@@ -198,6 +205,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Оппонент сбрасывает 1 случайную карту из руки; значение карты увеличивается на бонус сброшенной карты.',
         when: [{ fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' }],
         then: [
           // сброс и прибавка — шаги одной цепочки: транзиент `$remembered` живёт ровно один прогон правил
@@ -260,6 +268,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Если вы победили, возьмите карту и восстановите 1 здоровье своему бойцу из этой битвы.',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
@@ -285,6 +294,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Нанесите этой вороне 1 урон.',
         when: [
           { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
           // бьём именно ворону: герой карты не играет, но правило не должно его задевать
@@ -300,6 +310,7 @@ export default [
       {
         // сработает только если ворона погибла от урона выше: движок зовёт `lost` карты-источника
         moment: 'lost',
+        text: 'Если она погибает от этого эффекта, получите 1 действие в этом ходу.',
         when: [{ fact: 'DEATH', params: { group: 'crow', source: 'snow-queen_08' } }],
         then: [{ action: 'SET_ACTIONS', delta: 1 }],
       },
@@ -319,6 +330,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Посмотрите руку противника и выберите из неё 1 карту — противник сбрасывает её.',
         when: [
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
           // пустая рука — выбирать нечего, окно не открывается
@@ -338,6 +350,7 @@ export default [
       {
         // противника называем ролью: переменная из условия другого правила сюда не переносится
         moment: 'picked',
+        text: 'Противник сбрасывает выбранную карту.',
         when: [{ fact: 'PICKED', var: 'choice' }],
         then: [{ action: 'SET_CARDS', of: 'opponent', op: 'discard', cardIds: '$choice' }],
       },
@@ -356,6 +369,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'При 3 и более осколках отмените эффекты карты оппонента.',
         when: [
           { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 3 } },
           // отменять нечего, если у карты противника нет свойств
@@ -378,6 +392,7 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'Снежная королева может пройти до 4 клеток сквозь бойцов оппонента; каждый, через кого она прошла, получает 2 урона.',
         when: [
           // замороженная королева не ходит: карта, которая двигает бойца, проверяет статус сама
           {
@@ -413,6 +428,7 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'При 5 и более осколках нанесите 2 урона каждому бойцу оппонента в области королевы.',
         when: [
           { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } },
           {
@@ -426,6 +442,7 @@ export default [
       },
       {
         moment: 'effect',
+        text: 'Затем замешайте 1 карту с осколком из сброса в колоду.',
         when: [
           { fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } },
           {
@@ -461,6 +478,7 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'Верните поверженную Кристальную ворону на любую свободную клетку с 1 здоровьем.',
         when: [
           { fact: 'LOST', params: { group: 'crow' }, min: 1 },
           // лёд больше не требуется: генератор раздаёт стихии зонам, и свободной клетки льда в партии
@@ -480,6 +498,7 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Затем возьмите карту.',
         when: [
           { fact: 'PICKED', var: 'picked' },
           // ворону могли вернуть до этого окна — поднимать тогда некого

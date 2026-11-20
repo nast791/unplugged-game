@@ -4,8 +4,9 @@ import { heroes } from '../../../server/content/index.js';
 
 /**
  * Названия уникальных карт героя не повторяются ни внутри колоды, ни у других героев
- * (`docs/hero-algorithm.md` §6). Общие карты пула — исключение: они намеренно одинаковые
- * у всех, кто их берёт, поэтому из проверки вырезаны по id.
+ * (`.docs/hero-algorithm.md` §6). Общие карты пула в колоды больше не берутся (решение владельца,
+ * m04728: «Обманный маневр» и «Залп» у Дороти стали её «Ловкостью рук» и «Дружным отпором»), но пул
+ * остаётся библиотекой для будущих героев — его id по-прежнему вырезаны из «своих».
  */
 const commonIds = new Set(commonCards.map(card => card.id));
 
@@ -39,21 +40,23 @@ describe('названия карт героев', () => {
     expect(duplicates).toEqual([]);
   });
 
-  it('карты общего пула в проверку не входят, хотя герои их и берут', () => {
-    // пул непустой, и его id вырезаны из «своих» карт
+  it('ни одна колода не берёт карты общего пула', () => {
+    // пул остаётся библиотекой (его карты должны быть описаны правилами), но колоды собираются своими
     expect(commonCards.length).toBeGreaterThan(0);
-    expect(ownCards.filter(card => commonIds.has(card.id))).toEqual([]);
 
-    // герои действительно добирают колоду пулом: у Дороти таких копий три вида
-    const pooled = heroes.dorothy.cards.filter(card => commonIds.has(card.id));
-    expect(pooled.map(card => card.id)).toEqual(['common_feint', 'common_volley', 'common_recall']);
+    const pooled = Object.values(heroes).flatMap(hero =>
+      (hero.cards ?? [])
+        .filter(card => commonIds.has(card.id))
+        .map(card => `${hero.id}/${card.id}`),
+    );
+    expect(pooled).toEqual([]);
   });
 
   it('id своих карт — всегда id героя и две цифры: у помощников своих префиксов нет', () => {
     for (const hero of Object.values(heroes)) {
       for (const card of hero.cards ?? []) {
         if (commonIds.has(card.id)) continue;
-        // `docs/hero-algorithm.md` §7: `medusa_07`, `anubis_13`; `toto_01`, `amat_01`, `ash_03` — ошибка
+        // `.docs/hero-algorithm.md` §7: `medusa_07`, `anubis_13`; `toto_01`, `amat_01`, `ash_03` — ошибка
         expect(card.id, `карта «${card.title}» героя ${hero.id}`).toMatch(
           new RegExp(`^${hero.id}_\\d{2}$`),
         );

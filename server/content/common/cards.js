@@ -3,7 +3,7 @@
  *
  * Зачем: половина колоды у всех героев одинаковая — это ускоряет выпуск героев, даёт игроку
  * узнаваемый «общий язык» колод и служит ручкой баланса. Подробности и подсчёт по референсам —
- * `docs/common-cards.md`.
+ * `.docs/common-cards.md`.
  *
  * Как устроено:
  * - **Своих копий у героя не фиксировано:** герой берёт только те карты, которых ему не хватает,
@@ -18,7 +18,7 @@
  *
  * Формат карты — как в колодах героев (`server/content/heroes/<герой>/cards.js`).
  * Числа — наши: сверка со сканами (`.refs/_stats`) показала, что прежние совпадали с самыми
- * частыми сигнатурами оригинала (`docs/common-cards.md` §3).
+ * частыми сигнатурами оригинала (`.docs/common-cards.md` §3).
  */
 
 const cards = [
@@ -34,6 +34,7 @@ const cards = [
     rules: [
       {
         moment: 'immediately',
+        text: 'Свойства карты оппонента в этой битве не действуют.',
         // у карты противника нет ни одного свойства — отменять нечего, шаг помечается skipped
         when: [{ fact: 'COMBAT', params: { effects: 'opponent' }, min: 1 }],
         // отменяем тексты карты противника: её шаги в очереди боя помечаются cancelled.
@@ -55,11 +56,13 @@ const cards = [
       // условия взаимоисключающие: срабатывает ровно одно правило
       {
         moment: 'afterCombat',
+        text: 'В случае вашей победы доберите две карты.',
         when: [{ fact: 'COMBAT', params: { winner: 'self' } }],
         then: [{ action: 'SET_CARDS', op: 'draw', count: 2 }],
       },
       {
         moment: 'afterCombat',
+        text: 'Доберите карту.',
         when: [{ fact: 'COMBAT', params: { winner: 'opponent' } }],
         then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
@@ -77,6 +80,7 @@ const cards = [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Если вы победили, ваш боец, участвовавший в битве, может пройти до двух клеток.',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
           // двигается тот, кто играл карту: у атакующего — атакующий, у защитника — тот, кого били
@@ -106,6 +110,7 @@ const cards = [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Если ваш боец в этом ходу перемещался, значение карты +2.',
         // флаг «двигался в этом ходу» ставит SET_FIGHTER_CELL, снимает начало хода
         when: [{ fact: 'FIGHTERS', params: { side: 'self', movedThisTurn: true }, min: 1 }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
@@ -124,6 +129,7 @@ const cards = [
     rules: [
       {
         moment: 'afterCombat',
+        text: '1 урон всем бойцам противника в области вашего бойца.',
         when: [
           // свой боец из этой битвы: он ещё на поле, и его область известна
           { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
@@ -150,6 +156,7 @@ const cards = [
     rules: [
       {
         moment: 'effect',
+        text: 'Верните убитого помощника в область вашего героя.',
         when: [
           { fact: 'LOST', params: { type: 'assistant' }, min: 1, var: 'lost' },
           { fact: 'FIGHTERS', params: { side: 'self', type: 'hero' }, min: 1, var: 'heroes' },
@@ -168,6 +175,7 @@ const cards = [
       },
       {
         moment: 'picked',
+        text: 'Верните убитого помощника в область вашего героя.',
         when: [
           { fact: 'PICKED', var: 'picked' },
           { fact: 'LOST', params: { type: 'assistant' }, min: 1, var: 'lost' },

@@ -4,9 +4,10 @@ import { movementDestinations, movementRejection } from '#shared/helpers/turn.js
 import { createState, fighter } from '../../fixtures/state.js';
 
 /**
- * Два новых поведения перемещения:
- * 1. Проход с уроном (`transit`): занятую клетку можно кликнуть — боец идёт сквозь бойца и
- *    возвращается назад, поэтому «застрять» на тупиковой клетке врага больше нельзя.
+ * Два поведения перемещения:
+ * 1. Проход сквозь врагов (`throughEnemies`) — **пошаговое наступление** (m02680): подсвечена соседняя
+ *    клетка, клетка врага тоже шаг, после каждого шага подсветка пересчитывается, а остановиться на
+ *    чужой клетке нельзя.
  * 2. «Один из двух» (`oneOf`): шаг второго бойца возвращает первого на его исходную клетку.
  */
 const lineMap = (size = 8) => ({
@@ -44,8 +45,8 @@ const fighterOf = (state, playerId, fighterId) =>
 const step = (state, fighterId, cellId) =>
   SET_MOVEMENT(state, { op: 'step', playerId: '0', fighterId, cellId });
 
-describe('проход с уроном: клик по занятой клетке', () => {
-  it('боец идёт сквозь врага и возвращается, враг получает урон, а боец остаётся на месте', () => {
+describe('проход сквозь врагов: пошаговое наступление', () => {
+  it('клетка врага — шаг, а не место: урон на проходе, дальше подсветка ведёт с неё', () => {
     const state = SET_MOVEMENT(duoState(), {
       op: 'open',
       playerId: '0',
@@ -55,30 +56,30 @@ describe('проход с уроном: клик по занятой клетк�
       fighters: ['hero'],
     });
 
-    // клетка врага (3) подсвечена как проход, а не как место, куда можно встать
-    expect(movementDestinations(state, '0', 'hero')).toContain('3');
+    // соседние клетки: 1 свободна, 3 — клетка врага (можно пройти), своего помощника на 4 нет в списке
+    expect(movementDestinations(state, '0', 'hero')).toEqual(['1', '3']);
     expect(movementRejection(state, '0', 'hero', 3)).toBeNull();
+    expect(movementRejection(state, '0', 'hero', 5)).toMatch(/не соседняя/);
 
     step(state, 'hero', 3);
 
-    expect(fighterOf(state, '0', 'hero').currentPosition).toBe(2);
+    // боец стоит на клетке врага: это промежуточный шаг прохода
+    expect(fighterOf(state, '0', 'hero').currentPosition).toBe(3);
     expect(fighterOf(state, '1', 'rival').currentHp).toBe(13);
-    expect(state.movement.moves).toEqual([
-      { fighterId: 'hero', from: 2, to: 2, route: [3], transit: true },
-    ]);
+    // подсветка пересчитана от новой клетки: назад и вперёд — сквозь своего помощника тоже можно
+    expect(movementDestinations(state, '0', 'hero')).toEqual(['2', '4']);
   });
 
-  it('без прохода с уроном занятая клетка остаётся недоступной', () => {
+  it('без прохода сквозь врагов занятая клетка остаётся недоступной', () => {
     const state = SET_MOVEMENT(duoState(), {
       op: 'open',
       playerId: '0',
       budget: 3,
-      throughEnemies: true,
       fighters: ['hero'],
     });
 
-    expect(movementDestinations(state, '0', 'hero')).not.toContain('3');
-    expect(movementRejection(state, '0', 'hero', 3)).toMatch(/занята/);
+    expect(movementDestinations(state, '0', 'hero')).toEqual(['1']);
+    expect(movementRejection(state, '0', 'hero', 3)).toMatch(/занята|вне радиуса/);
   });
 });
 

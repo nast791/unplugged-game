@@ -131,7 +131,7 @@ describe('эффект без свойств: оценка не выдумыва
     const plain = { id: 'plain', type: 'effect', value: 3, bonus: 1, rules: [] };
 
     const worth = effectWorth(plain, { players: [] }, '0');
-    expect(worth).toEqual({ value: 0, cost: 0, fires: 0, known: false });
+    expect(worth).toEqual({ value: 0, cost: 0, fires: 0, known: false, ruleFires: [] });
     // вето ставится только при `known && fires === 0`, то есть карта без свойств его не получает
     expect(worth.known && worth.fires === 0).toBe(false);
   });

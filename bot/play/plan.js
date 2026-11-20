@@ -54,7 +54,9 @@ const envNumber = name => {
  * - `reply` — учитывать ли ответ соперника после конца моего хода (по умолчанию да);
  * - `policy` — политика, которой перечисляются **мои** варианты внутри цепочки (веса задают порядок);
  * - `rollout` — политика доигрывания (хвост хода и ответ соперника);
- * - `timeMs` — предел времени на решение (0 — без предела).
+ * - `timeMs` — предел времени на решение (по умолчанию 500 мс; 0 — без предела). Это страховка сверх
+ *   `steps`: с включённым перекрытием прохода вариантов становится больше, и без временного предела
+ *   одно решение могло занять минуты (m02668).
  */
 export const planBudget = () => ({
   steps: envNumber('PLAN_STEPS') ?? 600,
@@ -65,7 +67,7 @@ export const planBudget = () => ({
   reply: env.PLAN_REPLY !== '0',
   policy: env.PLAN_POLICY ?? 'greedy',
   rollout: env.PLAN_ROLLOUT ?? 'aggressive',
-  timeMs: envNumber('PLAN_TIME') ?? 0,
+  timeMs: envNumber('PLAN_TIME') ?? 500,
 });
 
 /**
@@ -80,11 +82,12 @@ const backToMe = (state, viewerId) =>
  * (агрессивная жадная): цепочки сравниваются между собой, а не с человеком, поэтому важна не
  * «правильность» доигрывания, а то, что все варианты доигрываются одинаково.
  */
-const playUntil = (state, viewerId, budget, stop, steps) => {
+const playUntil = (state, viewerId, budget, stop, steps, deadline = 0) => {
   let current = state;
 
   for (let step = 0; step < steps; step += 1) {
     if (stop(current)) break;
+    if (deadline > 0 && Date.now() >= deadline) break;
 
     const actor = actorOf(current);
     if (actor == null) break;
@@ -120,9 +123,25 @@ const playUntil = (state, viewerId, budget, stop, steps) => {
  */
 export const planValue = (state, viewerId, budget = planBudget(), steps = budget.horizon) => {
   const mine = Math.max(1, Math.ceil(steps / (budget.reply ? 2 : 1)));
-  let current = playUntil(state, viewerId, budget, node => turnOver(node, viewerId), mine);
+  // доигрывание тоже под временным пределом: один лист не должен съесть бюджет всего решения
+  const deadline = budget.timeMs > 0 ? Date.now() + budget.timeMs : 0;
+  let current = playUntil(
+    state,
+    viewerId,
+    budget,
+    node => turnOver(node, viewerId),
+    mine,
+    deadline,
+  );
   if (budget.reply) {
-    current = playUntil(current, viewerId, budget, node => backToMe(node, viewerId), mine);
+    current = playUntil(
+      current,
+      viewerId,
+      budget,
+      node => backToMe(node, viewerId),
+      mine,
+      deadline,
+    );
   }
   return leafScore(current, viewerId);
 };

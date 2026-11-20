@@ -1,8 +1,7 @@
-import { commonCard } from '../../common/cards.js';
-
 /**
- * Колода Дороти: 25 геройских копий плюс пять общих — два «Обманных манёвра» (отмена свойств),
- * два «Залпа» (ответ на рой) и одна «Подмога» (возврат Тото). Разбор колоды — `passport.md` §7.
+ * Колода Дороти: 13 своих карт / 30 копий. Общими картами колоды больше не собираются (решение владельца,
+ * m04728): «Ловкость рук» и «Дружный отпор» — свои копии того, что раньше брали из общего пула
+ * («Обманный маневр» и «Залп»), с теми же числами и правилами. Разбор колоды — `passport.md` §7.
  */
 export default [
   {
@@ -19,7 +18,6 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
-        property: 'trace',
         text: 'Поменяйте местами бойца оппонента, участвовавшего в битве, и Тото. Получите 1 дополнительное действие.',
         when: [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
@@ -37,7 +35,6 @@ export default [
         // обмен не сложился (нет Тото или бойца противника, либо кто-то из них заморожен) —
         // два действия вместо одного
         moment: 'afterCombat',
-        property: 'trace',
         text: 'Если обмен не состоялся, получите 2 дополнительных действия вместо 1.',
         any: [
           [{ fact: 'FIGHTERS', params: { group: 'toto' }, max: 0 }],
@@ -68,6 +65,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Если цель стоит на клетке со стихией лавы или пустыни, значение карты +3.',
         when: [{ fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' }],
         // две стихии — две ветки «или»: на клетке с двумя стихиями +3 приходит один раз, а не дважды
         any: [
@@ -91,6 +89,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Если рядом с защищающимся бойцом стоит другой дружественный боец, значение карты +2.',
         when: [{ fact: 'COMBAT', params: { select: 'self' }, var: 'self' }],
         // «другой»: сама клетка бойца в подсчёт не идёт (adjacentTo отбрасывает расстояние 0)
         any: [
@@ -102,7 +101,8 @@ export default [
     ],
   },
   {
-    // развилка вместо линейного эффекта: залечиться, добрать карту или оттолкнуть атакующего
+    // развилка вместо линейного эффекта: залечиться, добрать карту или оттолкнуть атакующего.
+    // Выбор **обязательный**: в тексте нет «можете», значит отказ невозможен (`required: true`)
     id: 'dorothy_04',
     title: 'Смена караула',
     type: 'hybrid',
@@ -114,25 +114,29 @@ export default [
     options: [
       { id: 'heal', text: 'Восстановите Дороти 2 здоровья.' },
       { id: 'draw', text: 'Возьмите 1 карту.' },
-      { id: 'push', text: 'Сдвиньте атакующего бойца на 1 клетку.' },
+      {
+        id: 'push',
+        text: 'Сдвиньте бойца оппонента, участвовавшего в битве, на расстояние до 2 клеток.',
+      },
     ],
     rules: [
       {
         moment: 'afterCombat',
-        // выбор необязательный: можно отказаться и не тратить свойство
+        text: 'Выберите одно свойство',
         then: [
           {
             action: 'SET_TARGETING',
             op: 'open',
             kind: 'options',
             count: 1,
-            required: false,
+            required: true,
             candidates: ['heal', 'draw', 'push'],
           },
         ],
       },
       {
         moment: 'picked',
+        text: 'Восстановите Дороти 2 здоровья.',
         when: [
           { fact: 'PICKED', params: { is: 'heal' } },
           { fact: 'FIGHTERS', params: { side: 'self', type: 'hero' }, min: 1, var: 'heroes' },
@@ -141,11 +145,13 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Возьмите 1 карту.',
         when: [{ fact: 'PICKED', params: { is: 'draw' } }],
         then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
       {
         moment: 'picked',
+        text: 'Сдвиньте бойца оппонента, участвовавшего в битве, на расстояние до 2 клеток.',
         when: [
           { fact: 'PICKED', params: { is: 'push' } },
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
@@ -153,7 +159,7 @@ export default [
           { fact: 'FIGHTERS', params: { fighterIds: '$foe' }, min: 1, var: 'foes' },
         ],
         then: [
-          { action: 'SET_MOVEMENT', op: 'open', fighters: '$foes', budget: 1, optional: true },
+          { action: 'SET_MOVEMENT', op: 'open', fighters: '$foes', budget: 2, optional: true },
         ],
       },
     ],
@@ -171,6 +177,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Если атакует герой противника, значение карты +2.',
         when: [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
           { fact: 'FIGHTERS', params: { fighterIds: '$foe', type: 'hero' }, min: 1 },
@@ -192,6 +199,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Если в руке 4 карты или больше, значение карты +2.',
         when: [{ fact: 'HAND', params: { min: 4 } }],
         then: [{ action: 'SET_COMBAT', op: 'value', side: 'self', delta: 2 }],
       },
@@ -281,6 +289,7 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'Возьмите 2 карты.',
         then: [{ action: 'SET_CARDS', op: 'draw', count: 2 }],
       },
     ],
@@ -291,14 +300,15 @@ export default [
     title: 'Золотая шапка',
     type: 'effect',
     value: null,
-    // бонус 3 — единственная такая карта колоды (правило `docs/hero-algorithm.md` §6)
+    // бонус 3 — единственная такая карта колоды (правило `.docs/hero-algorithm.md` §6)
     bonus: 3,
     quantity: 2,
     fighter: 'dorothy',
-    text: 'Сдвиньте Дороти и Тото: каждый может пройти до 4 клеток.',
+    text: 'Сдвиньте Дороти и Тото: каждый может пройти до 4 клеток, в том числе через бойцов противника.',
     rules: [
       {
         moment: 'effect',
+        text: 'Сдвиньте Дороти и Тото: каждый может пройти до 4 клеток, в том числе через бойцов противника.',
         // Тото убит — шапка несёт одну Дороти: список строится из тех, кто на поле
         when: [
           {
@@ -309,12 +319,100 @@ export default [
           },
         ],
         then: [
-          { action: 'SET_MOVEMENT', op: 'open', fighters: '$pair', budget: 4, optional: true },
+          {
+            action: 'SET_MOVEMENT',
+            op: 'open',
+            fighters: '$pair',
+            budget: 4,
+            optional: true,
+            // обезьяны перебираются по крышам: бойцы противника на пути не останавливают
+            throughEnemies: true,
+          },
         ],
       },
     ],
   },
-  commonCard('common_feint', 2),
-  commonCard('common_volley', 2),
-  commonCard('common_recall', 1),
+  {
+    // козырь колоды: единственная печатная пятёрка, одна копия. Пришла на место «Подмоги» (m02680):
+    // вместо возврата Тото — разгон чужой своры из области Дороти
+    id: 'dorothy_13',
+    title: 'Ураган',
+    type: 'attack',
+    value: 5,
+    bonus: 3,
+    quantity: 1,
+    fighter: 'dorothy',
+    text: 'ПОСЛЕ БИТВЫ: Сдвиньте каждого бойца противника в области Дороти на расстояние до 2 клеток.',
+    rules: [
+      {
+        moment: 'afterCombat',
+        text: 'Сдвиньте каждого бойца противника в области Дороти на расстояние до 2 клеток.',
+        when: [
+          // область Дороти — и только враги: свои бойцы в том же секторе остаются на месте.
+          // `side: 'opponent'` — все бойцы врагов (в партии на четверых это любые чужие стороны)
+          { fact: 'FIGHTERS', params: { fighterIds: ['dorothy'], min: 1 }, var: 'dorothy' },
+          {
+            fact: 'FIGHTERS',
+            params: { side: 'opponent', areaOf: '$dorothy' },
+            min: 1,
+            var: 'foes',
+          },
+        ],
+        then: [
+          { action: 'SET_MOVEMENT', op: 'open', fighters: '$foes', budget: 2, optional: true },
+        ],
+      },
+    ],
+  },
+  {
+    // своя копия «отмены свойств» (прежде — общий «Обманный маневр»): фокус, который ломает текст чужой
+    // карты в бою. Числа и правила те же, имя — её собственное: общими картами колоды больше не
+    // собираются (решение владельца, m04728)
+    id: 'dorothy_14',
+    title: 'Ловкость рук',
+    type: 'hybrid',
+    value: 2,
+    bonus: 1,
+    quantity: 2,
+    fighter: 'any',
+    text: 'МГНОВЕННО: Свойства карты оппонента в этой битве не действуют.',
+    rules: [
+      {
+        moment: 'immediately',
+        text: 'Свойства карты оппонента в этой битве не действуют.',
+        // у карты противника нет ни одного свойства — отменять нечего, шаг помечается skipped
+        when: [{ fact: 'COMBAT', params: { effects: 'opponent' }, min: 1 }],
+        then: [{ action: 'SET_COMBAT', op: 'cancelEffects', side: 'opponent' }],
+      },
+    ],
+  },
+  {
+    // своя копия «залпа» (прежде — общий «Залп»): ответ на рой — 1 урон всем бойцам противника в
+    // области Дороти. Тото в этой области и держит свору на расстоянии
+    id: 'dorothy_15',
+    title: 'Дружный отпор',
+    type: 'attack',
+    value: 3,
+    bonus: 2,
+    quantity: 2,
+    fighter: 'any',
+    text: 'ПОСЛЕ БИТВЫ: 1 урон всем бойцам противника в области вашего бойца.',
+    rules: [
+      {
+        moment: 'afterCombat',
+        text: '1 урон всем бойцам противника в области вашего бойца.',
+        when: [
+          // свой боец из этой битвы: он ещё на поле, и его область известна
+          { fact: 'COMBAT', params: { select: 'self' }, var: 'ours' },
+          {
+            fact: 'FIGHTERS',
+            params: { side: 'opponent', areaOf: '$ours' },
+            min: 1,
+            var: 'foes',
+          },
+        ],
+        then: [{ action: 'SET_HEALTH', fighterIds: '$foes', delta: -1 }],
+      },
+    ],
+  },
 ];

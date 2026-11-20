@@ -116,7 +116,9 @@ describe('выбор действия поиском', { timeout: 30000 }, () =>
     const start = firstSearchState(6);
     const options = actionsFor(start.state, start.playerId, { policy: 'greedy' });
     const entries = options.map(entry => ({ action: entry.action, weight: entry.weight }));
-    const budget = { ...searchBudget(), iterations: 10, depth: 4 };
+    // проверка про **число итераций**, поэтому время снимаем: иначе предел по умолчанию (120 мс) режет
+    // бюджет раньше, чем он израсходуется, и сравнение визитов перестаёт что-либо значить
+    const budget = { ...searchBudget(), iterations: 10, depth: 4, timeMs: 0 };
     const visits = decision => decision.rows.reduce((sum, row) => sum + row.visits, 0);
 
     const flat = searchAction(start.state, start.playerId, entries, { ...budget, treeDepth: 1 });
@@ -157,7 +159,9 @@ describe('выбор действия поиском', { timeout: 30000 }, () =>
     const start = firstSearchState(7);
     const options = actionsFor(start.state, start.playerId, { policy: 'greedy' });
     const entries = options.map(entry => ({ action: entry.action, weight: entry.weight }));
-    const budget = { ...searchBudget(), iterations: 8, depth: 4 };
+    // предел времени выключаем: воспроизводимость проверяется на бюджете итераций, а по часам два
+    // прогона неизбежно расходятся (по умолчанию у поиска теперь есть предел 120 мс, m02680)
+    const budget = { ...searchBudget(), iterations: 8, depth: 4, timeMs: 0 };
 
     const first = searchAction(start.state, start.playerId, entries, budget);
     const second = searchAction(start.state, start.playerId, entries, budget);
@@ -165,7 +169,8 @@ describe('выбор действия поиском', { timeout: 30000 }, () =>
   }, 30000);
 
   it('партия с поиском доходит до конца', () => {
-    // поиск на ход дороже жадной политики, поэтому проверяем одну партию и с запасом по времени
+    // поиск на ход дороже жадной политики, поэтому проверяем одну партию и с запасом по времени.
+    // Проход сквозь бойцов идёт по одной клетке — решений в партии стало больше (m02680)
     const report = playDuel({
       seed: 1,
       heroA: 'medusa',
@@ -175,7 +180,7 @@ describe('выбор действия поиском', { timeout: 30000 }, () =>
     });
 
     expect(report.status).toBe('finished');
-  }, 60000);
+  }, 300000);
 
   it('лист весами пары: поиск играет по артефакту матчапов и остаётся легальным', () => {
     const start = firstSearchState(9);
@@ -275,12 +280,12 @@ describe('лист на границе хода', () => {
     });
 
     expect(report.status).toBe('finished');
-  }, 60000);
+  }, 300000);
 
-/**
- * Два листа §29: с геометрией (`position`) и выученный (`net`, §62). Оба обязаны играть партию
- * целиком: лист зовётся на каждом доигрывании, и ошибка в нём валит поиск молча.
- */
+  /**
+   * Два листа §29: с геометрией (`position`) и выученный (`net`, §62). Оба обязаны играть партию
+   * целиком: лист зовётся на каждом доигрывании, и ошибка в нём валит поиск молча.
+   */
   it('листы `position` и `net` играют партию до конца', () => {
     for (const policy of ['position', 'net']) {
       const report = playDuel({
@@ -293,9 +298,9 @@ describe('лист на границе хода', () => {
 
       expect(`${policy}:${report.status}`).toBe(`${policy}:finished`);
     }
-  }, 180000);
+    // запас: пошаговый проход добавил решений, партия с Дороти идёт заметно дольше (m02680)
+  }, 600000);
 });
-
 
 /**
  * Предел времени на раздумье. Он режется в двух местах: между доигрываниями (цикл поиска) и **внутри**
@@ -441,7 +446,6 @@ describe('мнение модели о вариантах корня', () => {
     expect(new Set(values.map(value => value.toFixed(6))).size).toBeGreaterThan(1);
   });
 });
-
 
 /**
  * Лист поиска §21: ресурс героя из пака, помощники отдельно от героя и покой — но покой только у тех

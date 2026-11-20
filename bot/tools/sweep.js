@@ -1,6 +1,7 @@
 import { playDuel } from '../play/duel.js';
 import { actionLine, cardIdOf, coverageOf, percent, summarizeMetrics } from '../play/metrics.js';
 import { deckCardIds, deckSize, heroIds as poolHeroIds, heroName } from '../play/pool.js';
+import { seriesLines } from '../play/profile.js';
 
 /**
  * Серия партий бота: общий код для vitest-тестов (`tests/scenarios/*-fuzz.test.js`), ручного прогона
@@ -184,6 +185,7 @@ export const describeSweep = reports => {
           metrics.totals.deaths,
         )}%)`,
     );
+    lines.push(...seriesLines(metrics));
   }
 
   return { lines, failures: failuresOf(reports), coverage, metrics, heroes };

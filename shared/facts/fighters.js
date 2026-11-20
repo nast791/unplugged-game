@@ -1,4 +1,5 @@
 import { bfsDistance } from '#shared/helpers/board.js';
+import { hasStatus } from '#shared/constants/statuses.js';
 import { findFighter, findPlayer, isTeamFormat, playerByRole } from '#shared/helpers/base.js';
 import { cellTerrain, cellTerrains, sharesArea } from '#shared/helpers/placement.js';
 
@@ -35,7 +36,7 @@ const sideMatches = (state, side, ownerId, player) => {
  * of — бойцы одного игрока (id), например противника в этой битве: `COMBAT { player: 'opponent' }` → `of: '$enemy'`;
  * group — помощники одного вида (у трёх Гарпий id `harpies_1..3`, группа `harpies`);
  * fighterIds — конкретные бойцы (например, «мой боец из этого боя ещё на поле»);
- * areaOf — в одной области с указанным бойцом (область = стихия клетки, `docs/terrain.md`);
+ * areaOf — в одной области с указанным бойцом (область = стихия клетки, `.docs/terrain.md`);
  * terrain — бойцы, стоящие на клетке с этой стихией (двухцветная клетка считается в обеих);
  * reachableTo — кто дотягивается до него своей attackRange;
  * adjacentTo — кто стоит ровно на соседней с ним клетке (своя клетка не считается);
@@ -111,8 +112,8 @@ export const queryFighters = (state, params = {}, { ownerPlayerId } = {}) => {
       ) {
         continue;
       }
-      // «заморожен» — статус бойца (ставит SET_STATUS, снимает конец хода)
-      if (params.frozen != null && Boolean(fighter.frozen) !== params.frozen) {
+      // «заморожен» — статус бойца (ставит `SET_STATUS`, снимает конец хода по сроку статуса)
+      if (params.frozen != null && hasStatus(fighter, 'frozen') !== params.frozen) {
         continue;
       }
       if (

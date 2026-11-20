@@ -143,6 +143,8 @@ const cardLine = (lead, card) => ({
   card: {
     name: String(card?.title ?? card?.name ?? ''),
     text: String(card?.text ?? ''),
+    // варианты свойства — часть текста карты: подсказка у имени показывает их так же, как сама карта
+    options: Array.isArray(card?.options) ? card.options : [],
   },
   after: `» · ${cardTypeLabel(card?.type)} · значение ${Number(card?.value) || 0} · бонус ${Number(card?.bonus) || 0}`,
 });

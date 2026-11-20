@@ -100,18 +100,27 @@ const blizzard = (state, patch = {}) =>
 const step = (state, cellId) =>
   SET_MOVEMENT(state, { op: 'step', playerId: '0', fighterId: 'queen', cellId });
 
+/** Проход сквозь врагов идёт **по одной клетке**: каждый клик — соседняя клетка (m02680). */
+const walk = (state, cells) => {
+  for (const cellId of cells) step(state, cellId);
+  return state;
+};
+
 describe('проход с уроном: damageOnPass', () => {
   it('проход через двух врагов: каждый получает damageOnPass урона', () => {
     const state = blizzard(lineState());
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
 
     expect(fighterOf(state, '0', 'queen').currentPosition).toBe(5);
     expect(hpOf(state, '1', 'rival')).toBe(13);
     expect(hpOf(state, '1', 'rival_pawn')).toBe(4);
-    // маршрут шага записан: по нему и нанесён урон
-    expect(state.movement.moves).toEqual([
-      { fighterId: 'queen', from: 1, to: 5, route: [2, 3, 4, 5] },
+    // шагов четыре, и у каждого свой маршрут: проход считается по клеткам, а не «прыжком» до цели
+    expect(state.movement.moves.map(move => [move.from, move.to])).toEqual([
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
     ]);
   });
 
@@ -126,12 +135,13 @@ describe('проход с уроном: damageOnPass', () => {
   });
 
   it('повторный вход в ту же клетку урон не удваивает', () => {
-    const state = blizzard(lineState());
-    step(state, 5);
+    // бюджета хватает на дорогу туда и обратно: шаги считаются, а не расстояние от истока
+    const state = blizzard(lineState(), { budget: 8 });
+    walk(state, [2, 3, 4, 5]);
     const first = { rival: hpOf(state, '1', 'rival'), pawn: hpOf(state, '1', 'rival_pawn') };
 
     // обратно сквозь тех же бойцов: один и тот же боец получает такой урон один раз за перемещение
-    step(state, 1);
+    walk(state, [4, 3, 2, 1]);
 
     expect(fighterOf(state, '0', 'queen').currentPosition).toBe(1);
     expect(hpOf(state, '1', 'rival')).toBe(first.rival);
@@ -141,12 +151,12 @@ describe('проход с уроном: damageOnPass', () => {
 
   it('свои бойцы урона не получают', () => {
     const state = blizzard(lineState());
-    fighterOf(state, '0', 'raven').currentPosition = 2; // своя ворона стоит на маршруте
+    fighterOf(state, '0', 'raven').currentPosition = 6; // своя ворона стоит за врагами
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
 
     expect(hpOf(state, '0', 'raven')).toBe(2);
-    expect(fighterOf(state, '0', 'raven').currentPosition).toBe(2);
+    expect(fighterOf(state, '0', 'raven').currentPosition).toBe(6);
     expect(hpOf(state, '1', 'rival')).toBe(13);
     expect(hpOf(state, '1', 'rival_pawn')).toBe(4);
   });
@@ -154,13 +164,19 @@ describe('проход с уроном: damageOnPass', () => {
   it('без damageOnPass урона нет и маршрут не пишется', () => {
     const state = blizzard(lineState(), { damageOnPass: null });
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
 
     expect(state.movement.damageOnPass).toBe(null);
     expect(fighterOf(state, '0', 'queen').currentPosition).toBe(5);
     expect(hpOf(state, '1', 'rival')).toBe(15);
     expect(hpOf(state, '1', 'rival_pawn')).toBe(6);
-    expect(state.movement.moves).toEqual([{ fighterId: 'queen', from: 1, to: 5 }]);
+    // маршрут пишется только у шага, который что-то делает: здесь он ничего не делает
+    expect(state.movement.moves.map(move => move.route)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 
   it('без throughEnemies проход сквозь врагов закрыт: клетка за ними вне радиуса', () => {
@@ -188,7 +204,7 @@ describe('проход с уроном: damageOnPass', () => {
     fighterOf(state, '1', 'rival_pawn').currentHp = 1;
     const deckBefore = deck(player(state, '1')).length;
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
 
     expect(player(state, '1').fighters.map(entry => entry.id)).toEqual(['rival']);
     expect(player(state, '1').lost.map(entry => entry.id)).toEqual(['rival_pawn']);
@@ -214,7 +230,7 @@ describe('проход с уроном: damageOnPass', () => {
     fighterOf(state, '1', 'rival_pawn').currentHp = 1;
     const handBefore = hand(player(state, '0')).length;
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
 
     expect(hand(player(state, '0'))).toHaveLength(handBefore + 1);
   });
@@ -247,7 +263,7 @@ describe('проход с кражей здоровья: healOnPass', () => {
   it('идущий получает 1 здоровья за каждого пройденного врага', () => {
     const state = wound(steal(lineState(), { damageOnPass: 1 }));
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
 
     expect(fighterOf(state, '0', 'queen').currentPosition).toBe(5);
     expect(hpOf(state, '0', 'queen')).toBe(12);
@@ -269,28 +285,30 @@ describe('проход с кражей здоровья: healOnPass', () => {
   it('без урона кража работает: damageOnPass для маршрута не нужен', () => {
     const state = wound(steal(lineState()));
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
 
     expect(hpOf(state, '0', 'queen')).toBe(12);
     expect(hpOf(state, '1', 'rival')).toBe(15);
     expect(hpOf(state, '1', 'rival_pawn')).toBe(6);
-    expect(state.movement.moves[0].route).toEqual([2, 3, 4, 5]);
+    // маршрут пишется у каждого шага, который прошёл по клетке врага
+    expect(state.movement.moves[1].route).toEqual(['2', '3']);
+    expect(state.movement.moves[2].route).toEqual(['3', '4']);
   });
 
   it('лечение не поднимает здоровье выше начального', () => {
     const state = steal(lineState(), { damageOnPass: 1 }); // королева цела: 16 из 16
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
 
     expect(hpOf(state, '0', 'queen')).toBe(16);
   });
 
   it('повторный проход через тех же врагов здоровья не добавляет', () => {
-    const state = wound(steal(lineState(), { damageOnPass: 1 }));
+    const state = wound(steal(lineState(), { damageOnPass: 1, budget: 8 }));
 
-    step(state, 5);
+    walk(state, [2, 3, 4, 5]);
     const stolen = hpOf(state, '0', 'queen');
-    step(state, 1);
+    walk(state, [4, 3, 2, 1]);
 
     expect(hpOf(state, '0', 'queen')).toBe(stolen);
   });
@@ -335,18 +353,22 @@ describe('карта «Метель из осколков»: эффект отк
     // перемещение открыто эффектом: подсветка, кнопка эффекта, источник — сама карта
     const ui = runUi(played, '0', { selectedFighterId: 'queen' });
     expect(ui.phase).toBe('movement');
-    expect(ui.highlightedCellIds).toEqual(['2', '3', '5']);
+    // пошаговое наступление: подсвечена только соседняя клетка, дальние — после шага
+    expect(ui.highlightedCellIds).toEqual(['2']);
     expect(ui.controls.ok.label).toBe('Закончить эффект');
     expect(played.movement.source).toBe('snow-queen_11_0');
     expect(played.movement.playedCard.id).toBe('snow-queen_11');
 
-    const moved = runAction(played, {
-      type: 'PICK',
-      kind: 'cell',
-      id: 5,
-      fighterId: 'queen',
-      playerId: '0',
-    });
+    let moved = played;
+    for (const cellId of [2, 3, 4, 5]) {
+      moved = runAction(moved, {
+        type: 'PICK',
+        kind: 'cell',
+        id: cellId,
+        fighterId: 'queen',
+        playerId: '0',
+      });
+    }
 
     expect(fighterOf(moved, '0', 'queen').currentPosition).toBe(5);
     expect(hpOf(moved, '1', 'rival')).toBe(13);
@@ -361,45 +383,31 @@ describe('карта «Метель из осколков»: эффект отк
 });
 
 describe('клиентское окно движения: подсветка и шаги', () => {
-  it('подсветка ведёт за врагов, а клик по клетке за ними наносит урон на проходе', () => {
+  it('подсветка пересчитывается после каждого шага: соседние клетки, включая клетку врага', () => {
     const state = blizzard(lineState());
 
     const ui = runUi(state, '0', { selectedFighterId: 'queen' });
     expect(ui.phase).toBe('movement');
-    // занятые клетки врагов тоже подсвечены: клик по ним — проход сквозь и возврат назад.
-    // Клетка 4 не подсвечена: сквозь неё и обратно нужно 6 шагов при радиусе 4
-    expect(ui.highlightedCellIds).toEqual(['2', '3', '5']);
+    // шаг — одна клетка: подсвечен только сосед
+    expect(ui.highlightedCellIds).toEqual(['2']);
     expect(ui.highlightedFighterIds).toEqual(['queen']);
 
-    const moved = runAction(state, {
+    const near = runAction(state, {
       type: 'PICK',
       kind: 'cell',
-      id: 5,
+      id: 2,
       fighterId: 'queen',
       playerId: '0',
     });
 
-    expect(fighterOf(moved, '0', 'queen').currentPosition).toBe(5);
-    expect(hpOf(moved, '1', 'rival')).toBe(13);
-    expect(hpOf(moved, '1', 'rival_pawn')).toBe(4);
     // входное состояние не тронуто: ход считается на форке (`runAction`)
     expect(fighterOf(state, '0', 'queen').currentPosition).toBe(1);
-    expect(hpOf(state, '1', 'rival')).toBe(15);
-    expect(hpOf(state, '1', 'rival_pawn')).toBe(6);
-    expect(state.movement.damagedFighterIds).toEqual([]);
     expect(state.movement.moves).toEqual([]);
-    // шаги продолжают работать: подсветка считается от истока и учитывает уже пройденное
-    expect(runUi(moved, '0', { selectedFighterId: 'queen' }).highlightedCellIds).toEqual([
-      '1',
-      '2',
-      '3',
-    ]);
-  });
+    expect(fighterOf(near, '0', 'queen').currentPosition).toBe(2);
+    // соседи новой клетки: назад и вперёд, причём клетка врага 3 подсвечена — на неё можно шагнуть
+    expect(runUi(near, '0', { selectedFighterId: 'queen' }).highlightedCellIds).toEqual(['1', '3']);
 
-  it('клик по занятой врагом клетке — проход сквозь бойца и возврат: боец остаётся на месте', () => {
-    const state = blizzard(lineState());
-
-    const through = runAction(state, {
+    const onto = runAction(near, {
       type: 'PICK',
       kind: 'cell',
       id: 3,
@@ -407,12 +415,37 @@ describe('клиентское окно движения: подсветка и 
       playerId: '0',
     });
 
-    // королева не встала на занятую клетку: она прошла сквозь и вернулась
-    expect(fighterOf(through, '0', 'queen').currentPosition).toBe(1);
-    expect(hpOf(through, '1', 'rival')).toBe(13);
-    expect(through.movement.moves).toEqual([
-      { fighterId: 'queen', from: 1, to: 1, route: [2, 3], transit: true },
-    ]);
+    // боец стоит на клетке врага — это промежуточный шаг прохода, а не место для остановки
+    expect(fighterOf(onto, '0', 'queen').currentPosition).toBe(3);
+    expect(hpOf(onto, '1', 'rival')).toBe(13);
+    expect(hpOf(onto, '1', 'rival_pawn')).toBe(6);
+  });
+
+  it('на клетке врага нельзя закончить перемещение: кнопка выключена, движок отклоняет', () => {
+    const state = blizzard(lineState());
+    state.hook = 'movement';
+    const near = SET_MOVEMENT(state, { op: 'step', playerId: '0', fighterId: 'queen', cellId: 2 });
+    const onto = SET_MOVEMENT(near, { op: 'step', playerId: '0', fighterId: 'queen', cellId: 3 });
+
+    expect(fighterOf(onto, '0', 'queen').currentPosition).toBe(3);
+    expect(movementPhase.ok.enabled(onto, '0')).toBe(false);
+    expect(() => SET_MOVEMENT(onto, { op: 'close', playerId: '0' })).toThrow(/занятой/);
+
+    // шаг с чужой клетки на свободную — снова можно закрывать
+    const away = SET_MOVEMENT(onto, { op: 'step', playerId: '0', fighterId: 'queen', cellId: 2 });
+    expect(fighterOf(away, '0', 'queen').currentPosition).toBe(2);
+    expect(movementPhase.ok.enabled(away, '0')).toBe(true);
+    expect(SET_MOVEMENT(away, { op: 'close', playerId: '0' }).movement).toBeNull();
+  });
+
+  it('бюджет считает шаги, а не расстояние: можно вернуться на исходную клетку', () => {
+    const state = blizzard(lineState());
+    walk(state, [2, 3, 2, 1]);
+
+    expect(fighterOf(state, '0', 'queen').currentPosition).toBe(1);
+    expect(state.movement.moves).toHaveLength(4);
+    // бюджет 4 исчерпан: дальше шагов нет
+    expect(movementDestinations(state, '0', 'queen')).toEqual([]);
   });
 });
 

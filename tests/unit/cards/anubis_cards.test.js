@@ -556,18 +556,16 @@ describe('карты Анубиса: эффекты', () => {
     expect(hpOf(after, '0', 'anubis')).toBe(12);
   });
 
-  it('«Плач по Амат»: убитая Амат даёт две карты', () => {
+  it('«Плач по Амат»: убитая Амат возвращает Анубису 2 здоровья и поднимает Пелену', () => {
     const state = buildState({ cardInHand: 'anubis_10', withAmat: false });
     player(state, '0').lost = [unit('amat', null, 0, { type: 'assistant', group: 'amat' })];
-    player(state, '0').deck = zone([
-      { id: 'deck_a', title: 'A', bonus: 1 },
-      { id: 'deck_b', title: 'B', bonus: 1 },
-    ]);
+    fighterOf(state, '0', 'anubis').currentHp = 12;
 
     const after = playEffect(state, 'anubis_10');
 
-    // добор берёт с верха колоды: верх — конец массива
-    expect(ids(hand(player(after, '0')))).toEqual(['deck_b', 'deck_a']);
+    expect(hpOf(after, '0', 'anubis')).toBe(14);
+    // карту карта больше не приносит: её свойство — здоровье и пелена
+    expect(ids(hand(player(after, '0')))).toEqual([]);
     // пелена поднимается до начала своего следующего хода
     expect(player(after, '0').items[0]).toMatchObject({
       state: 'active',
@@ -887,7 +885,7 @@ describe('карты Анубиса: весы при целой пелене', (
     expect(after.lastCombat.combatDamage).toBe(0);
   });
 
-  it('«Саван»: лёгкая атака — помилование лечит Анубиса после битвы', () => {
+  it('«Саван»: лёгкая атака — помилование приносит карту после битвы', () => {
     const state = buildState({
       map: iceMap,
       anubisCell: 2,
@@ -898,12 +896,14 @@ describe('карты Анубиса: весы при целой пелене', (
       foeHand: [betaAttack('batk', 6, 1)],
     });
     fighterOf(state, '0', 'anubis').currentHp = 10;
+    player(state, '0').deck = zone([{ id: 'deck_top', title: 'Top', bonus: 1 }]);
 
     const after = defendBattle(state, 'anubis_04_1');
 
-    // 6 − 1 = 5 урона, затем 2 здоровья обратно
+    // помилование больше не лечит: 5 урона остаются, зато карта приходит в руку
     expect(after.lastCombat.defenseValue).toBe(1);
-    expect(hpOf(after, '0', 'anubis')).toBe(7);
+    expect(hpOf(after, '0', 'anubis')).toBe(5);
+    expect(ids(hand(player(after, '0')))).toEqual(['deck_top']);
   });
 
   it('«Врата»: тяжёлая атака — свойства чужой карты не действуют, числа остаются', () => {

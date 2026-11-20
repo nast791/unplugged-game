@@ -38,7 +38,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 TEXT = 'nPlugged'
 
-# Цвета знака (docs/ui-plan.md §9.2).
+# Цвета знака (.docs/ui-plan.md §9.2).
 CYAN, VIOLET, PINK = '#22D3EE', '#8B5CF6', '#D946EF'
 # Те же три цвета на ступень темнее — для светлого фона, иначе голубой на белом слепнет.
 CYAN_D, VIOLET_D, PINK_D = '#0891B2', '#7C3AED', '#C026D3'

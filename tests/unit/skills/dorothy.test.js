@@ -102,7 +102,7 @@ describe('способность Дороти (Серебряные башмач
     expect(dorothy.skill.fighter).toBe('dorothy');
     expect(dorothy.skill.title).toBe('Серебряные башмачки');
     expect(dorothy.skill.text).toContain('КОНЕЦ ХОДА');
-    expect(dorothy.skill.text).toContain('можете кликнуть по любому из них');
+    expect(dorothy.skill.text).toContain('Можете кликнуть по Дороти или Тото');
     expect(dorothy.skill.text).toContain('меняются местами');
     expect(dorothy.skill.rules.map(rule => rule.moment)).toEqual(['turnEnd', 'picked']);
     // обмен — не шаг манёвра: партнёра способность не объявляет
@@ -171,13 +171,23 @@ describe('способность Дороти (Серебряные башмач
     expect(after.turn.playerId).toBe('1');
   });
 
-  it('разные области — окна нет, ход закрывается сразу', () => {
+  it('разные области — окно всё равно есть: обмен идёт через всю карту', () => {
     const state = endTurn(buildState({ map: mixedMap, totoCell: 3, foeCell: 4 }));
 
-    expect(state.targeting ?? null).toBeNull();
-    expect(state.hook).toBe(PHASES.turn);
-    expect(state.turn.playerId).toBe('1');
-    expect(positionOf(state, '0', 'toto')).toBe(3);
+    // условие «в одной области» снято: телепорт не ограничен областью
+    expect(state.targeting).toMatchObject({
+      source: 'dorothy_skill',
+      kind: 'fighters',
+      required: false,
+    });
+    expect(state.targeting.candidates.map(entry => entry.fighterId)).toEqual(['dorothy', 'toto']);
+    expect(state.hook).toBe(PHASES.turnEnd);
+
+    const after = clickFighter(state, 'toto');
+
+    expect(positionOf(after, '0', 'dorothy')).toBe(3);
+    expect(positionOf(after, '0', 'toto')).toBe(1);
+    expect(after.turn.playerId).toBe('1');
   });
 
   it('Тото убит — меняться некем, окна нет', () => {

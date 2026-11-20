@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { runUi } from '#shared/publicApi.js';
-import { expectedAttack, remainingCount, remainingOf } from '../../../bot/play/counting.js';
+import {
+  cancelRiskOf,
+  expectedAttack,
+  expectedBonus,
+  expectedRuleShare,
+  remainingCount,
+  remainingOf,
+} from '../../../bot/play/counting.js';
 import { actionsFor, playDuel } from '../../../bot/play/duel.js';
+import { cancelCardIds } from '../../../bot/play/pool.js';
 import { heroes } from '../../../server/content/index.js';
+import { card as fixtureCard, createState, player } from '../../fixtures/state.js';
 
 /**
  * Подсчёт карт и честность защиты — по настоящим партиям: остаток колоды соперника должен сходиться
@@ -133,6 +142,7 @@ describe('подсчёт карт', () => {
 
 describe('честность защиты', () => {
   it('подмена скрытого числа атаки не меняет выбор защитника', () => {
+
     const windows = [];
 
     sweep(({ state, playerId }) => {
@@ -158,4 +168,63 @@ describe('честность защиты', () => {
       expect(window.expected).toBeGreaterThan(0);
     }
   }, 30000);
+});
+
+/**
+ * Отмены по остатку колоды (`.docs/bot-strategies.md` п. 5) и ожидание скрытых чисел боя: бот не видит
+ * чужую руку, но видит её размер и точный остаток колоды — этого хватает, чтобы оценить вероятность
+ * «у него есть отмена» и среднее усиление его карты.
+ */
+describe('отмены и скрытые числа по остатку колоды', () => {
+  /** Соперник-Анубис: карты-отмены у него — «Врата» (две копии). */
+  const stateOf = ({ hand = 4, discarded = [], heroId = 'anubis' } = {}) => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const rival = player(state, '1');
+    rival.heroId = heroId;
+    rival.hand.cards = Array.from({ length: hand }, (_, index) =>
+      fixtureCard({ id: `rival_${index}` }),
+    );
+    rival.discard.cards = discarded.map((id, index) =>
+      fixtureCard({ id, instanceId: `${id}_${index}` }),
+    );
+    return state;
+  };
+
+  it('карты-отмены берутся из контента: у каждого героя свой список', () => {
+    // «Врата» Анубиса, «Ловкость рук» Дороти (бывший общий «Обманный маневр»), «Трещина» Снежной
+    expect([...cancelCardIds('anubis')]).toEqual(['anubis_05']);
+    expect([...cancelCardIds('dorothy')]).toEqual(['dorothy_14']);
+    expect([...cancelCardIds('snow-queen')]).toEqual(['snow-queen_10']);
+  });
+
+  it('вероятность отмены растёт с рукой и падает, когда копии вышли', () => {
+    const small = cancelRiskOf(stateOf({ hand: 3 }), '0');
+    const big = cancelRiskOf(stateOf({ hand: 6 }), '0');
+
+    expect(small).toBeGreaterThan(0);
+    expect(big).toBeGreaterThan(small);
+    expect(big).toBeLessThan(1);
+    // обе копии в сбросе — отмен у него не осталось
+    expect(cancelRiskOf(stateOf({ discarded: ['anubis_05', 'anubis_05'] }), '0')).toBe(0);
+  });
+
+  it('рука из одной-двух карт не считается: ответа там может не быть по определению', () => {
+    expect(cancelRiskOf(stateOf({ hand: 2 }), '0')).toBe(0);
+    expect(cancelRiskOf(stateOf({ hand: 3 }), '0')).toBeGreaterThan(0);
+  });
+
+  it('ожидаемое усиление — среднее по невышедшим картам боя, а не догадка', () => {
+    const state = stateOf({ heroId: 'anubis' });
+    const deck = (heroes.anubis?.cards ?? [])
+      .filter(card => ['attack', 'defense', 'hybrid'].includes(card.type))
+      .flatMap(card =>
+        Array.from({ length: Number(card.quantity) || 1 }, () => Number(card.bonus) || 0),
+      );
+    const mean = deck.reduce((sum, value) => sum + value, 0) / deck.length;
+
+    expect(expectedBonus(state, '0')).toBeCloseTo(mean, 6);
+    // «есть ли у его карты свойства» — доля карт с правилами, а не факт
+    expect(expectedRuleShare(state, '0', { min: 1 })).toBeGreaterThan(0.9);
+    expect(expectedRuleShare(state, '0', { min: 3 })).toBeLessThan(1);
+  });
 });

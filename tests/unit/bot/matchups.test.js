@@ -29,7 +29,9 @@ describe('проекция модели на пару', () => {
     expect(position).not.toBeNull();
 
     const table = {
-      meta: null,
+      // температура сжатия — часть артефакта (§72): без неё `pairScore` берёт общую `LEAF_SCALE`
+      // и расходится с моделью не на округлении, а на сжатии
+      meta: { scale: trainedWeights.scale },
       pairs: {
         anubis: { vs: { medusa: projectPair(trainedWeights, 'anubis', 'medusa') } },
         medusa: { vs: { anubis: projectPair(trainedWeights, 'medusa', 'anubis') } },

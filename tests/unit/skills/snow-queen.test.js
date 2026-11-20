@@ -5,6 +5,7 @@ import { SET_HAND_LIMIT } from '#shared/actions/handLimit.js';
 import { SET_HEALTH } from '#shared/actions/health.js';
 import { SET_MOVEMENT } from '#shared/actions/movement.js';
 import { SET_STATUS } from '#shared/actions/status.js';
+import { hasStatus } from '#shared/constants/statuses.js';
 import { runFact, runUi } from '#shared/core.js';
 import {
   SHARD_GROUP,
@@ -312,10 +313,11 @@ describe('«заморожен»: статус бойца', () => {
 
   it('снимается сам в конце хода', () => {
     const state = frozenState();
+    expect(hasStatus(player(state, '0').fighters[0], 'frozen')).toBe(true);
 
     turnEnd.enter(state);
 
-    expect(player(state, '0').fighters[0].frozen).toBeUndefined();
+    expect(hasStatus(player(state, '0').fighters[0], 'frozen')).toBe(false);
     expect(() => SET_FIGHTER_CELL(state, { fighterId: 'alpha', cellId: 9 })).not.toThrow();
   });
 

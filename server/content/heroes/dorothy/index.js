@@ -40,14 +40,18 @@ export default {
     type: 'skill',
     fighter: 'dorothy',
     title: 'Серебряные башмачки',
-    text: 'КОНЕЦ ХОДА: Если Дороти и Тото стоят в одной области, можете кликнуть по любому из них — они меняются местами.',
+    text: 'КОНЕЦ ХОДА: Можете кликнуть по Дороти или Тото — они меняются местами.',
     rules: [
       {
         moment: 'turnEnd',
+        text: 'Можете кликнуть по Дороти или Тото — они меняются местами.',
         when: [
           {
+            // обмен без ограничения областью: Дороти и Тото меняются местами через всю карту.
+            // Статус проверять не нужно: сроки `turnEnd` снимаются на входе в хук — раньше этого
+            // правила (`shared/lifecycle/turnEnd.js`), поэтому замороженной пары здесь уже не бывает
             fact: 'FIGHTERS',
-            params: { fighterIds: ['dorothy', 'toto'], areaOf: 'dorothy' },
+            params: { fighterIds: ['dorothy', 'toto'] },
             min: 2,
             var: 'pair',
           },
@@ -64,6 +68,7 @@ export default {
       },
       {
         moment: 'picked',
+        text: 'Поменяйте местами Дороти и Тото.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [{ action: 'SWAP_FIGHTERS', a: 'dorothy', b: 'toto' }],
       },

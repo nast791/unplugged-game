@@ -143,7 +143,7 @@ describe('карта dorothy_04 «Смена караула»', () => {
     expect(card.options.map(option => option.id)).toEqual(['heal', 'draw', 'push']);
   });
 
-  it('после боя открывает необязательное окно вариантов', () => {
+  it('после боя открывает обязательное окно вариантов: отказ невозможен', () => {
     const paused = optionWindow();
 
     expect(paused.targeting).toMatchObject({
@@ -151,14 +151,19 @@ describe('карта dorothy_04 «Смена караула»', () => {
       source: 'dorothy_04_1',
       kind: 'options',
       count: 1,
-      required: false,
+      // в тексте карты нет «можете» — выбор обязателен
+      required: true,
       picked: null,
     });
     // кандидаты несут id, подпись с карты и доступность: окно рисует текст и вне боя, где нет ui.choices
     expect(paused.targeting.candidates).toEqual([
       { optionId: 'heal', title: 'Восстановите Дороти 2 здоровья.', disabled: false },
       { optionId: 'draw', title: 'Возьмите 1 карту.', disabled: false },
-      { optionId: 'push', title: 'Сдвиньте атакующего бойца на 1 клетку.', disabled: false },
+      {
+        optionId: 'push',
+        title: 'Сдвиньте бойца оппонента, участвовавшего в битве, на расстояние до 2 клеток.',
+        disabled: false,
+      },
     ]);
     // шаг очереди ждёт решения игрока, бой ещё не закрыт
     expect(paused.combat.stage).toBe('close');
@@ -171,26 +176,22 @@ describe('карта dorothy_04 «Смена караула»', () => {
     expect(ui.choices).toEqual([
       { optionId: 'heal', title: 'Восстановите Дороти 2 здоровья.', disabled: false },
       { optionId: 'draw', title: 'Возьмите 1 карту.', disabled: false },
-      { optionId: 'push', title: 'Сдвиньте атакующего бойца на 1 клетку.', disabled: false },
+      {
+        optionId: 'push',
+        title: 'Сдвиньте бойца оппонента, участвовавшего в битве, на расстояние до 2 клеток.',
+        disabled: false,
+      },
     ]);
-    // отказ от свойства разрешён общей кнопкой завершения — без вопросов «выбрать или нет»
-    expect(ui.controls.ok).toEqual({
-      visible: true,
-      enabled: true,
-      label: 'Закончить эффект',
-    });
+    // обязательное окно общей кнопкой не закрывается — кнопки завершения нет
+    expect(ui.controls.ok.visible).toBe(false);
   });
 
-  it('от варианта можно отказаться: шаг помечается declined, бой закрывается', () => {
+  it('отказаться нельзя: общая кнопка на обязательном окне отклоняется', () => {
     const paused = optionWindow();
 
-    const refused = runAction(paused, { type: 'UI_OK', playerId: '0' });
-
-    expect(refused.targeting).toBeNull();
-    expect(refused.combat).toBeNull();
-    expect(refused.lastCombat.effects[0].status).toBe('declined');
-    expect(fighterOf(refused, '0', 'dorothy').currentHp).toBe(6);
-    expect(player(refused, '0').hand.cards.map(entry => entry.id)).toEqual(['hand_1']);
+    expect(() => runAction(paused, { type: 'UI_OK', playerId: '0' })).toThrow(
+      /обязательное свойство/i,
+    );
   });
 
   it('вариант «heal» лечит Дороти на 2', () => {
@@ -221,13 +222,13 @@ describe('карта dorothy_04 «Смена караула»', () => {
     expect(drawn.combat).toBeNull();
   });
 
-  it('вариант «push» открывает перемещение атакующего на 1 клетку', () => {
+  it('вариант «push» открывает перемещение атакующего на расстояние до 2 клеток', () => {
     const pushed = choose(optionWindow(), 'push');
 
     expect(pushed.targeting).toBeNull();
     expect(pushed.movement).toMatchObject({
       playerId: '0',
-      budget: 1,
+      budget: 2,
       optional: true,
       fighters: ['beta'],
     });

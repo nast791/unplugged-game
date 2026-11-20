@@ -210,7 +210,7 @@ const projectPlayer = (player, state, you) => {
       out.lost = structuredClone(player.lost ?? []);
     } else if (key === 'items') {
       // Копии в «скрытых» состояниях наружу не отдаём: у Снежной королевы так спрятан пул осколков —
-      // игрок и противник видят только собранные (`docs/heroes/snow-queen/passport.md` §5).
+      // игрок и противник видят только собранные (`.docs/heroes/snow-queen/passport.md` §5).
       const items = (player.items ?? []).filter(item => {
         const hidden = item.hiddenStates ?? [];
         return !hidden.map(String).includes(String(item.state));

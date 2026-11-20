@@ -78,6 +78,17 @@
               </div>
             </div>
           </ATooltip>
+          <div
+            v-if="heroStatuses.length"
+            data-statuses
+            :data-status="statusIds(heroStatuses)"
+            class="flex items-start justify-between gap-8"
+          >
+            <span class="text-14 text-dim shrink-0">Статусы</span>
+            <span class="text-14 text-right leading-[1.3] font-semibold">{{
+              statusTitles(heroStatuses)
+            }}</span>
+          </div>
           <div v-if="skill" class="border-line/70 flex flex-col gap-4 border-t-2 pt-8">
             <span class="text-14 font-semibold">{{ skill.title }}</span>
             <span class="text-13 text-dim leading-[1.3]">{{ skill.text }}</span>
@@ -119,6 +130,18 @@
               >
                 <span class="text-14 text-dim">{{ row.label }}</span>
                 <span class="text-17 font-semibold lining-nums">{{ row.value }}</span>
+              </div>
+
+              <div
+                v-if="currentStatuses.length"
+                data-statuses
+                :data-status="statusIds(currentStatuses)"
+                class="flex items-start justify-between gap-8"
+              >
+                <span class="text-14 text-dim shrink-0">Статусы</span>
+                <span class="text-14 text-right leading-[1.3] font-semibold">{{
+                  statusTitles(currentStatuses)
+                }}</span>
               </div>
             </div>
           </div>
@@ -184,6 +207,7 @@
 
 <script setup>
 import { terrainColor, terrainName } from '#shared/constants/terrain.js';
+import { fighterStatuses } from '#shared/constants/statuses.js';
 import APicture from '~/components/atoms/APicture.vue';
 import AScroll from '~/components/atoms/AScroll.vue';
 import ATooltip from '~/components/atoms/ATooltip.vue';
@@ -358,6 +382,14 @@ const initialsOf = name =>
     .join('');
 
 const skill = computed(() => props.catalog?.skill ?? null);
+
+// Статусы — из реестра (`shared/constants/statuses.js`): пустой список значит «строки нет вовсе».
+// В панели — названия через запятую: иконки живут у фишки на доске, а статусов может стать много.
+const heroStatuses = computed(() => fighterStatuses(props.hero));
+const currentStatuses = computed(() => fighterStatuses(current.value));
+
+const statusTitles = list => list.map(status => status.title).join(', ');
+const statusIds = list => list.map(status => status.id).join(',');
 
 const terrains = computed(() => (props.catalog?.terrainAffinity ?? []).map(String).filter(Boolean));
 

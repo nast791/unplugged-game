@@ -13,6 +13,7 @@ import {
   movementBudget,
   movementDestinations,
   movementFighterRejection,
+  movementOnOccupiedCell,
   occupiedCellIds,
 } from '#shared/helpers/turn.js';
 
@@ -214,11 +215,11 @@ const openMovement = (partyState, action) => {
     ...(action.once === true ? { once: true } : {}),
     // одно перемещение на выбор из списка: шаг другого бойца возвращает первого на исходную клетку
     ...(action.oneOf === true ? { oneOf: true } : {}),
-    // проход с уроном: занятую клетку можно кликнуть — боец идёт сквозь неё и возвращается назад
-    ...(action.throughEnemies === true && (damageOnPass > 0 || healOnPass > 0)
-      ? { transit: true }
-      : {}),
+    // проход сквозь врагов — пошаговое наступление: соседняя клетка за клик, клетка врага тоже шаг
     throughEnemies: action.throughEnemies === true,
+    // пошаговое наступление: карты с проходом сквозь врагов двигают бойца по **одной клетке** за клик,
+    // подсветка — соседние клетки и пересчитывается после каждого шага (`shared/helpers/turn.js`)
+    ...(action.throughEnemies === true ? { stepwise: true } : {}),
     damageOnPass,
     healOnPass,
     terrainOnStep: stepTerrain,
@@ -308,18 +309,27 @@ const stepMovement = (partyState, action) => {
   const heal = Number(movement.healOnPass) || 0;
   const placesTerrain = movement.terrainOnStep != null && movement.teleport !== true;
 
-  // клик по занятой клетке при проходе с уроном — боец идёт сквозь неё и возвращается: встать на неё нельзя
-  const blockers = fightersOnCell(partyState, action.cellId).filter(({ player }) =>
-    isEnemyPlayer(partyState, playerId, player),
-  );
-  if (movement.transit === true && blockers.length > 0) {
-    const through = stepRoute(partyState, movement, playerId, fighter, action.cellId);
-    const budget = movementBudget(fighter, movement);
-    if (!through || through.length * 2 > budget) {
-      throw new Error('SET_MOVEMENT: радиуса не хватает на путь сквозь бойца и обратно');
+  // пошаговое наступление (проход сквозь врагов): шаг ровно на соседнюю клетку, боец остаётся на ней.
+  // Клетка врага — тоже шаг: урон и лечение на проходе считаются по ней, а уйти с неё обязывает подсветка
+  // (остановиться на чужой клетке движок не даст — `movementOnOccupiedCell`)
+  if (movement.stepwise === true) {
+    const route = [String(from), String(action.cellId)];
+    let state = SET_FIGHTER_CELL(partyState, {
+      fighterId: action.fighterId,
+      cellId: action.cellId,
+    });
+    // маршрут пишем только там, где он что-то значит: урон, лечение или временная стихия
+    movement.moves.push({
+      fighterId,
+      from,
+      to: action.cellId,
+      ...(damage > 0 || heal > 0 || placesTerrain ? { route } : {}),
+    });
+    if (placesTerrain) {
+      state = addTemporaryTerrain(state, action.cellId, movement.terrainOnStep, playerId);
     }
-    movement.moves.push({ fighterId, from, to: from, route: through, transit: true });
-    return damagePassedFighters(partyState, movement, playerId, through, damage, {
+
+    return damagePassedFighters(state, movement, playerId, route, damage, {
       heal,
       moverId: fighterId,
     });
@@ -402,6 +412,11 @@ const closeMovement = (partyState, action) => {
   const playerId = playerIdOf(partyState, action);
   if (movement && playerId != null && String(movement.playerId) !== String(playerId)) {
     throw new Error('SET_MOVEMENT: это чужое перемещение');
+  }
+
+  // на клетке врага не останавливаются: проход сквозь — это шаг, а не место (пошаговое наступление)
+  if (movement && playerId != null && movementOnOccupiedCell(partyState, playerId)) {
+    throw new Error('SET_MOVEMENT: нельзя закончить перемещение на клетке, занятой другим бойцом');
   }
 
   /** Перемещение от эффекта карты: ходы забирает пауза боя, её и закрывает фаза. */

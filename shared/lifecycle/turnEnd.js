@@ -1,4 +1,5 @@
 import { runSkillMoment } from '#shared/skills/run.js';
+import { releaseStatuses } from '#shared/constants/statuses.js';
 import choose from '#shared/phases/choose.js';
 import { clearTemporaryTerrains } from '#shared/actions/terrain.js';
 import { hasMoment, isHandOverLimit } from '#shared/helpers/turn.js';
@@ -21,10 +22,11 @@ export default {
       _enteredHooks: { ...(partyState._enteredHooks ?? {}), turnEnd: true },
     };
 
-    // «заморожен» живёт до конца хода, в котором его поставили (карта «Оцепенение»)
+    // сроки статусов: `turnEnd` снимается здесь, `ownerTurnEnd` — только в конце хода владельца бойца
+    // (`shared/constants/statuses.js: releaseStatuses`)
     for (const player of state.players ?? []) {
       for (const fighter of player.fighters ?? []) {
-        if (fighter.frozen === true) delete fighter.frozen;
+        releaseStatuses(fighter, { playerId: state.turn?.playerId, ownerId: player.id });
       }
     }
 

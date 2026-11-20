@@ -2,6 +2,7 @@
   <GameScreen
     :hint-text="hintText"
     :hint-tone="gameHint?.tone ?? ''"
+    :hint-notice="hintNotice"
     :stage-label="stageLabel"
     :stage-time="stageTime"
     :limit-visible="activeLimitSeconds > 0"
@@ -16,6 +17,7 @@
 <script setup>
 import { HINTS } from '#shared/constants/hints.js';
 import GameScreen from '~/components/organisms/game/GameScreen.vue';
+import { persistentEffectsOf } from '#shared/constants/effects.js';
 import { ensureClock, useClock } from '~/composables/ui/useClock.js';
 import { useGameAi } from '~/composables/game/useGameAi.js';
 import { stageClockLabel } from '~/composables/game/useGameHelpers.js';
@@ -82,6 +84,7 @@ const {
   hint,
   isPlacement,
   boardInteractive,
+  me,
   clearFighterSelection,
 } = useGameSession();
 
@@ -177,9 +180,19 @@ useSeoTitle(() => (isPlacement.value ? 'Расстановка' : 'Партия'
 const { aiThinking } = useGameAi();
 
 const boardWaitingForAi = computed(() => aiThinking.value && !isPlacement.value);
-const { hint: gameHint } = useGameHint({ error, aiThinking: boardWaitingForAi, hint, pending });
+// «Важно!» — только про СВОИ постоянные эффекты (сниженный лимит руки, включённое умение): чужой эффект
+// показан кругом у его гекса, а в подсказке за столом на четверых он был бы шумом
+const myEffects = computed(() => persistentEffectsOf(me.value ?? null));
+const { hint: gameHint } = useGameHint({
+  error,
+  aiThinking: boardWaitingForAi,
+  hint,
+  pending,
+  effects: myEffects,
+});
 
 const hintText = computed(() => (compact.value ? '' : (gameHint.value?.text ?? '')));
+const hintNotice = computed(() => (compact.value ? '' : (gameHint.value?.notice ?? '')));
 
 const boardReady = computed(
   () => !aiThinking.value && (boardInteractive.value || isPlacement.value),

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { cardPromise, cardTags, effectWorth, optionWorth } from '../../../bot/play/cards.js';
+import {
+  cardPromise,
+  cardTags,
+  effectWorth,
+  handContext,
+  optionWorth,
+} from '../../../bot/play/cards.js';
 import { cardById, resourceTags } from '../../../bot/play/pool.js';
+import { bonusOutcomes } from '../../../bot/play/counting.js';
 import { card as fixtureCard, createState, fighter, player } from '../../fixtures/state.js';
 
 /**
@@ -233,10 +240,14 @@ describe('обещание карты: условия её же правил', (
 
   it('незнакомая или пустая карта обещаний не даёт', () => {
     const state = stateOf();
-    expect(cardPromise(null, state, '0')).toEqual({ strength: 0, worth: 0 });
+    expect(cardPromise(null, state, '0')).toEqual({ strength: 0, worth: 0, deferred: 0 });
     // `ifrit_01` — карта без свойств: её число остаётся напечатанным
     const plain = cardById('ifrit_01');
-    expect(cardPromise(plain, state, '0')).toEqual({ strength: plain.value, worth: 0 });
+    expect(cardPromise(plain, state, '0')).toEqual({
+      strength: plain.value,
+      worth: 0,
+      deferred: 0,
+    });
   });
 });
 
@@ -254,17 +265,17 @@ describe('польза эффекта: карта впустую не играе
     return state;
   };
 
-  it('Ифрит: «Пепельный ветер» не гаснет без духов, а с роем шаг длиннее и ценнее', () => {
+  it('Ифрит: «Пепельный ветер» горит на пепле — без духов шаг длиннее, чем с роем', () => {
     const state = stateOf();
     const card = cardById('ifrit_11');
 
-    // духов нет: свойство всё равно выполняется (одна клетка), поэтому карта не впустую
+    // духов нет: мёртвых трое, значит «мёртвых + 2» = пять клеток — карта не впустую
     const empty = effectWorth(card, state, '0');
     expect(empty.known).toBe(true);
     expect(empty.fires).toBeGreaterThan(0);
     expect(empty.value).toBeGreaterThan(0);
 
-    // три духа по одному hp — шаг становится длиннее, и оценка это видит: бюджет читается
+    // три живых духа — мёртвых ноль: шаг короче (2 клетки), и оценка это видит — бюджет читается
     // из самого действия (`SET_MOVEMENT`), как и проход сквозь строй с уроном и кражей
     for (const id of ['ash_1', 'ash_2', 'ash_3']) {
       player(state, '0').fighters.push(
@@ -279,9 +290,9 @@ describe('польза эффекта: карта впустую не играе
       );
     }
 
-    const ready = effectWorth(card, state, '0');
-    expect(ready.fires).toBeGreaterThan(0);
-    expect(ready.value).toBeGreaterThan(empty.value);
+    const swarm = effectWorth(card, state, '0');
+    expect(swarm.fires).toBeGreaterThan(0);
+    expect(swarm.value).toBeLessThan(empty.value);
   });
 
   it('Снежная королева: карта не срабатывает, пока герой заморожен', () => {
@@ -315,7 +326,333 @@ describe('польза эффекта: карта впустую не играе
       cost: 0,
       fires: 0,
       known: false,
+      ruleFires: [],
     });
     expect(effectWorth(cardById('ifrit_01'), state, '0').known).toBe(false);
+  });
+});
+
+/**
+ * Экономика руки: добор — не всегда польза.
+ *
+ * Карта сверх лимита руки уходит в сброс в конце хода, то есть колода сожжена, а карта не сыграна. Добор
+ * **противнику** — подарок (его карты его и усиливают), и только перебор его руки или пустая его колода
+ * превращают принудительный добор в мой плюс: за карту, которой не нашлось, все его бойцы получают
+ * `rules.exhaustionDamage`. Сторона берётся из самого действия: `side`, `of: 'opponent'` или переменная
+ * факта `FIGHTERS { side }` — без этого знак пользы зависел от того, как правило записано.
+ */
+describe('экономика руки: чья рука наполняется и что с лишними картами', () => {
+  const ruleCard = then => ({
+    id: 'test_02',
+    options: [{ id: 'pick', text: 'вариант' }],
+    rules: [{ moment: 'picked', when: [{ fact: 'PICKED', params: { is: 'pick' } }], then }],
+  });
+  const economy = (patch = {}) => ({
+    hand: 3,
+    limit: 7,
+    rivalHand: 2,
+    rivalLimit: 7,
+    rivalDeck: 4,
+    rivalMaterial: 1,
+    exhaust: 2,
+    ...patch,
+  });
+
+  it('добор себе: польза только той части, что влезает в лимит руки', () => {
+    const draw = ruleCard([{ action: 'SET_CARDS', op: 'draw', count: 2 }]);
+
+    expect(optionWorth(draw, 'pick', economy())).toMatchObject({ value: 3, cost: 0 });
+    // рука 6 из 7: одна карта влезет, вторая сгорит в конце хода — та же цена, что сброс с колоды
+    expect(optionWorth(draw, 'pick', economy({ hand: 6 }))).toMatchObject({
+      value: 1.5,
+      cost: 0.5,
+    });
+    // без контекста — прежняя цена за карту
+    expect(optionWorth(draw, 'pick').value).toBe(3);
+  });
+
+  it('добор противнику — цена, а не польза', () => {
+    const gift = ruleCard([{ action: 'SET_CARDS', of: 'opponent', op: 'draw', count: 2 }]);
+
+    expect(optionWorth(gift, 'pick')).toMatchObject({ value: 0, cost: 3 });
+    expect(optionWorth(gift, 'pick', economy())).toMatchObject({ value: 0, cost: 3 });
+    // …кроме перебора его руки: карты сверх лимита сгорят у него
+    expect(optionWorth(gift, 'pick', economy({ rivalHand: 6 }))).toMatchObject({
+      value: 1.5,
+      cost: 1.5,
+    });
+  });
+
+  it('бомба истощения: принудительный добор на пустой колоде бьёт всех его бойцов', () => {
+    const gift = ruleCard([{ action: 'SET_CARDS', of: 'opponent', op: 'draw', count: 2 }]);
+
+    // 2 урона за карту, каждая по цене 2 за hp героя: 8 единиц — дороже любой карты
+    expect(optionWorth(gift, 'pick', economy({ rivalDeck: 0 }))).toMatchObject({
+      value: 8,
+      cost: 0,
+    });
+    // помощники в материале стороны стоят половину
+    expect(optionWorth(gift, 'pick', economy({ rivalDeck: 0, rivalMaterial: 1.5 })).value).toBe(12);
+  });
+
+  it('сброс чужой карты по `of` — польза: сторона читается из действия, а не только из переменной', () => {
+    // «Ледяное зеркало» Снежной королевы: в правиле `picked` стоит `of: 'opponent'`
+    const peek = ruleCard([{ action: 'SET_CARDS', of: 'opponent', op: 'discard', count: 1 }]);
+
+    expect(optionWorth(peek, 'pick')).toMatchObject({ value: 1.5, cost: 0 });
+  });
+
+  it('через `effectWorth`: полная рука обесценивает добор в самой карте', () => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const effect = {
+      id: 'draw_two',
+      type: 'effect',
+      value: 2,
+      bonus: 1,
+      rules: [{ moment: 'effect', then: [{ action: 'SET_CARDS', op: 'draw', count: 2 }] }],
+    };
+
+    const roomy = effectWorth(effect, state, '0');
+    player(state, '0').hand.cards.push(
+      ...Array.from({ length: 4 }, (_, index) => fixtureCard({ id: `extra_${index}` })),
+    );
+    const choked = effectWorth(effect, state, '0');
+
+    expect(roomy.value).toBeGreaterThan(choked.value);
+    expect(choked.cost).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Запас защит — часть экономики руки (`handContext`): считаются карты, которыми можно ответить на удар,
+ * и в руке, и в невышедшей колоде. От этого числа зависит вес атаки гибридом (`policy.js: stockFactor`).
+ */
+describe('экономика руки: запас защит', () => {
+  it('защиты и гибриды считаются в руке и колоде, атаки и эффекты — нет', () => {
+    const zone = list => ({ visibility: [], cards: list });
+    const state = createState({
+      players: [
+        {
+          id: '0',
+          name: 'Атака',
+          order: 1,
+          deck: zone([
+            fixtureCard({ id: 'deck_defense', type: 'defense', value: 3 }),
+            fixtureCard({ id: 'deck_attack', type: 'attack', value: 4 }),
+            fixtureCard({ id: 'deck_hybrid', type: 'hybrid', value: 3 }),
+          ]),
+          hand: zone([
+            fixtureCard({ id: 'hand_hybrid', type: 'hybrid', value: 4 }),
+            fixtureCard({ id: 'hand_attack', type: 'attack', value: 5 }),
+            fixtureCard({ id: 'hand_effect', type: 'effect', value: 0 }),
+          ]),
+          discard: zone([]),
+          fighters: [fighter({ id: 'hero_a', currentPosition: 1, currentHp: 12, startHp: 12 })],
+        },
+        {
+          id: '1',
+          name: 'Ответ',
+          order: 2,
+          deck: zone([fixtureCard({ id: 'rival_card', type: 'defense', value: 3 })]),
+          hand: zone([fixtureCard({ id: 'rival_hand', type: 'attack', value: 4 })]),
+          discard: zone([]),
+          fighters: [fighter({ id: 'hero_b', currentPosition: 4, currentHp: 12, startHp: 12 })],
+        },
+      ],
+    });
+
+    const economy = handContext(state, '0');
+
+    // гибрид в руке, защита и гибрид в колоде: это и есть запас, которым отвечать на удары
+    expect(economy.defenses).toBe(1);
+    expect(economy.deckDefenses).toBe(2);
+    expect(economy.hand).toBe(3);
+    // чужая рука считается отдельно: по ней политика решает, ждать ответа или давить
+    expect(economy.rivalHand).toBe(1);
+  });
+});
+
+/**
+ * Скрытые числа боя и ветки, которые обещание не видело (`.docs/bot-strategies.md`, «Стратегии по
+ * героям»): усиление чужой карты (весы Анубиса), свойства чужой карты (отмены), польза ветки `picked`
+ * (урон и толчок) и окно номера действия (`AP { spentMin }`).
+ */
+describe('обещание карты: скрытые числа и отложенные ветки', () => {
+  /** Анубис с целой пеленой и целью в дистанции удара. */
+  const anubisState = rivalId => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const anubis = player(state, '0');
+    anubis.heroId = 'anubis';
+    anubis.fighters[0].id = 'anubis';
+    anubis.items = [{ id: 'shroud', group: 'shroud', name: 'Пелена', state: 'active' }];
+    player(state, '1').heroId = rivalId;
+    return state;
+  };
+  const target = { fighterId: 'beta', playerId: '1' };
+
+  it('Анубис: весы обещают обе половины, взвешивая их вероятностями', () => {
+    // «Врата»: Помилование обнуляет чужую карту (2), Наказание отменяет её свойства (3). Какая половина
+    // сработает, зависит от усиления чужой карты, поэтому ценность — между двумя половинами
+    const light = cardPromise(cardById('anubis_05'), anubisState('dorothy'), '0', { target });
+    const heavy = cardPromise(cardById('anubis_05'), anubisState('anubis'), '0', { target });
+
+    expect(light.worth).toBeGreaterThan(2);
+    expect(light.worth).toBeLessThan(3);
+    // тяжёлая чужая колода чаще включает Наказание — она и ценнее
+    expect(heavy.worth).toBeGreaterThan(light.worth);
+    expect(heavy.worth).toBeLessThanOrEqual(3);
+  });
+
+  it('Анубис: «Саван» берёт усиление чужой карты из распределения по остатку колоды', () => {
+    const state = anubisState('anubis');
+    const shroud = cardById('anubis_04');
+    expect(shroud.value).toBe(0);
+
+    // значение карты становится усилением чужой карты, а «Наказание» добавляет +3, когда чужое усиление
+    // строго больше нашего (у «Санава» бонус 2) — оба исхода взвешены их вероятностями
+    const outcomes = bonusOutcomes(state, '0');
+    const mean = outcomes.reduce((sum, entry) => sum + entry.chance * entry.value, 0);
+    const over = outcomes
+      .filter(entry => entry.value > shroud.bonus)
+      .reduce((sum, entry) => sum + entry.chance, 0);
+
+    expect(cardPromise(shroud, state, '0', { target }).strength).toBeCloseTo(mean + 3 * over, 5);
+  });
+
+  it('Ифрит: ветка `picked` даёт урон и толчок — «Ожог» больше не ноль', () => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const ifrit = player(state, '0');
+    ifrit.heroId = 'ifrit';
+    ifrit.fighters[0].id = 'ifrit';
+    // сосед Ифрита — чужой боец: окно выбора бойца открывается, урон и сдвиг идут в `picked`
+    const beta = player(state, '1').fighters[0];
+    beta.currentPosition = 9;
+
+    const worth = effectWorth(cardById('ifrit_10'), state, '0', { target });
+
+    // 2 урона чужому бойцу (2 за hp) плюс сдвиг его до двух клеток
+    expect(worth.value).toBeGreaterThanOrEqual(4);
+  });
+
+  it('Ифрит: «Три обещания» обещают лучший вариант — добор двух карт', () => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const ifrit = player(state, '0');
+    ifrit.heroId = 'ifrit';
+    ifrit.fighters[0].id = 'ifrit';
+
+    expect(effectWorth(cardById('ifrit_12'), state, '0').value).toBeGreaterThanOrEqual(3);
+  });
+
+  it('номер действия: «Счёт ударов» обещает своё окно, а не чужое', () => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const ifrit = player(state, '0');
+    ifrit.heroId = 'ifrit';
+    ifrit.fighters[0].id = 'ifrit';
+    // колода соперника известна: без неё нечего оценивать («есть ли у его карты свойства»)
+    player(state, '1').heroId = 'anubis';
+    // ход из трёх действий
+    state.turn.actionsTotal = 3;
+
+    // карта объявляется первым действием: окно «второго действия» (spentMin 2) ещё впереди,
+    // значит отмена обещается не этой карте — она уходит в `deferred`
+    state.turn.actionsLeft = 3;
+    const first = cardPromise(cardById('ifrit_13'), state, '0', { target });
+    expect(first.deferred).toBeGreaterThan(0);
+
+    // объявляется вторым — окно наступило (карта сама тратит действие), обещание принадлежит ей
+    state.turn.actionsLeft = 2;
+    const second = cardPromise(cardById('ifrit_13'), state, '0', { target });
+    expect(second.worth).toBeGreaterThan(first.worth);
+    expect(second.deferred).toBe(0);
+
+    // третьим действием после шага карта бьёт на 7 (+2 к пятёрке)
+    state.turn.actionsLeft = 1;
+    ifrit.fighters[0].movedThisTurn = true;
+    expect(cardPromise(cardById('ifrit_13'), state, '0', { target }).strength).toBe(7);
+  });
+
+  it('Анубис: «Зал суда» бьёт на число карт эффектов в сбросе — урон переменной', () => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const anubis = player(state, '0');
+    anubis.heroId = 'anubis';
+    anubis.fighters[0].id = 'anubis';
+    const hall = cardById('anubis_11');
+    const effects = count =>
+      (anubis.discard = {
+        visibility: [],
+        cards: Array.from({ length: count }, (_, index) => ({
+          id: 'anubis_09',
+          instanceId: `effect_${index}`,
+          type: 'effect',
+        })),
+      });
+
+    // урон приходит полем `damage`, а не `delta`: без этой ветки карта стоила ноль (было 140 розыгрышей
+    // с пользой 0, §74)
+    effects(3);
+    expect(effectWorth(hall, state, '0').value).toBe(6);
+    // пустой сброс: срабатывает вторая ветка правила — ровно 1 урон
+    effects(0);
+    expect(effectWorth(hall, state, '0').value).toBe(2);
+  });
+
+  it('Снежная королева: «Жертва» обещает действие, только если ворона погибнет', () => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const queen = player(state, '0');
+    queen.heroId = 'snow-queen';
+    queen.fighters[0].id = 'snow-queen';
+    const crow = {
+      ...queen.fighters[1],
+      id: 'crow',
+      type: 'assistant',
+      group: 'crow',
+      currentHp: 1,
+      startHp: 6,
+      currentPosition: 9,
+    };
+    queen.fighters.push(crow);
+    const sacrifice = cardById('snow-queen_08');
+
+    // 1 hp: урон карты в 1 добивает ворону, значит ветка `lost` (+1 действие) сбудется
+    expect(cardPromise(sacrifice, state, '0', { target }).worth).toBeGreaterThan(0);
+
+    // 4 hp: тот же урон не убивает, обещания нет
+    crow.currentHp = 4;
+    expect(cardPromise(sacrifice, state, '0', { target }).worth).toBe(0);
+  });
+});
+
+/**
+ * `SET_CARDS { op: 'move' }` из сброса в колоду — не «мелкая польза»: у Снежной королевы сброс считает
+ * осколки, и карта, ушедшая из него, роняет порог («Кристальный резонанс» платит своим же умением).
+ */
+describe('оценка действия: карта из сброса обратно в колоду', () => {
+  const effect = then => ({
+    id: 'move_back',
+    type: 'effect',
+    rules: [{ moment: 'effect', then }],
+  });
+
+  it('возврат в колоду стоит, а не приносит', () => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const worth = effectWorth(
+      effect([{ action: 'SET_CARDS', op: 'move', from: 'discard', to: 'deck', count: 1 }]),
+      state,
+      '0',
+    );
+
+    expect(worth.cost).toBeGreaterThan(0);
+    expect(worth.value).toBe(0);
+  });
+
+  it('возврат в руку — наоборот, польза', () => {
+    const state = createState({ turn: { index: 1, playerId: '0', actionsLeft: 2 } });
+    const worth = effectWorth(
+      effect([{ action: 'SET_CARDS', op: 'move', from: 'discard', to: 'hand', count: 1 }]),
+      state,
+      '0',
+    );
+
+    expect(worth.value).toBeGreaterThan(0);
   });
 });

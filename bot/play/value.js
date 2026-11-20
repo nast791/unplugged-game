@@ -1,5 +1,15 @@
-import { heroIds } from './pool.js';
-import { resourceOf, resourceProgress, resourceReady, resourceSteps } from './resources.js';
+import { assistantImportance, heroIds } from './pool.js';
+import { fighterStatuses, hasStatus } from '#shared/constants/statuses.js';
+import { nodeExtraTerrains } from '#shared/helpers/placement.js';
+import {
+  resourceOf,
+  resourceProgress,
+  resourceReady,
+  resourceSpec,
+  resourceSteps,
+} from './resources.js';
+import { fragileMechanic, mechanicLossWeight } from './axes.js';
+import { BODY_KEY } from './policy.js';
 import { heroes } from '../../server/content/index.js';
 import { cellDistances } from './actionFeatures.js';
 
@@ -41,7 +51,9 @@ import { cellDistances } from './actionFeatures.js';
  * **Карты эффектов в сбросе и руке (m04079).** «Зал суда» Анубиса бьёт в лицо ровно по числу эффектов
  * в сбросе, а рука — запас таких ударов: `discardEffects` и `handEffects`.
  *
- * Признаков стало 120: 36 базовых, 12 индикаторов, 72 взаимодействия с героем.
+ * Признаков стало 127: 43 базовых, 12 индикаторов, 72 взаимодействия с героем. Последние шесть (§75):
+ * `tempTerrain`/`foeTempTerrain` — временная стихия (до конца хода), `statusShort`/`statusLong` — статусы
+ * по сроку снятия, `keyBodies`/`foeKeyBodies` — живые важные помощники (Амат, вороны, Тото).
  *
  * **Матрица матчапов (§20).** Для каждой пары «мой герой против этого соперника» из этой же модели
  * считается проекция (`bot/play/matchups.js`): внутри пары индикаторы постоянны, поэтому оценка сводится к
@@ -49,6 +61,29 @@ import { cellDistances } from './actionFeatures.js';
  * бандла, `pairScore` играет теми же числами (проверяет `tests/unit/bot/matchups.test.js`).
  */
 const clamp = value => Math.max(-1, Math.min(1, value));
+
+/**
+ * **Температура листа**: сырая сумма модели перед сжатием делится на неё, `tanh(raw / scale)`.
+ *
+ * Зачем это нужно (§72). Обучение возвращает **логиты**, и `tanh(2·logit)` (прежняя формула) сжимал их
+ * слишком рано: на трассах поиска средняя |сумма| вышла 5,97, у 77% позиций она больше 3, а при |x| = 3
+ * производная `tanh` уже 1%, при 5 — 0,02%. То есть в трёх четвертях позиций **два разных листа получали
+ * одно и то же число**, и поиск не мог их ранжировать: `+2 hp` героя меняли оценку на 0,005. Порядок от
+ * деления не меняется — меняется только разрешение, поэтому это безопасная правка сама по себе.
+ *
+ * Число берётся из артефакта (`scale` в `bot/play/value-weights.js`): `bot/learn/train.js` кладёт туда
+ * 90-й процентиль |суммы|, делённый на 1,5, — то есть 90% позиций попадают в `tanh(±1,5)`. Переобучение
+ * перекалибрует температуру само. `LEAF_SCALE` ниже — значение для артефактов, записанных до §72: оно
+ * подобрано по их средней |сумме| 5,97, чтобы средняя позиция давала лист около `tanh(1)`, а не упиралась
+ * в единицу.
+ */
+export const LEAF_SCALE = 6;
+
+/** Температура артефакта: своя из обучения, иначе общая (`LEAF_SCALE`). */
+export const scaleOf = weights => {
+  const scale = Number(weights?.scale);
+  return Number.isFinite(scale) && scale > 0 ? scale : LEAF_SCALE;
+};
 
 const sum = (list, pick) => list.reduce((total, entry) => total + pick(entry), 0);
 
@@ -81,9 +116,9 @@ export const stillHero = player => {
   return heroes.length > 0 && heroes.every(fighter => !fighter.movedThisTurn) ? 1 : 0;
 };
 
-/** Замороженные бойцы: статус запрещает шаг, телепорт и обмен (`SET_STATUS`). */
+/** Замороженные бойцы: статус запрещает шаг, телепорт и обмен (`SET_STATUS`, реестр статусов). */
 const frozenCount = player =>
-  (player?.fighters ?? []).filter(fighter => Boolean(fighter.frozen)).length;
+  (player?.fighters ?? []).filter(fighter => hasStatus(fighter, 'frozen')).length;
 
 const cards = (player, zone) => (player?.[zone]?.cards ?? []).length;
 
@@ -209,6 +244,26 @@ const roomAround = (state, me) => {
   return (node?.neighbors ?? []).filter(cellId => !occupied.has(String(cellId))).length;
 };
 
+/**
+ * Свободные клетки рядом с **чужим** героем — зеркальный признак `room` (`.docs/bot-strategies.md` п. 8).
+ * Сквозь чужих бойцов пройти нельзя, поэтому каждое тело рядом с героем — это минус выход: у чужого героя
+ * теснота работает **на меня**. Берётся самый зажатый из чужих героев (минимум свободных клеток).
+ */
+const foeRoomAround = (state, others) => {
+  const occupied = occupiedCellIds(state);
+  const heroes = foeFighters(others).filter(fighter => fighter.type === 'hero');
+  if (heroes.length === 0) return 0;
+
+  return Math.min(
+    ...heroes.map(hero => {
+      const node = (state.map?.nodes ?? []).find(
+        entry => String(entry.id) === String(hero.currentPosition),
+      );
+      return (node?.neighbors ?? []).filter(cellId => !occupied.has(String(cellId))).length;
+    }),
+  );
+};
+
 /** Свободные клетки родной стихии: есть ли куда встать картой «от стихии» и телепортом. */
 const freeAffinityCells = (state, me) => {
   const affinity = affinityOf(me);
@@ -221,6 +276,57 @@ const freeAffinityCells = (state, me) => {
     if (terrains.some(terrain => affinity.has(String(terrain)))) count += 1;
   }
   return count;
+};
+
+/**
+ * Бойцы на **временной** стихии своей земли (`.docs/bot-strategies.md`, п. «срок статуса и временной
+ * стихии»). Временную стихию ставит карта (`SET_CELL_TERRAIN`) и снимает конец хода ставившего
+ * (`shared/actions/terrain.js`), поэтому стоять на ней — выгода на один ход, а не позиция. Лист видел
+ * стихию только как «своя земля» (`terrainStand`) и не различал, постоянная она или до конца хода.
+ */
+const onTemporaryTerrain = (state, player) => {
+  const affinity = affinityOf(player);
+  if (affinity.size === 0) return 0;
+  const nodes = state.map?.nodes ?? [];
+  return (player?.fighters ?? []).filter(fighter => {
+    if ((Number(fighter.currentHp) || 0) <= 0 || fighter.currentPosition == null) return false;
+    const node = nodes.find(entry => String(entry.id) === String(fighter.currentPosition));
+    return nodeExtraTerrains(node).some(terrain => affinity.has(String(terrain)));
+  }).length;
+};
+
+/**
+ * Статусы по **сроку** (`shared/constants/statuses.js: STATUS_UNTIL`): `turnEnd` снимается на ближайшем
+ * конце хода (статус «на один ход»), `ownerTurnEnd` живёт до конца хода владельца бойца. Один и тот же
+ * статус стоит по-разному, поэтому «заморожен» разделён на две доли, а не считается одной кучей.
+ */
+const statusesByClock = player => {
+  let short = 0;
+  let long = 0;
+  for (const fighter of player?.fighters ?? []) {
+    if ((Number(fighter.currentHp) || 0) <= 0) continue;
+    for (const status of fighterStatuses(fighter)) {
+      if (status.until === 'ownerTurnEnd') long += 1;
+      else short += 1;
+    }
+  }
+  return { short, long };
+};
+
+/**
+ * **Живые важные помощники** (`.docs/bot-strategies.md`, слепая зона 8): на них держится механика пака
+ * (Амат у Анубиса, вороны Снежной королевы, Тото у Дороти), а лист различал помощников только по hp.
+ * Важность — `pool.js: assistantImportance` по правилам пака плюс порог `BODY_KEY` из политики: тот же,
+ * что у защиты картой и у добивания, чтобы бот и лист считали «важным» одно и то же.
+ */
+const keyBodies = player => {
+  const heroId = player?.heroId;
+  return (player?.fighters ?? []).filter(
+    fighter =>
+      String(fighter.type) === 'assistant' &&
+      (Number(fighter.currentHp) || 0) > 0 &&
+      assistantImportance(heroId, fighter.group) >= BODY_KEY,
+  ).length;
 };
 
 /** Открытый бой: моё значение против чужого (`state.combat` живёт до закрытия боя). */
@@ -257,13 +363,39 @@ const effectCards = (player, zoneName) =>
 const resourcesOf = player => {
   const resource = resourceOf(player);
   const steps = resourceSteps(resource);
+  // «Хрупкая» механика (пелена Анубиса) — не запас, а выключатель: собирать там нечего, поэтому в
+  // признаках ресурса он ноль в обоих состояниях, а потеря считается отдельным членом (`mechanicLoss`).
+  // Иначе модель учит «ресурс упал — стало лучше» и потеря пелены читалась как плюс (§72).
+  const switchOnly =
+    fragileMechanic(player?.heroId) && resourceSpec(player?.heroId)?.kind === 'item';
   return {
-    progress: resourceProgress(resource),
-    on: resourceReady(resource),
+    progress: switchOnly ? 0 : resourceProgress(resource),
+    on: switchOnly ? 0 : resourceReady(resource),
     gap: steps.gap,
     share: steps.share,
     fuel: resource.fuel,
   };
+};
+
+/**
+ * **Механика пака, выключенная навсегда** (`bot/play/axes.js: fragileMechanic`): у Анубиса пелена либо цела,
+ * либо погасла до конца партии, и это не «ресурс убыл», а потерянный двигатель пака (весы на пяти картах).
+ *
+ * Член считается **вне выученных весов**: знак на этой оси задаёт пак, а не регрессия, у которой он уже
+ * переворачивался от прогона к прогону (§72). Отрицательный — моя механика потеряна, положительный — чужая.
+ */
+export const mechanicLoss = (state, viewerId) => {
+  const players = state?.players ?? [];
+  const key = String(viewerId);
+  const lostOf = player => {
+    const weight = mechanicLossWeight(player?.heroId);
+    if (weight <= 0 || resourceSpec(player?.heroId)?.kind !== 'item') return 0;
+    return resourceReady(resourceOf(player)) ? 0 : weight;
+  };
+  const mine = players.find(player => String(player.id) === key) ?? null;
+  const others = players.filter(player => String(player.id) !== key);
+
+  return -lostOf(mine) + sum(others, lostOf);
 };
 
 /**
@@ -299,6 +431,7 @@ export const baseFeatureNames = [
   'reach', // чужие бойцы в пределах МОЕЙ дальности атаки: достаю или не достаю
   'adjacentFoes', // чужие бойцы вплотную к моему герою: ближняя угроза
   'room', // свободные клетки рядом с героем: теснота запирает шаг и окна перемещения
+  'foeRoom', // то же про ЧУЖОГО героя: тела вокруг запирают его выходы (`.docs/bot-strategies.md` п. 8)
   'freeTerrain', // свободные клетки родной стихии: есть куда встать картой «от стихии»
   'assistants', // живые помощники: у Ифрита духи — двигатель, у Анубиса Амат — расход
   'lostAssistants', // убитые бойцы в запасе: материал для воскрешения и счёт потерь
@@ -307,6 +440,12 @@ export const baseFeatureNames = [
   'handTagged', // карты с метками в руке: весы Анубиса, осколки Снежной королевы
   'rivalLimit', // лимит руки соперника: перебор считается по его лимиту, а не по семёрке
   'actionsLeft', // остаток действий в моём ходу: ход уже потрачен или ещё нет
+  'tempTerrain', // мои бойцы на ВРЕМЕННОЙ стихии своей земли: выгода на один ход, а не позиция
+  'foeTempTerrain', // чужие бойцы на своей временной стихии: то же с их стороны (лавой Ифрита)
+  'statusShort', // статусы со сроком `turnEnd`: живут до ближайшего конца хода
+  'statusLong', // статусы со сроком `ownerTurnEnd`: живут до конца хода владельца бойца
+  'keyBodies', // мои живые важные помощники (Амат, вороны, Тото): на них держится механика пака
+  'foeKeyBodies', // их важные помощники: снять такого — сломать механику их пака
 ];
 
 /** Признаки, которые у разных архетипов значат разное: для каждого героя модель учит их вес отдельно. */
@@ -387,6 +526,7 @@ export const featuresOf = (state, viewerId) => {
     foesInReach(state, mine, others) / 3,
     foesAdjacent(state, mine, others) / 4,
     roomAround(state, mine) / 6,
+    foeRoomAround(state, others) / 6,
     Math.min(1, freeAffinityCells(state, mine) / 4),
     diff(assistantsAlive) / 3,
     diff(lostCount) / 3,
@@ -396,6 +536,13 @@ export const featuresOf = (state, viewerId) => {
     diff(handTagged) / 5,
     diff(player => Number(player.handLimit ?? limit)) / limit,
     (Number(state.turn?.actionsLeft ?? 0) / Math.max(1, Number(state.turn?.actionsTotal ?? 1))),
+    // сроки: временная стихия и статусы считаются отдельно от постоянных — они «на ход», а не позиция
+    diff(player => onTemporaryTerrain(state, player)) / 2,
+    -sum(others, player => onTemporaryTerrain(state, player)) / 2,
+    diff(player => statusesByClock(player).short) / 2,
+    diff(player => statusesByClock(player).long) / 2,
+    diff(keyBodies) / 2,
+    -sum(others, player => keyBodies(player)) / 2,
   ];
 
   const myHero = String(mine?.heroId ?? '');
@@ -452,7 +599,9 @@ export const scoreOf = (state, viewerId, weights = defaultWeights) => {
   for (let index = 0; index < featureNames.length; index += 1) {
     total += (Number(weights?.[featureNames[index]]) || 0) * features[index];
   }
+  // выключатель пака: потеря движка — отдельный член, а не разница признаков (§72)
+  total += mechanicLoss(state, viewerId);
 
-  return clamp(Math.tanh(total));
+  return clamp(Math.tanh(total / scaleOf(weights)));
 };
 

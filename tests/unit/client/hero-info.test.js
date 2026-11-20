@@ -350,3 +350,37 @@ describe('окно информации о герое', () => {
     );
   });
 });
+
+/**
+ * Статусы в окне героя: строка «Статусы» есть **только** когда статусы действуют, и показывает названия
+ * через запятую — в панели их может быть несколько, а иконки живут у фишки на доске
+ * (`shared/constants/statuses.js` — реестр, `.docs/statuses.md`).
+ */
+describe('статусы в окне героя', () => {
+  const frozenToto = { ...player.fighters[0], statuses: { frozen: { until: 'turnEnd' } } };
+
+  it('у героя со статусом появляется строка с названием', () => {
+    const wrapper = mountInfo('hero', {
+      hero: { ...hero, statuses: { frozen: { until: 'turnEnd' } } },
+    });
+    const row = wrapper.find('[data-statuses]');
+
+    expect(row.exists()).toBe(true);
+    expect(row.text()).toContain('Статусы');
+    expect(row.text()).toContain('Заморозка');
+    expect(row.attributes('data-status')).toBe('frozen');
+  });
+
+  it('нет статусов — строки нет вовсе', () => {
+    expect(mountInfo('hero').find('[data-statuses]').exists()).toBe(false);
+    expect(mountInfo('fighters').find('[data-statuses]').exists()).toBe(false);
+  });
+
+  it('во вкладке «Помощники» статус виден у бойца', () => {
+    const wrapper = mountInfo('fighters', {
+      player: { ...player, fighters: [frozenToto, player.fighters[1]] },
+    });
+
+    expect(wrapper.find('[data-statuses]').text()).toContain('Заморозка');
+  });
+});

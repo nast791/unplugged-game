@@ -103,3 +103,69 @@ describe('признаки листа про поле', () => {
     expect(feature(state, '0', 'resourceShare')).toBeCloseTo(1);
   });
 });
+
+/**
+ * Сроки и важность помощника (§74, «осталось»): временная стихия живёт до конца хода, статус — до
+ * ближайшего конца хода или до конца хода владельца, а важный помощник (Амат, вороны, Тото) не равен
+ * обычному телу. Раньше лист ничего из этого не различал.
+ */
+describe('признаки листа про сроки и важность помощника', () => {
+  it('временная стихия считается отдельно от постоянной', () => {
+    const { state } = stateOf();
+    // оба на своей постоянной земле: перевеса нет, временной стихии тоже
+    expect(feature(state, '0', 'tempTerrain')).toBeCloseTo(0);
+    expect(feature(state, '0', 'terrainStand')).toBeCloseTo(0);
+
+    // на клетку Анубиса положили временный песок (карта «до конца хода»)
+    state.map = {
+      ...state.map,
+      nodes: state.map.nodes.map(node =>
+        node.id === 1 ? { ...node, extraTerrain: ['desert'], extraTerrainBy: '0' } : node,
+      ),
+    };
+    expect(feature(state, '0', 'tempTerrain')).toBeCloseTo(0.5);
+    // чужая временная стихия — отдельный признак, у меня она ноль
+    expect(feature(state, '0', 'foeTempTerrain')).toBeCloseTo(0);
+  });
+
+  it('статусы делятся по сроку: до ближайшего конца хода и до конца хода владельца', () => {
+    const { state, beta } = stateOf();
+    // заморожен враг: у него короткий срок — значит «минус» у него (признаки считаются «я минус они»)
+    beta.statuses = { frozen: { until: 'turnEnd' } };
+    expect(feature(state, '0', 'statusShort')).toBeCloseTo(-0.5);
+    expect(feature(state, '0', 'statusLong')).toBeCloseTo(0);
+
+    beta.statuses = { frozen: { until: 'ownerTurnEnd' } };
+    expect(feature(state, '0', 'statusShort')).toBeCloseTo(0);
+    expect(feature(state, '0', 'statusLong')).toBeCloseTo(-0.5);
+    // «заморожен» остаётся общей суммой: срок — уточнение, а не замена
+    expect(feature(state, '0', 'frozen')).toBeCloseTo(-0.5);
+  });
+
+  it('важный помощник весит в листе отдельно от обычного тела', () => {
+    const { state } = stateOf();
+    // у Анубиса Амат важна (8 hp, на ней пелена)
+    state.players[0].fighters.push({
+      id: 'amat',
+      name: 'Амат',
+      type: 'assistant',
+      group: 'amat',
+      currentHp: 6,
+      currentPosition: 2,
+    });
+    expect(feature(state, '1', 'keyBodies')).toBeCloseTo(-0.5); // глазами Ифрита это чужой важный
+    expect(feature(state, '0', 'keyBodies')).toBeCloseTo(0.5);
+
+    // у Медузы гарпия — обычный рой, важной не считается
+    state.players[1].fighters.push({
+      id: 'harpy',
+      name: 'Гарпия',
+      type: 'assistant',
+      group: 'harpies',
+      currentHp: 1,
+      currentPosition: 2,
+    });
+    state.players[1].heroId = 'medusa';
+    expect(feature(state, '0', 'keyBodies')).toBeCloseTo(0.5);
+  });
+});

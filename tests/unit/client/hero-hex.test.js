@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { computed } from 'vue';
+import { computed, defineComponent, h } from 'vue';
 
 /**
  * Гекс героя (`HeroHex`) — всё, что осталось от карточки героя на минимальном экране: аватар на весь
@@ -99,7 +99,20 @@ const { default: HeroHex } = await import('../../../app/components/molecules/gam
 
 const RATIO = 2 / Math.sqrt(3);
 
-const mountHex = (props = {}) => mount(HeroHex, { props });
+/**
+ * `Icon` — глобальный компонент `@nuxt/icon`: вне Nuxt он падает на `useNuxtApp`, поэтому в тестах
+ * подменяем его заглушкой (так же сделано в `hero-info.test.js`).
+ */
+const IconStub = defineComponent({
+  name: 'Icon',
+  props: { name: { type: String, default: '' } },
+  setup(props) {
+    return () => h('span', { 'data-icon-name': props.name });
+  },
+});
+
+const mountHex = (props = {}) =>
+  mount(HeroHex, { props, global: { stubs: { Icon: IconStub, NuxtIcon: IconStub } } });
 
 const glowOf = wrapper => wrapper.element.firstElementChild;
 const buttonOf = wrapper => glowOf(wrapper).firstElementChild;
@@ -239,5 +252,39 @@ describe('гекс героя', () => {
 
     expect(wrapper.find('.uppercase').text()).toBe('Анубис');
     expect(wrapper.text()).not.toContain('Осталось действий');
+  });
+
+  it('рисует круг эффекта в верхнем левом углу — только когда эффект действует', () => {
+    expect(mountHex().find('[data-effect-badge]').exists()).toBe(false);
+    expect(mountHex({ effects: [] }).find('[data-effect-badge]').exists()).toBe(false);
+
+    const badge = mountHex({
+      effects: [{ id: 'handLimit', title: 'Лимит руки снижен', text: 'Снижен до 5' }],
+    }).find('[data-effect-badge]');
+
+    expect(badge.exists()).toBe(true);
+    // размер как у сердца и счёта действий, белый фон и чёрная обводка (решение владельца)
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['size-54', 'rounded-full', 'bg-white', 'border-ink', 'border-2']),
+    );
+    // угол верхний левый, но внутрь гекса: над ним висят карты-кнопки «i» и стопок (`-top-45`, высота 38),
+    // и круг не должен на них налезать
+    expect(badge.classes()).toContain('top-0');
+    expect(badge.classes()).toContain('-left-2');
+    expect(badge.classes()).not.toContain('-top-6');
+  });
+
+  it('перечисляет в подсказке круга все действующие эффекты', () => {
+    const wrapper = mountHex({
+      effects: [
+        { id: 'handLimit', text: 'Снижен лимит карт в руке до 5' },
+        { id: 'skill', text: 'Действует умение «Вечная мерзлота»' },
+      ],
+    });
+    const tips = wrapper
+      .findAllComponents({ name: 'ATooltip' })
+      .map(component => component.props('text'));
+
+    expect(tips).toContain('Снижен лимит карт в руке до 5\nДействует умение «Вечная мерзлота»');
   });
 });

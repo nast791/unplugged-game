@@ -34,6 +34,10 @@ export const playerFields = {
   skill: ['self', 'team', 'enemy'],
   // продолжительное умение действует сейчас: ставит и снимает само правило умения (`SET_SKILL`)
   skillActive: ['self', 'team', 'enemy'],
+  // лимит руки игрока: своё число, а не `rules.maxHandSize` — умение ставит чужой стороне 5 вместо 7
+  // (`SET_HAND_LIMIT`). Открыт всем: это свойство правила, а не скрытая карта, и по нему рисуется круг
+  // «на герое действует эффект» и строка «Важно!» в подсказке (`shared/constants/effects.js`).
+  handLimit: ['self', 'team', 'enemy'],
   items: ['self', 'team', 'enemy'],
   fighters: ['self', 'team', 'enemy'],
   // павшие бойцы — публичный факт: карточка игрока и окно битвы показывают их убитыми

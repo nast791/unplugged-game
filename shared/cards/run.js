@@ -188,6 +188,9 @@ const discardedSince = (partyState, snapshot) => {
         value: Number(card.value) || 0,
         bonus: Number(card.bonus) || 0,
         text: String(card.text ?? ''),
+        // варианты свойства — такая же часть текста карты, как и `text`: без них подсказка
+        // у сброшенной карты обрывается на «Выберите одно свойство:»
+        options: (card.options ?? []).map(entry => ({ ...entry })),
       });
     }
   }
@@ -238,9 +241,9 @@ const runEffectStep = (partyState, step) => {
   );
   if (matchedRules.length === 0) {
     step.status = 'skipped';
-    // ветки одного свойства: если ни одна не сработала, показываем хотя бы общий текст свойства,
-    // иначе строка «не сработало» осталась бы без объяснения
-    if (stepRules.length > 1) step.text = stepRules[0].text ?? null;
+    // свойство не сработало — в строке остаётся его текст, иначе «не сработало» осталось бы без
+    // объяснения; у свойства с ветками это общий текст, потому что ни одна ветка не сошлась
+    step.text = stepRules[0]?.text ?? step.text ?? null;
     return partyState;
   }
 
@@ -256,8 +259,8 @@ const runEffectStep = (partyState, step) => {
     autoPick: autoPickFor(stepCard, pickedRulesForStep(combat, step, stepCard)),
   });
 
-  // у свойства с ветками в строке пишем ту ветку, что сработала (своё свойство — свой текст)
-  if (stepRules.length > 1) step.text = matchedRules[0].text ?? step.text ?? null;
+  // в строке — текст этого свойства: у ветки своя фраза, у одиночного свойства своя
+  step.text = matchedRules[0].text ?? step.text ?? null;
 
   step.status = stepStatus(state, before);
   // урон шага: в окне битвы урон карт и урон свойств — разные слагаемые, и свойство показывает своё

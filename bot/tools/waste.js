@@ -32,7 +32,7 @@ const games = numberArg('games', 40);
 const from = numberArg('from', 1);
 const workers = numberArg('workers', 1);
 const maxSteps = numberArg('max-steps', null);
-const policy = stringArg('policy', 'greedy');
+const policy = stringArg('policy', 'search');
 const policyB = stringArg('policy-b', null);
 const requested = (stringArg('heroes') ?? '')
   .split(',')

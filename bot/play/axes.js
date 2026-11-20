@@ -30,4 +30,38 @@ export const stillnessMatters = heroId => {
 /** Вес покоя для оценки листа: у героя без условий покоя его нет вовсе (нулевой). */
 export const stillnessWeight = (heroId, base = 0.1) => (stillnessMatters(heroId) ? base : 0);
 
+/**
+ * **Хрупкая механика**: пак гасит свой предмет по смерти бойца — у Анубиса правило умения выключает пелену
+ * «не активной навсегда», когда мертва Амат (`LOST` → `SET_ITEM`). Признак читается из правил пака, а не
+ * из списка героев: новому герою с такой же связкой править бота не придётся.
+ *
+ * Зачем отдельная ось (§72). Убывающий ресурс и выключенный навсегда выключатель — разные вещи: первый
+ * собирается и тратится, второй либо цел, либо потерян. Пока оба считались признаком `resource`, потеря
+ * пелены читалась моделью как «ресурс убыл» и **прибавляла** оценку. Цену потери теперь задаёт пак.
+ */
+const fragileCache = new Map();
+
+export const fragileMechanic = heroId => {
+  const key = String(heroId ?? '');
+  if (fragileCache.has(key)) return fragileCache.get(key);
+
+  const pack = heroes[key] ?? null;
+  const rules = [pack?.skill, ...(pack?.items ?? []), ...(pack?.cards ?? [])].flatMap(
+    entry => entry?.rules ?? [],
+  );
+  // `SET_ITEM` в `then` и `LOST` в условиях — связка «смерть бойца выключает предмет»; разбор по тексту
+  // правила, как в `bot/play/pool.js: assistantImportance`
+  const fragile = rules.some(
+    rule =>
+      factsOf([rule]).some(fact => fact?.fact === 'LOST') &&
+      JSON.stringify(rule?.then ?? []).includes('"SET_ITEM"'),
+  );
+
+  fragileCache.set(key, fragile);
+  return fragile;
+};
+
+/** Цена потерянной навсегда механики в единицах листа (`0` — терять нечего). */
+export const mechanicLossWeight = (heroId, base = 1.2) => (fragileMechanic(heroId) ? base : 0);
+
 export default stillnessMatters;

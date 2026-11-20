@@ -15,7 +15,7 @@
  * веса остаются общими — парная матрица честно говорит, что знает только пару.
  */
 import generated from './matchup-weights.js';
-import { baseFeatureNames, featuresOf } from './value.js';
+import { baseFeatureNames, featuresOf, mechanicLoss, scaleOf } from './value.js';
 
 /** Полный список пар, для которых есть посчитанные веса (пусто — обучение ещё не писáло артефакт). */
 export const matchupPairs = (table = generated) =>
@@ -80,8 +80,13 @@ export const pairScore = (state, viewerId, table = generated) => {
   baseFeatureNames.forEach((name, index) => {
     total += (Number(pair.weights?.[name]) || 0) * base[index];
   });
+  // выключатель пака — тот же член, что в `scoreOf` (`bot/play/value.js: mechanicLoss`): проекция обязана
+  // давать то же число, что полная модель
+  total += mechanicLoss(state, viewerId);
 
-  return Math.max(-1, Math.min(1, Math.tanh(total)));
+  // та же температура, что у полной модели (`bot/play/value.js: scaleOf`): иначе `pairScore` и `scoreOf`
+  // разойдутся не на округлении, а на сжатии
+  return Math.max(-1, Math.min(1, Math.tanh(total / scaleOf({ scale: table?.meta?.scale }))));
 };
 
 export default pairScore;

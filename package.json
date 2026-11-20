@@ -17,6 +17,7 @@
     "postinstall": "nuxt prepare",
     "clean": "nuxt cleanup",
     "format": "prettier --write .",
+    "docs:check": "node scripts/check-docs.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:bot": "node bot/tools/run.js",

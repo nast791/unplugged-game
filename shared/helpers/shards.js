@@ -2,7 +2,7 @@ import { findPlayer, zoneCards } from '#shared/helpers/base.js';
 import { cardHasTag } from '#shared/helpers/cards.js';
 
 /**
- * Осколки Снежной королевы: источник правды — **сброс** (`docs/heroes/snow-queen/passport.md` §3, §5).
+ * Осколки Снежной королевы: источник правды — **сброс** (`.docs/heroes/snow-queen/passport.md` §3, §5).
  * Сколько карт с меткой `shard` лежит в сбросе, столько у неё осколков.
  *
  * Предмет `shard` — только табло для игрока: движок выставляет собранные копии в состояние `collected`,

@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
 import { runAction } from '#shared/publicApi.js';
 import { movementDestinations, movementRejection } from '#shared/helpers/turn.js';
@@ -100,12 +100,12 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
       quantity: 2,
       fighter: 'ifrit',
     });
-    // четыре тира по числу живых духов: бюджет 5 / 4 / 3 / 2 — «духов + 2»
+    // четыре тира по числу **мёртвых** духов: бюджет 5 / 4 / 3 / 2 — «мёртвых + 2»
     expect(card.rules.map(rule => rule.when[0].params)).toEqual([
-      { side: 'self', group: 'ash', min: 3, max: 3 },
-      { side: 'self', group: 'ash', min: 2, max: 2 },
-      { side: 'self', group: 'ash', min: 1, max: 1 },
       { side: 'self', group: 'ash', min: 0, max: 0 },
+      { side: 'self', group: 'ash', min: 1, max: 1 },
+      { side: 'self', group: 'ash', min: 2, max: 2 },
+      { side: 'self', group: 'ash', min: 3, max: 3 },
     ]);
     expect(card.rules.map(rule => rule.then[0].budget)).toEqual([5, 4, 3, 2]);
     for (const rule of card.rules) {
@@ -122,71 +122,80 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
     }
   });
 
-  it('три духа — бюджет перемещения 5', () => {
+  it('три живых духа — мёртвых нет, бюджет перемещения 2', () => {
     const played = play(buildState({ spirits: [1, 2, 3] }));
 
     expect(played.turn.actionsLeft).toBe(1);
     expect(played.movement).toMatchObject({
       playerId: '0',
-      budget: 5,
+      budget: 2,
       throughEnemies: true,
+      stepwise: true,
       damageOnPass: 1,
       healOnPass: 1,
       optional: true,
       fighters: ['ifrit'],
     });
-    // Ифрит на 1, враг на 2, духи на 4 и 5: пройти можно на 2 и 3, встать — на 3
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
+    // шаг — одна клетка: Ифрит на 1 видит только соседнюю 2, где стоит Бета (пройти можно)
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2']);
   });
 
-  it('проход сквозь врага — именно свойство карты: без него дальше двойки не уйти', () => {
+  it('проход сквозь врага — именно свойство карты: без него с 1 не уйти', () => {
     const played = play(buildState({ spirits: [1, 2, 3] }));
 
-    // на копии состояния выключаем флаг: путь перекрыт врагом на 2
+    // на копии состояния выключаем флаг: путь перекрыт врагом на 2, соседних свободных клеток нет
     const noPass = structuredClone(played);
     noPass.movement.throughEnemies = false;
+    noPass.movement.stepwise = false;
 
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2']);
     expect(movementDestinations(noPass, '0', 'ifrit')).toEqual([]);
     expect(movementRejection(noPass, '0', 'ifrit', '3')).toMatch(/нет доступных клеток/);
   });
 
-  it('два духа — бюджет 4', () => {
-    const played = play(buildState({ spirits: [1, 2] }));
+  it('два живых духа — мёртвый один, бюджет 3', () => {
+    const state = buildState({ spirits: [1, 2] });
+    player(state, '0').lost = [deadSpirit(3)];
+
+    const played = play(state);
+
+    expect(played.movement.budget).toBe(3);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2']);
+  });
+
+  it('один живой дух — мёртвых двое, бюджет 4', () => {
+    const state = buildState({ spirits: [1] });
+    player(state, '0').lost = [deadSpirit(2), deadSpirit(3)];
+
+    const played = play(state);
 
     expect(played.movement.budget).toBe(4);
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
+    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2']);
   });
 
-  it('один дух — бюджет 3: окно открывается, за спину врага встать можно', () => {
-    const played = play(buildState({ spirits: [1] }));
-
-    // клетка 2 занята врагом: она проходима, а встать можно на 3 — свойство не гаснет
-    expect(played.movement.budget).toBe(3);
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
-  });
-
-  it('духов нет — бюджет 2: за спину врага встать всё равно можно', () => {
+  it('духов нет — мёртвых трое, бюджет 5: за спину врага встать всё равно можно', () => {
     const state = buildState({ spirits: [] });
     player(state, '0').lost = [1, 2, 3].map(deadSpirit);
 
     const played = play(state);
 
-    // «духов + 2» = две клетки: клетка 2 проходима, встать можно на 3
-    expect(played.movement.movementBudget ?? played.movement.budget).toBe(2);
-    expect(movementDestinations(played, '0', 'ifrit')).toEqual(['2', '3']);
+    expect(played.movement.movementBudget ?? played.movement.budget).toBe(5);
+    // первый шаг — на клетку врага, второй — дальше за ним
+    const onto = step(played, '2');
+    expect(String(fighterOf(onto, '0', 'ifrit').currentPosition)).toBe('2');
+    expect(movementDestinations(onto, '0', 'ifrit')).toEqual(['1', '3']);
     expect(played.turn.actionsLeft).toBe(1);
     expect(discard(player(played, '0')).map(entry => entry.id)).toEqual(['ifrit_11']);
   });
 
-  it('шаг по подсветке сдвигает Ифрита на три клетки от исходной', () => {
+  it('шаг идёт по клеткам: бюджет 2 — ровно два шага, потом окно не предлагает клеток', () => {
     const played = play(buildState({ spirits: [1, 2, 3] }));
-    const moved = step(played, '3');
+    const first = step(played, '2');
+    const second = step(first, '3');
 
-    expect(String(fighterOf(moved, '0', 'ifrit').currentPosition)).toBe('3');
-    expect(fighterOf(moved, '0', 'ifrit').movedThisTurn).toBe(true);
-    // бюджет считается от исходной клетки: от 3 можно вернуться на 1, но не дальше
-    expect(movementDestinations(moved, '0', 'ifrit')).toEqual(['1', '2']);
+    expect(String(fighterOf(second, '0', 'ifrit').currentPosition)).toBe('3');
+    expect(fighterOf(second, '0', 'ifrit').movedThisTurn).toBe(true);
+    expect(movementDestinations(second, '0', 'ifrit')).toEqual([]);
   });
 
   it('проход сквозь врага крадёт здоровье: враг теряет 1, Ифрит получает 1', () => {
@@ -195,13 +204,13 @@ describe('карта ifrit_11 «Пепельный ветер»', () => {
     player(state, '0').fighters[0] = unit('ifrit', 1, 10, { attackRange: 3, startHp: 14 });
 
     const played = play(state);
-    const moved = step(played, '3');
+    const moved = step(played, '2');
 
-    // маршрут 1 → 2 → 3 проходит через бету на 2
+    // шаг на клетку Беты и есть проход: ей 1 урона, Ифриту 1 лечения
     expect(fighterOf(moved, '1', 'beta').currentHp).toBe(13);
     expect(fighterOf(moved, '0', 'ifrit').currentHp).toBe(11);
 
-    // второй проход через ту же клетку здоровья не крадёт: боец в окне уже отмечен
+    // у бюджета 2 два шага: заходим на клетку Беты и возвращаемся, урона больше не будет
     const back = step(moved, '1');
 
     expect(fighterOf(back, '1', 'beta').currentHp).toBe(13);

@@ -49,6 +49,23 @@ export const sortHandCards = cards =>
     return String(left?.title ?? '').localeCompare(String(right?.title ?? ''), 'ru');
   });
 
+/** Вид карты: копии одного вида — дубли, их и кладём друг на друга. */
+const cardKind = card => String(card?.id ?? card?.title ?? card?.instanceId ?? '');
+
+// Стопки сброса: по типам в порядке `CARD_TYPE_ORDER`, внутри — карты одного вида.
+// В стопку попадают только копии одной карты: вторая карта в ней была бы ошибкой раскладки.
+export const discardStacks = (cards = []) =>
+  CARD_TYPE_ORDER.map(type => {
+    const kinds = new Map();
+    for (const card of cards ?? []) {
+      if (String(card?.type) !== type) continue;
+      const kind = cardKind(card);
+      if (!kinds.has(kind)) kinds.set(kind, []);
+      kinds.get(kind).push(card);
+    }
+    return { type, stacks: [...kinds.entries()].map(([id, list]) => ({ id, cards: list })) };
+  }).filter(group => group.stacks.length);
+
 // Своё имя бывает только у счётчика (осколки «во льду»/«собраны»), у активного и неактивного оно общее.
 export const itemStateLabel = (item, state) => {
   if (state == null) return '—';
@@ -83,8 +100,9 @@ export const momentOfPrefix = prefix => {
   return CARD_MOMENT_PREFIXES.find(entry => entry.keys.includes(key))?.moment ?? null;
 };
 
-// Текст свойства режется по префиксам момента («МГНОВЕННО:», «ПОСЛЕ БИТВЫ:»): своего текста у правил нет,
-// а окно битвы подсвечивает ту часть, которая играет сейчас.
+// Текст карты режется по префиксам момента («МГНОВЕННО:», «ПОСЛЕ БИТВЫ:»): карта печатает свойства
+// подряд, а окно битвы подсвечивает ту часть, которая играет сейчас. Подпись шага даёт само правило
+// (`rule.text`) — эта нарезка запасной путь, когда текста у правила нет.
 export const cardTextParts = text => {
   const source = String(text ?? '');
   if (!source.trim()) return [];
@@ -202,7 +220,7 @@ export const handChoiceStatus = ({
   place = 'руки',
 } = {}) => {
   const lead = who ? `${who} выбирает карту из ${place}` : `Выберите карту из ${place}`;
-  const why = reason ? `: ${reason}` : '';
+  const why = reason ? ` — ${reason}` : '';
   if (picked > 0) return `${lead}${why}. Нажмите «Подтвердить»`;
   return required ? `${lead}${why}` : `${lead}${why} — или закончите без выбора`;
 };

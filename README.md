@@ -44,7 +44,7 @@ pnpm install
 - **Manrope** — шрифт интерфейса: вариативные WOFF2 лежат в проекте (`public/fonts/`, лицензия OFL),
   подключаются `@font-face` в `app/assets/styles.css`, прелоадятся и кэшируются из `nuxt.config.ts`;
   метрика заглавной для знака в логотипе считается `node tests/support/font-metrics.mjs`
-  (`docs/ui-plan.md` §9.3)
+  (`.docs/ui-plan.md` §9.3)
 
 Версии в `package.json` зафиксированы без `^`.
 

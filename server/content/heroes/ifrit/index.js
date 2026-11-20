@@ -38,6 +38,7 @@ export default {
     rules: [
       {
         moment: 'turnStart',
+        text: 'Можете убить своего пепельного духа — получите 1 действие до конца хода.',
         when: [
           {
             fact: 'FIGHTERS',
@@ -58,6 +59,7 @@ export default {
       },
       {
         moment: 'picked',
+        text: 'Можете убить своего пепельного духа — получите 1 действие до конца хода.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [
           { action: 'SET_HEALTH', fighterIds: '$picked', delta: -1 },

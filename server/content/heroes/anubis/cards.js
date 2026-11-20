@@ -24,6 +24,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Если Анубис не двигался в этом ходу, значение карты становится 5.',
         when: [
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
         ],
@@ -45,6 +46,7 @@ export default [
     rules: [
       {
         moment: 'immediately',
+        text: 'Если боец оппонента в этой битве стоит на клетке со стихией пустыни, он получает дополнительно 2 урона.',
         when: [
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
           { fact: 'FIGHTERS', params: { fighterIds: '$foe', terrain: 'desert' }, min: 1 },
@@ -68,6 +70,7 @@ export default [
     rules: [
       {
         moment: 'immediately',
+        text: 'Если в руке оппонента 4 карты или больше, он сбрасывает 1 случайную карту.',
         when: [
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
           { fact: 'HAND', params: { of: '$enemy', min: 4 } },
@@ -101,7 +104,7 @@ export default [
   },
   {
     // зеркальная защита: сила карты — чужая, её берут из усиления атаки оппонента.
-    // С целой пеленой зеркало ещё и лечит, а против сильного удара становится непреодолимым
+    // С целой пеленой зеркало ещё и приносит карту, а против сильного удара становится непреодолимым
     id: 'anubis_04',
     title: 'Саван',
     type: 'defense',
@@ -110,7 +113,7 @@ export default [
     quantity: 3,
     fighter: 'anubis',
     tags: ['scales'],
-    text: 'ВО ВРЕМЯ БИТВЫ: Значение карты становится равным бонусу карты, которой напали на вас. Помилование. ПОСЛЕ БИТВЫ: Восстановите Анубису 2 здоровья. Наказание. ВО ВРЕМЯ БИТВЫ: Значение этой карты +3 (прибавляется к скопированному бонусу).',
+    text: 'ВО ВРЕМЯ БИТВЫ: Значение карты становится равным бонусу карты, которой напали на вас. Помилование. ПОСЛЕ БИТВЫ: Возьмите 1 карту. Наказание. ВО ВРЕМЯ БИТВЫ: Значение этой карты +3 (прибавляется к скопированному бонусу).',
     rules: [
       {
         moment: 'duringCombat',
@@ -120,15 +123,13 @@ export default [
       },
       {
         moment: 'afterCombat',
-        text: 'Помилование: восстановите Анубису 2 здоровья.',
+        text: 'Помилование: возьмите 1 карту.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'COMBAT', params: { bonus: 'self' }, var: 'mine' },
           { fact: 'COMBAT', params: { bonus: 'opponent', max: '$mine' } },
-          // погибшего в бою не лечат: ему уже нечего восстанавливать
-          { fact: 'FIGHTERS', params: { fighterIds: ['anubis'] }, min: 1 },
         ],
-        then: [{ action: 'SET_HEALTH', fighterIds: ['anubis'], delta: 2 }],
+        then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
       {
         // яростная атака (усиление строго больше нашего зеркала) — и саван укрепляется на +3
@@ -159,6 +160,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Если вы победили, можете поместить бойца оппонента из этой битвы на свободную клетку пустыни.',
         when: [
           { fact: 'COMBAT', params: { winner: 'self' } },
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
@@ -183,6 +185,7 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Поместите бойца оппонента на выбранную клетку пустыни.',
         when: [
           { fact: 'PICKED', var: 'picked' },
           { fact: 'COMBAT', params: { select: 'opponent' }, var: 'foe' },
@@ -311,6 +314,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Можете вернуть 1 карту эффекта из вашего сброса в руку.',
         // в сбросе нет карт эффекта — возвращать нечего, свойства нет и окна нет;
         // `returnable` отсекает карты, которые не возвращаются в руку никогда («Зал суда»)
         when: [
@@ -335,6 +339,7 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Верните выбранную карту эффекта из вашего сброса в руку.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [
           {
@@ -417,11 +422,13 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'Возьмите 1 карту.',
         then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
       {
         // окно выбора открывается само: кандидаты — две верхние карты колоды (колода-верх = конец массива)
         moment: 'effect',
+        text: 'Если Анубис не двигался в этом ходу, посмотрите 2 верхние карты колоды, возьмите 1 из них, а вторую положите под низ колоды.',
         when: [
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
           { fact: 'CARDS', params: { zone: 'deck', limit: 2, min: 1 }, var: 'top' },
@@ -440,12 +447,14 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Возьмите выбранную карту.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [{ action: 'SET_CARDS', op: 'move', from: 'deck', to: 'hand', cardIds: '$picked' }],
       },
       {
         // вторая из двух верхних уходит под низ; её ключ — верх колоды без выбранной карты
         moment: 'picked',
+        text: 'Вторую карту положите под низ колоды.',
         when: [
           { fact: 'PICKED', var: 'picked' },
           {
@@ -459,7 +468,7 @@ export default [
     ],
   },
   {
-    // план Б: возврата у Амат нет, поэтому колода даёт за потерю зверя топливо
+    // план Б: возврата у Амат нет, поэтому потеря зверя оплачивается здоровьем Анубиса и пеленой
     id: 'anubis_10',
     title: 'Плач по Амат',
     type: 'effect',
@@ -467,13 +476,18 @@ export default [
     bonus: 1,
     quantity: 1,
     fighter: 'anubis',
-    text: 'Если Амат убита, возьмите 2 карты и сделайте Пелену активной до начала вашего следующего хода.',
+    text: 'Если Амат убита, восстановите 2 здоровья Анубису и сделайте Пелену активной до начала вашего следующего хода.',
     rules: [
       {
         moment: 'effect',
-        when: [{ fact: 'LOST', params: { type: 'assistant' }, min: 1 }],
+        text: 'Если Амат убита, восстановите 2 здоровья Анубису и сделайте Пелену активной до начала вашего следующего хода.',
+        when: [
+          { fact: 'LOST', params: { type: 'assistant' }, min: 1 },
+          // лечить некого, если Анубиса уже нет на поле: свойства тогда нет
+          { fact: 'FIGHTERS', params: { fighterIds: ['anubis'] }, min: 1, var: 'hero' },
+        ],
         then: [
-          { action: 'SET_CARDS', op: 'draw', count: 2 },
+          { action: 'SET_HEALTH', fighterIds: '$hero', delta: 2 },
           // пелена поднимается временно: к началу своего следующего хода вернётся в прежнее состояние
           { action: 'SET_ITEM', group: 'shroud', to: 'active', until: 'turnStart' },
         ],
@@ -496,6 +510,7 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'Если Анубис не двигался в этом ходу, нанесите герою оппонента урон, равный количеству карт эффектов в вашем сбросе.',
         when: [
           // сжигать можно только стоя: шаг гасит приговор, как и у «Погребального звона»
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
@@ -513,6 +528,7 @@ export default [
       {
         // проба «сработает ли эффект» считает сброс без самой карты: тогда бьём ровно на 1
         moment: 'effect',
+        text: 'Если Анубис не двигался в этом ходу, нанесите герою оппонента урон, равный количеству карт эффектов в вашем сбросе.',
         when: [
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], movedThisTurn: true }, max: 0 },
           { fact: 'CARDS', params: { zone: 'discard', type: 'effect', count: true }, max: 0 },
@@ -536,6 +552,7 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'Поставьте Анубиса на свободную клетку пустыни.',
         // замороженный не телепортируется: без проверки окно открывалось, а клик падал
         when: [
           { fact: 'FIGHTERS', params: { fighterIds: ['anubis'], frozen: false }, min: 1 },
@@ -556,6 +573,7 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Поставьте Анубиса на выбранную клетку пустыни.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [
           { action: 'SET_FIGHTER_CELL', fighterId: 'anubis', cellId: '$picked', teleport: true },
@@ -564,7 +582,7 @@ export default [
     ],
   },
   {
-    // карта Амат, но id — героя: у помощников своих префиксов нет (`docs/hero-algorithm.md` §7).
+    // карта Амат, но id — героя: у помощников своих префиксов нет (`.docs/hero-algorithm.md` §7).
     // Первая форма «поедания»: победа Амат стоит врагу карты. Весы: мир лечит зверя, злоба — бьёт героя
     id: 'anubis_13',
     title: 'Амат ждёт',
@@ -615,6 +633,7 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Восстановите 2 здоровья выбранному бойцу.',
         when: [
           { fact: 'PICKED', var: 'picked' },
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
@@ -655,6 +674,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Защищающийся сбрасывает выложенную карту и защищается другой картой защиты или гибридом; если такой карты нет — защита 0.',
         then: [{ action: 'SET_COMBAT', op: 'replaceDefense' }],
       },
     ],

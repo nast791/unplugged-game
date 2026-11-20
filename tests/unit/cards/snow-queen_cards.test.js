@@ -431,6 +431,10 @@ describe('11 «Метель из осколков»: проход сквозь �
     const state = blizzardState();
     run(state, '11', 'effect', '0');
 
+    // пошаговый проход: шаг на клетку врага наносит урон, второй шаг — уже за ним
+    SET_MOVEMENT(state, { op: 'step', playerId: '0', fighterId: 'snow-queen', cellId: 9 });
+    expect(player(state, '1').fighters[0].currentHp).toBe(3);
+
     SET_MOVEMENT(state, { op: 'step', playerId: '0', fighterId: 'snow-queen', cellId: 10 });
 
     expect(player(state, '1').fighters[0].currentHp).toBe(3);

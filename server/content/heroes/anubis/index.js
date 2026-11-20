@@ -57,6 +57,7 @@ export default {
       {
         // пелена держится, пока жив зверь: потеря Амат рвёт её навсегда, и весы замолкают
         moment: 'turnStart',
+        text: 'Если Амат мертва, пелена рвётся навсегда.',
         when: [
           { fact: 'ITEMS', params: { group: 'shroud', state: 'active' }, min: 1 },
           { fact: 'LOST', params: { group: 'amat', min: 1 } },

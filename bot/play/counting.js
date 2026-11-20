@@ -1,5 +1,5 @@
 import { heroes } from '../../server/content/index.js';
-import { cardTypeById } from './pool.js';
+import { cancelCardIds, cardById, cardTypeById } from './pool.js';
 
 /**
  * Подсчёт карт: что бот ещё **не видел** у соперника. Список колоды героя открыт, открыт и сброс,
@@ -21,6 +21,13 @@ const types = cardTypeById();
 const valueById = new Map(
   Object.values(heroes).flatMap(hero =>
     (hero?.cards ?? []).map(card => [card.id, Math.max(0, Number(card.value) || 0)]),
+  ),
+);
+
+/** Усиление карты по id — второй реестр: сравнение весов Анубиса идёт по усилению, а не по числу. */
+const bonusById = new Map(
+  Object.values(heroes).flatMap(hero =>
+    (hero?.cards ?? []).map(card => [card.id, Math.max(0, Number(card.bonus) || 0)]),
   ),
 );
 
@@ -181,3 +188,110 @@ export const remainingCount = (state, playerId, cardId) =>
     (sum, entry) => sum + (entry.unseen.pooled.get(String(cardId)) ?? 0),
     0,
   );
+
+/**
+ * **Вероятность, что у соперника в руке есть отмена** (`.docs/bot-strategies.md` п. 5, `.docs/hero-balance.md`
+ * §74). Бот не видит чужой руки, но видит её **размер** и точный остаток колоды (`unseenOf`), поэтому
+ * вопрос решается подсчётом: сколько карт-отмен ещё не вышло и какова вероятность, что хотя бы одна из них
+ * попала в руку из `handSize` карт.
+ *
+ * Считается по гипергеометрическому распределению (без возвращения): вероятность «ни одной отмены в руке»
+ * = произведение `(cards − left − i) / (cards − i)` по `i` от 0 до `handSize − 1`. Порог `minHand` — 3:
+ * в руке из одной-двух карт ответа может не быть по определению, и обещание гасить не за что.
+ *
+ * Ноль — отмен у него не осталось (или рука меньше порога): тогда обещание карты стоит полной цены.
+ */
+export const cancelRiskOf = (state, playerId, { minHand = 3 } = {}) => {
+  let risk = 0;
+
+  for (const { player, unseen } of remainingOf(state, playerId).opponents) {
+    if (unseen.handSize < Math.max(1, Number(minHand) || 1)) continue;
+    const ids = cancelCardIds(player.heroId);
+    if (ids.size === 0) continue;
+    let left = 0;
+    for (const id of ids) left += unseen.pooled.get(id) ?? 0;
+    const total = unseen.cards;
+    if (left <= 0 || total <= 0) continue;
+
+    let miss = 1;
+    for (let index = 0; index < unseen.handSize; index += 1) {
+      const rest = total - index;
+      if (rest <= 0) {
+        miss = 0;
+        break;
+      }
+      miss *= Math.max(0, rest - left) / rest;
+    }
+    risk = Math.max(risk, 1 - miss);
+  }
+
+  return Math.max(0, Math.min(1, risk));
+};
+
+/**
+ * Ожидаемое **усиление** карты соперника по остатку его колоды — то же, что `expectedAttack` для числа.
+ * Нужно весам Анубиса: «Помилование» и «Наказание» различаются сравнением усилений (моё против чужого), а
+ * чужая карта до вскрытия неизвестна. Своё усиление известно точно, чужое берётся средним по тем картам
+ * атаки и защиты, которые у него ещё могут быть.
+ */
+export const expectedBonus = (state, playerId) => {
+  let total = 0;
+  let count = 0;
+
+  for (const { unseen } of remainingOf(state, playerId).opponents) {
+    for (const [cardId, copies] of unseen.pooled) {
+      const type = types.get(cardId);
+      if (type !== 'attack' && type !== 'defense' && type !== 'hybrid') continue;
+      total += copies * (bonusById.get(cardId) ?? 0);
+      count += copies;
+    }
+  }
+
+  return count > 0 ? total / count : 0;
+};
+
+/**
+ * **Распределение** усиления карты соперника по остатку его колоды: `[{ value, chance }]`, где `chance` —
+ * доля невышедших карт боя с таким усилением. Нужно весам Анубиса: «Помилование» и «Наказание» —
+ * противоположные половины, и их цена зависит от того, какое усиление придёт. По одному среднему числу
+ * одна из половин всегда «не срабатывает», а с распределением обе получают свою вероятность.
+ */
+export const bonusOutcomes = (state, playerId) => {
+  const buckets = new Map();
+  let total = 0;
+
+  for (const { unseen } of remainingOf(state, playerId).opponents) {
+    for (const [cardId, copies] of unseen.pooled) {
+      const type = types.get(cardId);
+      if (type !== 'attack' && type !== 'defense' && type !== 'hybrid') continue;
+      const bonus = bonusById.get(cardId) ?? 0;
+      buckets.set(bonus, (buckets.get(bonus) ?? 0) + copies);
+      total += copies;
+    }
+  }
+
+  if (total === 0) return [{ value: 0, chance: 1 }];
+
+  return [...buckets.entries()]
+    .map(([value, copies]) => ({ value, chance: copies / total }))
+    .sort((left, right) => left.value - right.value);
+};
+
+/** Доля невышедших карт боя, у которых есть хотя бы `min` правил: «есть ли что отменять». */
+export const expectedRuleShare = (state, playerId, { min = 1 } = {}) => {
+  let withRules = 0;
+  let count = 0;
+
+  for (const { unseen } of remainingOf(state, playerId).opponents) {
+    for (const [cardId, copies] of unseen.pooled) {
+      const type = types.get(cardId);
+      if (type !== 'attack' && type !== 'defense' && type !== 'hybrid') continue;
+      count += copies;
+      if ((cardById(cardId)?.rules ?? []).length >= Math.max(1, Number(min) || 1)) {
+        withRules += copies;
+      }
+    }
+  }
+
+  return count > 0 ? withRules / count : 0;
+};

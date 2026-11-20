@@ -3,7 +3,7 @@
  * Матрица матчапов: каждая упорядоченная пара героев пула играет одну и ту же серию сидов, поэтому
  * винрейты пар сравнимы между собой. Печатает markdown — таблицу «кто кого» и сводку по каждому
  * герою (винрейт, длина, урон, покрытие колоды, распределение действий): её переносят в
- * `docs/hero-balance.md`, а не пересказывают.
+ * `.docs/hero-balance.md`, а не пересказывают.
  *
  * Запуск: `pnpm test:matrix`, быстрая проверка — `pnpm test:matrix -- --games=20`,
  * пара героев — `--heroes=anubis,tesla`, другой набор сидов — `--from=500`,
@@ -23,6 +23,7 @@ import {
   turnsLine,
 } from './matchup.js';
 import { policyNames } from '../play/policy.js';
+import { DEFAULT_MAX_STEPS } from '../play/duel.js';
 import { runMatrixParallel } from '../learn/parallel.js';
 import { matchups, heroIds as poolHeroIds } from '../play/pool.js';
 import { failuresOf, groupByReason, plural, showReport } from './sweep.js';
@@ -56,7 +57,7 @@ const from = numberArg('from', 1);
 const maxSteps = numberArg('max-steps', null);
 const workers = numberArg('workers', 1);
 const mapId = stringArg('map', 'generated');
-const policy = policyArg('policy', 'greedy');
+const policy = policyArg('policy', 'search');
 const policyB = stringArg('policy-b') == null ? null : policyArg('policy-b', policy);
 const requested = (stringArg('heroes') ?? '')
   .split(',')
@@ -79,8 +80,8 @@ console.log(
   `матрица матчапов: героев ${heroes.length}, пар ${matchups(heroes).length}, ` +
     `по ${plural(seeds.length, ['партии', 'партиям', 'партиям'])} на пару ` +
     `(сиды ${seeds[0]}…${seeds[seeds.length - 1]}), поле ${mapId}, ` +
-    `политика ${policy}${policyB ? ` против ${policyB} (в обе стороны)` : ''}` +
-    `${maxSteps ? `лимит партии ${maxSteps} шагов, ` : ''}` +
+    `политика ${policy}${policyB ? ` против ${policyB} (в обе стороны)` : ''}, ` +
+    `лимит партии ${maxSteps ?? DEFAULT_MAX_STEPS} шагов, ` +
     `${workers > 1 ? `воркеров ${workers}, ` : ''}` +
     `шум ±${noiseMargin(seeds.length).toFixed(1)}%`,
 );

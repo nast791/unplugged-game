@@ -129,10 +129,31 @@ console.log(
     `(позиций ${train.length} / ${holdout.length})`,
 );
 
-/** Оценке нужен диапазон `[-1, 1]`, а веса обучены на вероятностях: домножаем на 2 (внутри — `tanh`). */
-const scaled = featureNames.map(
-  name => `  ${JSON.stringify(name)}: ${Math.round(weights[name] * 2 * 1000) / 1000},`,
+/**
+ * **Температура листа** (`bot/play/value.js: scaleOf`, §72). Артефакт хранит веса домноженными на 2, а
+ * `tanh` сжимает сумму сам — поэтому шкала сжатия должна быть частью артефакта, иначе она устаревает от
+ * прогона к прогону. Берём 90-й процентиль |суммы| уже **в артефактных единицах** и делим на 1,5: девять
+ * позиций из десяти попадают в `tanh(±1,5)`, где производная ещё живая (`> 0,12`), а не 1%, как при
+ * прежних 77% позиций за границей 3.
+ */
+const percentile = (sorted, share) =>
+  sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * share))];
+const stored = holdout.map(row => Math.abs(2 * dot(row.features))).sort((left, right) => left - right);
+const scale = Math.max(0.5, Math.round((percentile(stored, 0.9) / 1.5) * 1000) / 1000);
+const beyond = (values, limit) =>
+  ((values.filter(value => value > limit).length / Math.max(1, values.length)) * 100).toFixed(1);
+console.log(
+  `\nтемпература листа: 90-й процентиль |суммы| ${percentile(stored, 0.9).toFixed(2)} → scale ${scale}; ` +
+    `позиций с |сумма| > 3: ${beyond(stored, 3)}% до калибровки, ${beyond(stored.map(value => value / scale), 3)}% после`,
 );
+
+/** Оценке нужен диапазон `[-1, 1]`, а веса обучены на вероятностях: домножаем на 2 (внутри — `tanh`). */
+const scaled = [
+  `  "scale": ${scale},`,
+  ...featureNames.map(
+    name => `  ${JSON.stringify(name)}: ${Math.round(weights[name] * 2 * 1000) / 1000},`,
+  ),
+];
 
 writeFileSync(
   new URL('../play/value-weights.js', import.meta.url),
@@ -141,6 +162,7 @@ writeFileSync(
     ' * Веса оценки (`bot/play/value.js`), обученные `bot/learn/train.js` на трассах поиска.',
     ` * Выборка: ${train.length} позиций обучения и ${holdout.length} проверки, точность на удержанных`,
     ` * позициях ${(accuracy(holdout) * 100).toFixed(1)}%. Файл перезаписывается обучением.`,
+    ' * `scale` — температура сжатия листа (`bot/play/value.js: scaleOf`): сырая сумма делится на неё.',
     ' */',
     'export default {',
     ...scaled,
@@ -181,6 +203,9 @@ const meta = {
   train: train.length,
   holdout: holdout.length,
   accuracy: Math.round(accuracy(holdout) * 1000) / 1000,
+  // температура сжатия той же модели: `bot/play/matchups.js: pairScore` берёт её отсюда, чтобы проекция
+  // пары давала то же число, что полный вектор (`bot/play/value.js: scaleOf`)
+  scale,
   features: featureNames.length,
   policy,
   heroes: pool,

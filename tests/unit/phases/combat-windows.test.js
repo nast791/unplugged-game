@@ -461,9 +461,41 @@ describe('запись боя: что шаг сделал по факту', () =
         value: 0,
         bonus: 1,
         text: '',
+        options: [],
       },
     ]);
     // в руке было две карты: сыгранная в бой и сброшенная свойством
     expect(handSize(after, '0')).toBe(0);
+  });
+
+  it('варианты свойства сброшенной карты тоже попадают в запись шага', () => {
+    const state = buildState({
+      attackerHand: [
+        {
+          ...handBonus('spare', 1),
+          text: 'Выберите одно свойство:',
+          options: [
+            { id: 'heal', text: 'Восстановите 2 здоровья.' },
+            { id: 'draw', text: 'Возьмите 2 карты.' },
+          ],
+        },
+      ],
+      defense: defenseCard([
+        {
+          moment: 'immediately',
+          then: [{ action: 'SET_CARDS', of: 'opponent', op: 'discard', count: 1, random: true }],
+        },
+      ]),
+    });
+
+    const discarded = steps(playDefense(state)).flatMap(step => step.discarded ?? []);
+
+    // подсказка у имени карты в окне битвы печатает текст свойства целиком, значит варианты
+    // должны доехать до клиента вместе с картой
+    expect(discarded).toHaveLength(1);
+    expect(discarded[0].options).toEqual([
+      { id: 'heal', text: 'Восстановите 2 здоровья.' },
+      { id: 'draw', text: 'Возьмите 2 карты.' },
+    ]);
   });
 });

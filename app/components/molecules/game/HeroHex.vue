@@ -67,6 +67,15 @@
       </span>
     </span>
 
+    <ATooltip v-if="hasEffects" :text="effectsText">
+      <span
+        class="border-ink pointer-events-auto absolute top-0 -left-2 flex size-54 items-center justify-center rounded-full border-2 bg-white"
+        data-effect-badge
+      >
+        <Icon name="lucide:sparkles" class="text-ink size-26" aria-hidden="true" />
+      </span>
+    </ATooltip>
+
     <span
       v-if="props.hp != null"
       class="pointer-events-none absolute -right-2 -bottom-6 flex size-54 items-center justify-center"
@@ -102,9 +111,21 @@ const props = defineProps({
   dead: { type: Boolean, default: false },
   silent: { type: Boolean, default: false },
   label: { type: String, default: '' },
+  // постоянные эффекты на этого героя (`shared/constants/effects.js`): пусто — круга нет вовсе
+  effects: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['click']);
+
+// Круг «на герое действует постоянный эффект»: одна иконка на все эффекты, а что именно действует —
+// читается в подсказке. Показывается только у того, на кого эффект действует.
+const hasEffects = computed(() => (props.effects ?? []).length > 0);
+const effectsText = computed(() =>
+  (props.effects ?? [])
+    .map(effect => String(effect?.text ?? ''))
+    .filter(Boolean)
+    .join('\n'),
+);
 
 const skin = computed(() => ({
   hexagon_frame: props.active ? 'bg-accent' : 'bg-[var(--hero-color)]',

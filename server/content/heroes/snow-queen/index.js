@@ -52,6 +52,7 @@ export default {
     rules: [
       {
         moment: 'turnEnd',
+        text: 'Пока в вашем сбросе 5 и более карт с осколком, лимит руки каждого противника — 5 вместо 7.',
         when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard', min: 5 } }],
         then: [
           { action: 'SET_HAND_LIMIT', of: 'enemies', value: 5 },
@@ -60,6 +61,7 @@ export default {
       },
       {
         moment: 'turnEnd',
+        text: 'Пока в вашем сбросе меньше 5 карт с осколком, лимит руки каждого противника — 7.',
         when: [{ fact: 'CARDS', params: { zone: 'discard', tag: 'shard' }, max: 4 }],
         then: [
           { action: 'SET_HAND_LIMIT', of: 'enemies', value: null },
@@ -68,6 +70,7 @@ export default {
       },
       {
         moment: 'lost',
+        text: 'Когда Кристальная ворона погибает, игрок мгновенно сбрасывает верхнюю карту колоды Снежной королевы; если на ней есть осколок, он засчитывается.',
         when: [
           { fact: 'DEATH', params: { group: 'crow' } },
           { fact: 'DECK', params: { min: 1 } },

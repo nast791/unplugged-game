@@ -120,15 +120,17 @@ describe('карта medusa_11 «Возрождение стаи»', () => {
       'pending',
     ]);
 
-    // Медуза со 2-й клетки проходит сквозь врага на 3-й: 3 занята, а встать можно на 1 и 4
-    expect(movementDestinations(played, '0', 'medusa').sort()).toEqual(['1', '4']);
-    const moved = step(played, 'medusa', '4');
+    // Медуза со 2-й клетки шагает по одной: соседняя 1 свободна, 3 занята врагом — шаг сквозь неё
+    expect(movementDestinations(played, '0', 'medusa').sort()).toEqual(['1', '3']);
+    // проходим клетку врага и встаём за ней на 4
+    const moved = step(step(played, 'medusa', '3'), 'medusa', '4');
     expect(fighterOf(moved, '0', 'medusa').currentPosition).toBe('4');
   });
 
   it('без прохода сквозь врагов тот же ход был бы невозможен', () => {
     const played = playCard();
     played.movement.throughEnemies = false;
+    played.movement.stepwise = false;
 
     // клетка 3 занята врагом: путь закрыт, дальше неё не пройти
     expect(movementDestinations(played, '0', 'medusa')).toEqual(['1']);
@@ -137,7 +139,7 @@ describe('карта medusa_11 «Возрождение стаи»', () => {
 
   it('после перемещения предлагает свободные клетки в области Медузы и воскрешает Гарпию', () => {
     const played = playCard();
-    const moved = finishEffect(step(played, 'medusa', '4'));
+    const moved = finishEffect(step(step(played, 'medusa', '3'), 'medusa', '4'));
 
     // Медуза на 4: её область — синие клетки, свободные — 1, 2, 6 (7 красная, 3 и 5 заняты)
     expect(moved.targeting.kind).toBe('cells');

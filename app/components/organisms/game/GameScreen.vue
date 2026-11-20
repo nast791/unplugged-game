@@ -12,7 +12,7 @@
         @select-fighter="onFighterClick"
       />
 
-      <HintsWindow :text="props.hintText" :tone="props.hintTone" />
+      <HintsWindow :text="props.hintText" :tone="props.hintTone" :notice="props.hintNotice" />
 
       <div class="pointer-events-none absolute top-12 left-14 z-30 flex items-center gap-8">
         <NuxtLink
@@ -141,6 +141,7 @@ import BrandLogo from '~/svg/brand/logo.svg';
 const props = defineProps({
   hintText: { type: String, default: '' },
   hintTone: { type: String, default: '' },
+  hintNotice: { type: String, default: '' },
   stageLabel: { type: String, default: '' },
   stageTime: { type: String, default: '' },
   limitVisible: { type: Boolean, default: false },

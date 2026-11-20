@@ -13,8 +13,8 @@ alwaysApply: false
 - [ ] Новый код в `phases/`, `actions/`, `helpers/` — unit-тест на каждый публичный контракт.
 - [ ] Нет тестов «ради coverage» на тривиальные getter/setter.
 ## 2. Документация
-- [ ] `.cursor/rules/architecture.mdc` актуален относительно кода.
-- [ ] `.cursor/rules/internal-logic.mdc` описывает текущие хуки/phases/actions.
+- [ ] `.docs/rules/architecture.mdc` актуален относительно кода.
+- [ ] `.docs/rules/internal-logic.mdc` описывает текущие хуки/phases/actions.
 - [ ] `TODO` — только открытые задачи, без выполненного мусора.
 - [ ] Новые action types / поля state — отражены в internal-logic.
 - [ ] Публичный README (если есть) не противоречит architecture.

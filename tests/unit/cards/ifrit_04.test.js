@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMoment } from '#shared/constants/moments.js';
-import { runAction, runUi } from '#shared/publicApi.js';
+import { runAction } from '#shared/publicApi.js';
 import ifritCards from '../../../server/content/heroes/ifrit/cards.js';
 import { createState, fighter, PHASES, player } from '../../fixtures/state.js';
 
@@ -76,8 +76,8 @@ const buildState = ({ spirits = [1, 2, 3], lost = [] } = {}) => {
   return state;
 };
 
-/** Ифрит объявляет атаку, Бета пасует: дальше идёт окно «мгновенно». */
-const openBattle = state => {
+/** Ифрит объявляет атаку, Бета пасует: свойство мгновенное и автоматическое, окна нет. */
+const attack = state => {
   const opened = runAction(state, {
     type: 'PICK',
     kind: 'card',
@@ -86,13 +86,6 @@ const openBattle = state => {
   });
   return runAction(opened, { type: 'UI_OK', playerId: '1' });
 };
-
-/** Клик по подсвеченному духу в окне, которое открыла карта боя. */
-const burn = (state, fighterId) =>
-  runAction(state, { type: 'PICK', kind: 'fighter', id: fighterId, playerId: '0' });
-
-/** Отказ от необязательного окна общей кнопкой. */
-const decline = state => runAction(state, { type: 'UI_OK', playerId: '0' });
 
 const fighterOf = (state, playerId, fighterId) =>
   player(state, playerId).fighters.find(entry => entry.id === fighterId);
@@ -104,7 +97,7 @@ const handIds = (state, playerId = '0') =>
 
 describe('карта ifrit_04 «Плата пеплом»', () => {
   it('описана правилами, моменты — из списка', () => {
-    expect(card.rules.map(rule => rule.moment)).toEqual(['immediately', 'picked', 'afterCombat']);
+    expect(card.rules.map(rule => rule.moment)).toEqual(['immediately', 'afterCombat']);
     for (const rule of card.rules) expect(isMoment(rule.moment)).toBe(true);
     expect(card.hook).toBeUndefined();
     expect(card).toMatchObject({
@@ -114,140 +107,85 @@ describe('карта ifrit_04 «Плата пеплом»', () => {
       quantity: 3,
       fighter: 'ifrit',
     });
-    // окно вариантов заменено окном бойцов: вариантов у карты больше нет
+    // свойства-вариантов у карты нет: пепел просто поднимает значение
     expect(card.options).toBeUndefined();
     expect(card.rules[0].when[0]).toMatchObject({
       fact: 'FIGHTERS',
       params: { side: 'self', group: 'ash', min: 1 },
-      var: 'spirits',
     });
-    expect(card.rules[0].then[0]).toMatchObject({
-      action: 'SET_TARGETING',
-      op: 'open',
-      candidates: '$spirits',
-      count: 1,
-      required: false,
-    });
-    // жертва духа — решение игрока, и оно записано в самой карте: manual запрещает автовыбор
-    expect(card.rules[0].then[0].manual).toBe(true);
-    expect(card.rules[0].then[0].auto).toBeUndefined();
-    expect(card.rules[1].when[0]).toMatchObject({ fact: 'PICKED', var: 'picked' });
-    expect(card.rules[1].then.map(step => step.action)).toEqual(['SET_HEALTH', 'SET_COMBAT']);
     // «значение этой карты становится 6» — не прибавка, а новое значение
-    expect(card.rules[1].then[1]).toMatchObject({ action: 'SET_COMBAT', side: 'self', to: 6 });
-    expect(card.rules[2].when[0]).toMatchObject({
+    expect(card.rules[0].then[0]).toMatchObject({
+      action: 'SET_COMBAT',
+      op: 'value',
+      side: 'self',
+      to: 6,
+    });
+    expect(card.rules[1].when[0]).toMatchObject({
       fact: 'COMBAT',
       params: { winner: 'self' },
     });
-    expect(card.rules[2].then[0]).toMatchObject({ action: 'SET_CARDS', op: 'draw', count: 1 });
+    expect(card.rules[1].then[0]).toMatchObject({ action: 'SET_CARDS', op: 'draw', count: 1 });
   });
 
-  it('жив хоть один дух — открывается необязательное окно по живым духам', () => {
-    const state = openBattle(buildState());
+  it('жив хоть один дух — значение становится 6, дух остаётся жив', () => {
+    const after = attack(buildState());
 
-    expect(state.combat.stage).toBe('reveal');
-    expect(state.targeting).toMatchObject({
-      playerId: '0',
-      kind: 'fighters',
-      required: false,
-    });
-    expect(state.targeting.candidates.map(entry => entry.fighterId)).toEqual([
-      'ash_1',
-      'ash_2',
-      'ash_3',
-    ]);
-    // подсветка окна — ровно живые духи, клик по ним разрешён
-    expect(runUi(state, '0').highlightedFighterIds.sort()).toEqual(['ash_1', 'ash_2', 'ash_3']);
-    expect(runUi(state, '0').pickFighters).toBe(true);
-    // окно необязательное: работает общая кнопка завершения, вопросов «жечь или нет» нет
-    expect(runUi(state, '0').controls.ok).toMatchObject({
-      visible: true,
-      enabled: true,
-      label: 'Закончить эффект',
-    });
-    // шаг очереди эффектов ждёт решения игрока, а «после битвы» ещё впереди
-    expect(state.combat.effects.map(entry => entry.status)).toEqual(['waiting', 'pending']);
-  });
-
-  it('выбранный дух умирает, значение карты становится 6, за победу — карта', () => {
-    const after = burn(openBattle(buildState()), 'ash_2');
-
-    // умер именно выбранный, а не «первый живой»
-    expect(aliveIds(after)).toEqual(['ifrit', 'ash_1', 'ash_3']);
-    expect(lostIds(after)).toEqual(['ash_2']);
-    expect(after.movement ?? null).toBeNull();
     expect(after.lastCombat.attackValue).toBe(6);
     expect(after.lastCombat.combatDamage).toBe(6);
     expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
+    // платы нет: духи целы, окно не открывалось
+    expect(aliveIds(after)).toEqual(['ifrit', 'ash_1', 'ash_2', 'ash_3']);
+    expect(lostIds(after)).toEqual([]);
+    expect(after.targeting ?? null).toBeNull();
     // ПОСЛЕ БИТВЫ: победа приносит карту
     expect(handIds(after)).toEqual(['ifdraw']);
   });
 
-  it('можно сжечь любого духа, а не только первого', () => {
-    const after = burn(openBattle(buildState()), 'ash_3');
+  it('один живой дух — по-прежнему 6: важно, что дух жив, а не сколько их', () => {
+    const after = attack(buildState({ spirits: [2], lost: [1, 3] }));
 
-    expect(aliveIds(after)).toEqual(['ifrit', 'ash_1', 'ash_2']);
-    expect(lostIds(after)).toEqual(['ash_3']);
     expect(after.lastCombat.attackValue).toBe(6);
-  });
-
-  // Отказ от необязательного окна: общая кнопка закрывает окно, помечает шаг `declined`, дух остаётся
-  // жив, значение карты не растёт, бой доигрывается обычным порядком.
-  it('отказ от окна: дух цел, прибавки нет, бой доигрывается', () => {
-    const state = openBattle(buildState());
-
-    expect(runUi(state, '0').controls.ok).toMatchObject({
-      visible: true,
-      enabled: true,
-      label: 'Закончить эффект',
-    });
-
-    const after = decline(state);
-
-    expect(aliveIds(after)).toEqual(['ifrit', 'ash_1', 'ash_2', 'ash_3']);
-    expect(lostIds(after)).toEqual([]);
-    // 4 без прибавки: Бета получает 4 урона, бой закрыт
-    expect(after.lastCombat.attackValue).toBe(4);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
-    expect(after.targeting ?? null).toBeNull();
-    expect(handIds(after)).toEqual(['ifdraw']);
-  });
-
-  it('один живой дух — окно открыто, но дух не сгорает без клика игрока', () => {
-    const auto = openBattle(buildState({ spirits: [2], lost: [1, 3] }));
-
-    // кандидат один, но выбор разрушительный: движок ждёт клика по духу или отказа
-    expect(auto.targeting).toMatchObject({ kind: 'fighters', required: false });
-    expect(auto.targeting.candidates.map(entry => entry.fighterId)).toEqual(['ash_2']);
-    expect(auto.combat).not.toBeNull();
-
-    const after = decline(auto);
-
+    expect(fighterOf(after, '1', 'beta').currentHp).toBe(8);
     expect(aliveIds(after)).toEqual(['ifrit', 'ash_2']);
-    expect(lostIds(after)).toEqual(['ash_1', 'ash_3']);
-    expect(after.lastCombat.attackValue).toBe(4);
-    expect(fighterOf(after, '1', 'beta').currentHp).toBe(10);
   });
 
-  it('духов нет — окна нет вовсе, атака идёт без свойства', () => {
-    const state = openBattle(buildState({ spirits: [], lost: [1, 2, 3] }));
+  it('духов нет — свойства нет: атака идёт на 4, окна не открывается', () => {
+    const state = attack(buildState({ spirits: [], lost: [1, 2, 3] }));
 
     expect(state.targeting ?? null).toBeNull();
-    expect(state.combat ?? null).toBeNull();
     expect(state.lastCombat.attackValue).toBe(4);
-    expect(lostIds(state)).toEqual(['ash_1', 'ash_2', 'ash_3']);
     expect(fighterOf(state, '1', 'beta').currentHp).toBe(10);
+    expect(lostIds(state)).toEqual(['ash_1', 'ash_2', 'ash_3']);
   });
 
-  it('клик мимо подсветки отклоняется, окно остаётся открытым', () => {
-    const state = openBattle(buildState());
-
-    // Бета — не дух, в кандидатах окна её нет
-    expect(() => burn(state, 'beta')).toThrow(/не среди кандидатов/);
-    expect(state.targeting?.candidates.map(entry => entry.fighterId)).toEqual([
-      'ash_1',
-      'ash_2',
-      'ash_3',
+  it('проигранная битва карту не приносит', () => {
+    const state = buildState({ spirits: [], lost: [1, 2, 3] });
+    // Бета защищается сильной картой: 8 против 4 — побеждает защита
+    player(state, '1').hand = zone([
+      {
+        id: 'beta_big',
+        instanceId: 'beta_big_1',
+        title: 'Большой щит',
+        type: 'defense',
+        value: 8,
+        bonus: 0,
+      },
     ]);
+    const attacked = runAction(state, {
+      type: 'PICK',
+      kind: 'card',
+      id: 'ifrit_04_1',
+      playerId: '0',
+    });
+    const after = runAction(attacked, {
+      type: 'PICK',
+      kind: 'card',
+      id: 'beta_big_1',
+      playerId: '1',
+    });
+
+    expect(after.lastCombat.winner).toBe('defender');
+    // ПОСЛЕ БИТВЫ сработало бы только за победу: карта в руку не приходит
+    expect(handIds(after)).toEqual([]);
   });
 });

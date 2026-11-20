@@ -19,7 +19,7 @@ export default defineEventHandler(() => ({
     name: hero.name ?? hero.id,
     // главный герой пака: его здоровье показываем в списке выбора
     health: (hero.heroes ?? [])[0]?.hp ?? null,
-    // цвет героя — аватар-заглушка в лобби, пока нет портрета (`docs/ui-plan.md` §10)
+    // цвет героя — аватар-заглушка в лобби, пока нет портрета (`.docs/ui-plan.md` §10)
     color: hero.color ?? null,
     // портрет появится вместе с артом: `public/art/heroes/{id}/portrait.webp`
     portrait: null,

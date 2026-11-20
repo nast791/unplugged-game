@@ -35,6 +35,7 @@ export default {
     rules: [
       {
         moment: 'turnStart',
+        text: 'Выберите вражеского бойца в области Медузы — он получает 1 урон.',
         when: [
           {
             fact: 'FIGHTERS',
@@ -57,6 +58,7 @@ export default {
       },
       {
         moment: 'picked',
+        text: 'Нанесите 1 урон выбранному бойцу.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [{ action: 'SET_HEALTH', fighterIds: '$picked', delta: -1 }],
       },

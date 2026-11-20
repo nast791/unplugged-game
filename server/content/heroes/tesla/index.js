@@ -34,6 +34,7 @@ export default {
     rules: [
       {
         moment: 'gameStart',
+        text: '1 катушка уже активна.',
         then: [
           {
             action: 'SET_ITEM',
@@ -46,6 +47,7 @@ export default {
       },
       {
         moment: 'turnEnd',
+        text: 'Если есть неактивная катушка, активируйте 1.',
         when: [{ fact: 'ITEMS', params: { group: 'coil', state: 'inactive' }, min: 1 }],
         then: [
           {
@@ -59,6 +61,7 @@ export default {
       },
       {
         moment: 'turnStart',
+        text: 'Если обе катушки активны, нанесите 1 урон каждому вражескому бойцу на соседних с Теслой клетках и передвиньте их на расстояние до 1 клетки.',
         when: [
           { fact: 'ITEMS', params: { group: 'coil', state: 'active' }, min: 2 },
           {
@@ -72,6 +75,7 @@ export default {
       },
       {
         moment: 'turnStart',
+        text: 'Если обе катушки активны, нанесите 1 урон каждому вражескому бойцу на соседних с Теслой клетках и передвиньте их на расстояние до 1 клетки.',
         when: [
           { fact: 'ITEMS', params: { group: 'coil', state: 'active' }, min: 2 },
           {

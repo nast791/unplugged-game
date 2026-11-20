@@ -44,7 +44,7 @@ if (isMain) {
     if (actor == null) break;
     if (step % 7 === 0) rows.push({ step, actor, ...think(state, actor, { timeMs, turn }) });
 
-    const options = actionsFor(state, actor, { policy: 'greedy' });
+    const options = actionsFor(state, actor, { policy: 'trade' });
     if (options.length === 0) break;
     state = runAction(state, { ...pickWeighted(rng, options), playerId: actor });
   }

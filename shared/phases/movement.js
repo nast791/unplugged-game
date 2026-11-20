@@ -10,6 +10,7 @@ import {
   isMomentMine,
   movableFighterIds,
   movementDestinations,
+  movementOnOccupiedCell,
   movementRejection,
 } from '#shared/helpers/turn.js';
 
@@ -109,9 +110,10 @@ export default {
             ok: {
               visible: true,
               enabled:
-                partyState.movement?.optional === true ||
-                (partyState.movement?.moves?.length ?? 0) > 0 ||
-                closeWithoutMoves(partyState, playerId),
+                !movementOnOccupiedCell(partyState, playerId) &&
+                (partyState.movement?.optional === true ||
+                  (partyState.movement?.moves?.length ?? 0) > 0 ||
+                  closeWithoutMoves(partyState, playerId)),
               label: 'Закончить эффект',
             },
             back: { visible: false, enabled: false, label: null },
@@ -123,6 +125,8 @@ export default {
     label: 'Закончить действие',
     enabled: (partyState, playerId) => {
       if (!isMomentMine(partyState, playerId, 'movement')) return false;
+      // на клетке чужого бойца останавливаться нельзя: сначала шаг на свободную клетку
+      if (movementOnOccupiedCell(partyState, playerId)) return false;
       if (partyState.movement?.source == null) return true;
       return (
         partyState.movement?.optional === true ||

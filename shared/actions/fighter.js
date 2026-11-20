@@ -1,4 +1,5 @@
 import { findFighter } from '#shared/helpers/base.js';
+import { blockingStatus } from '#shared/constants/statuses.js';
 import { findNode } from '#shared/helpers/placement.js';
 
 /**
@@ -26,8 +27,11 @@ export const SET_FIGHTER_CELL = (partyState, action = {}) => {
     throw new Error(`SET_FIGHTER_CELL: клетка "${cellId}" не найдена на карте`);
   }
 
-  // «заморожен» запрещает и шаг, и телепорт: статус ставит карта со свойством, снимает его конец хода
-  if (action.start !== true && fighter.frozen === true) {
+  // статус запрещает шаг и/или телепорт («заморожен» — оба): что именно, знает реестр статусов
+  if (
+    action.start !== true &&
+    blockingStatus(fighter, action.teleport === true ? 'teleport' : 'move') != null
+  ) {
     throw new Error(`SET_FIGHTER_CELL: боец "${fighterId}" заморожен`);
   }
 

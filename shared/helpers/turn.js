@@ -1,6 +1,7 @@
 import { rules } from '#shared/constants/rules.js';
+import { blockingStatus } from '#shared/constants/statuses.js';
 import { finishedSides } from '#shared/facts/players.js';
-import { movementZoneIds, pathInRadius } from '#shared/helpers/board.js';
+import { movementZoneIds } from '#shared/helpers/board.js';
 import { findFighter, findOwnedFighter, findPlayer, zoneCards } from '#shared/helpers/base.js';
 import { cardBonus, cardKey } from '#shared/helpers/cards.js';
 import { findNode } from '#shared/helpers/placement.js';
@@ -212,8 +213,8 @@ export const movementFighterRejection = (partyState, movement, playerId, fighter
   if (!movement) return 'перемещение не открыто';
   if (fighterId == null) return 'нужен боец';
 
-  // «заморожен» — это про бойца, а не про владельца: двигать его нельзя ни своим ходом, ни чужим эффектом
-  if (findFighter(partyState, fighterId)?.fighter?.frozen === true) {
+  // статус — это про бойца, а не про владельца: двигать его нельзя ни своим ходом, ни чужим эффектом
+  if (blockingStatus(findFighter(partyState, fighterId)?.fighter, 'move') != null) {
     return `боец ${fighterId} заморожен`;
   }
 
@@ -235,6 +236,11 @@ export const movementFighterRejection = (partyState, movement, playerId, fighter
 /**
  * Клетки, куда боец может шагнуть в текущем перемещении.
  * Радиус считается от origins бойца: за одно действие он уходит не дальше своего радиуса.
+ *
+ * **Пошаговое наступление** (`stepwise`, карты с проходом сквозь врагов): подсветка — только соседние
+ * клетки, и она пересчитывается после каждого шага. Бюджет считает **шаги**, а не расстояние от начала,
+ * поэтому «туда и обратно» разрешено: боец может вернуться в исходную клетку. На клетку врага встать
+ * можно (проход сквозь), но только если остаётся шаг на выход — закончить перемещение там нельзя.
  */
 export const movementDestinations = (partyState, playerId, fighterId) => {
   const movement = partyState?.movement;
@@ -253,6 +259,14 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
 
   const budget = movementBudget(fighter, movement);
   const occupied = occupiedCellIds(partyState, fighterId);
+
+  if (movement.stepwise === true) {
+    const remaining = budget - movementStepsOf(movement, fighterId);
+
+    return remaining <= 0
+      ? []
+      : stepDestinationCells(partyState, playerId, fighter, occupied, remaining);
+  }
 
   // «один из двух»: прежний боец вернётся на исходную, поэтому его нынешняя клетка освободится, а
   // исходная станет занятой. Подсветка обязана это учитывать, иначе клик упадёт на возвращённом бойце.
@@ -273,33 +287,86 @@ export const movementDestinations = (partyState, playerId, fighterId) => {
   const nodes = partyState.map?.nodes ?? [];
   const reach = movementZoneIds(nodes, origin, budget, blocked);
 
-  // Проход с уроном: клик по клетке врага — боец идёт сквозь неё и возвращается назад. Своих так
-  // не подсвечиваем: сквозь своего пройти можно, но урон на проходе бьёт только врагов, и клик был бы
-  // пустым. Остальные занятые клетки по-прежнему цель не подсвечивают: встать на них нельзя.
-  const transitCells = new Set();
-  if (movement.transit === true) {
-    for (const other of partyState.players ?? []) {
-      if (String(other.id) === String(player?.id)) continue;
-      for (const rival of other.fighters ?? []) {
-        if (rival.currentPosition != null) transitCells.add(String(rival.currentPosition));
-      }
-    }
-  }
-
+  // Обычное перемещение (без прохода сквозь врагов): занятые клетки — не цель, встать на них нельзя.
+  // Проход сквозь врагов идёт пошагово и считается выше (`stepwise`), там своя подсветка.
   const cells = [...reach].map(String).filter(cellId => {
     if (cellId === String(fighter.currentPosition)) return false;
-    if (!occupied.has(cellId)) return true;
-    if (!transitCells.has(cellId)) return false;
-
-    // путь сквозь бойца и обратно обязан уложиться в радиус: иначе клик падал бы на движке.
-    // Сама клетка бойца из запретных убирается: в неё и ведёт проход.
-    const pathBlocked = new Set(blocked);
-    pathBlocked.delete(cellId);
-    const route = pathInRadius(nodes, origin, cellId, origin, budget, pathBlocked);
-    return Array.isArray(route) && route.length > 0 && route.length * 2 <= budget;
+    return !occupied.has(cellId);
   });
 
   return [...new Set(cells)].sort(byCellId);
+};
+
+/** Сколько одношаговых шагов боец уже сделал в этом перемещении (для `stepwise`-бюджета). */
+export const movementStepsOf = (movement, fighterId) =>
+  (movement?.moves ?? []).filter(move => String(move.fighterId) === String(fighterId)).length;
+
+/** Владелец бойца, стоящего на клетке; null — клетка свободна. */
+export const cellOwnerId = (partyState, cellId) => {
+  for (const player of partyState?.players ?? []) {
+    for (const fighter of player.fighters ?? []) {
+      if (fighter.currentPosition != null && String(fighter.currentPosition) === String(cellId)) {
+        return String(player.id);
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * Соседние клетки для пошагового шага: свободные и **занятые** — сквозь своего бойца проходить можно так
+ * же, как сквозь врага (`rules.canPassThroughTeammates: true`). На занятой клетке нельзя остановиться,
+ * поэтому она доступна, только если после неё остаётся **легальный выход** — иначе окно запиралось бы
+ * без единого действия (боец стоит на чужой клетке, а уйти некуда).
+ *
+ * Пока боец стоит на клетке вместе с другим, это **транзит**: двигается только он, и проверка инварианта
+ * в `bot/play/duel.js` такое совмещение разрешает (m02680).
+ */
+const stepDestinationCells = (partyState, playerId, fighter, occupied, remaining) => {
+  void playerId;
+  const here = String(fighter.currentPosition);
+  const neighbours = (findNode(partyState, here)?.neighbors ?? []).map(String);
+
+  // выход после шага: любая свободная соседняя клетка или наша собственная — она освободится,
+  // когда боец с неё уйдёт
+  const hasExit = cellId => {
+    if (remaining - 1 < 1) return false;
+
+    return (findNode(partyState, cellId)?.neighbors ?? [])
+      .map(String)
+      .some(
+        neighbour =>
+          neighbour !== String(cellId) && (!occupied.has(neighbour) || neighbour === here),
+      );
+  };
+
+  const cells = neighbours.filter(cellId => {
+    if (cellId === here) return false;
+    if (!occupied.has(cellId)) return true;
+
+    // занятая клетка — только транзит: своя или чужая, всё равно (m02680). Войти можно, если остаётся
+    // шаг на выход; остановиться и закончить перемещение там нельзя
+    return remaining >= 2 && hasExit(cellId);
+  });
+
+  return [...new Set(cells)].sort(byCellId);
+};
+/**
+ * Стоит ли кто-то из двигаемых бойцов на клетке, занятой другим бойцом. Проход сквозь врага — не место
+ * для остановки: пока боец на чужой клетке, закончить перемещение нельзя.
+ */
+export const movementOnOccupiedCell = (partyState, playerId) => {
+  const movement = partyState?.movement;
+  if (!movement || String(movement.playerId) !== String(playerId)) return false;
+
+  const moved = new Set((movement.moves ?? []).map(move => String(move.fighterId)));
+  for (const fighterId of moved) {
+    const fighter = findFighter(partyState, fighterId)?.fighter;
+    if (!fighter || fighter.currentPosition == null) continue;
+    if (occupiedCellIds(partyState, fighterId).has(String(fighter.currentPosition))) return true;
+  }
+
+  return false;
 };
 
 /** Почему шаг невозможен; null — можно. */
@@ -328,6 +395,25 @@ export const movementRejection = (partyState, playerId, fighterId, cellId) => {
     return `у бойца ${fighterId} нет доступных клеток`;
   }
   if (!destinations.includes(String(cellId))) {
+    if (movement.stepwise === true) {
+      // пошаговый шаг: объясняем не «радиус», а что именно не так с соседней клеткой
+      const neighbour = (findNode(partyState, fighter.currentPosition)?.neighbors ?? [])
+        .map(String)
+        .includes(String(cellId));
+      if (!neighbour) {
+        return `клетка ${cellId} не соседняя: в этом перемещении шаг идёт по одной клетке`;
+      }
+      // клетка врага проходима, но только с запасом шага на выход; клетка своего бойца закрыта —
+      // совмещение двоих на одной клетке ждёт отдельной проработки
+      const owner = cellOwnerId(partyState, cellId);
+      if (owner != null && owner === String(playerId)) {
+        return `клетка ${cellId} занята своим бойцом`;
+      }
+      if (owner != null) {
+        return `на клетку ${cellId} можно только пройти насквозь: не хватает шага, чтобы с неё сойти`;
+      }
+      return `клетка ${cellId} вне радиуса перемещения`;
+    }
     if (occupiedCellIds(partyState, fighterId).has(String(cellId))) {
       return `клетка ${cellId} занята`;
     }

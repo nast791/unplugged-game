@@ -350,11 +350,11 @@ describe('способность конца хода: окно без вариа
     expect(after.turn.playerId).toBe('1');
   });
 
-  it('разные области, убитый Тото и способность без правил — окна нет', () => {
-    // Тото на лаве, Дороти на льду — области разные
+  it('разные области окно не отменяют, а убитый Тото и способность без правил — отменяют', () => {
+    // Тото на лаве, Дороти на льду: области разные, но обмен идёт через всю карту (m02680)
     const apart = endTurn(swapState({ map: mixedMap, totoCell: 3, foeCell: 4 }));
-    expect(apart.targeting ?? null).toBeNull();
-    expect(apart.turn.playerId).toBe('1');
+    expect(apart.targeting?.source).toBe('dorothy_skill');
+    expect(apart.targeting.candidates.map(entry => entry.fighterId)).toEqual(['dorothy', 'toto']);
 
     // Тото убит и лежит в `lost`
     const dead = swapState();

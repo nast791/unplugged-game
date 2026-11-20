@@ -5,7 +5,7 @@ export default [
     title: 'Взгляд смерти',
     type: 'attack',
     value: 2,
-    // бонус 4 в колоде один — у «Роковой встречи» (правило `docs/hero-algorithm.md` §6)
+    // бонус 4 в колоде один — у «Роковой встречи» (правило `.docs/hero-algorithm.md` §6)
     bonus: 3,
     quantity: 3,
     fighter: 'medusa',
@@ -13,6 +13,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'В случае вашей победы нанесите 8 урона атакованному бойцу.',
         when: [
           // победителем боя объявлен атакующий (эту карту играет только атакующий)
           { fact: 'COMBAT', params: { winner: 'attacker' } },
@@ -35,6 +36,7 @@ export default [
     rules: [
       {
         moment: 'duringCombat',
+        text: 'Можете сбросить карту с руки — её бонус прибавится к атаке этой карты.',
         // усиливать нечем, если в руке нет другой карты с бонусом: тогда эффект не срабатывает
         when: [{ fact: 'HAND', params: { bonusMin: 1 }, min: 1, var: 'cards' }],
         then: [
@@ -63,6 +65,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Оппонент, чей боец участвовал в этой битве, сбрасывает 1 карту из своей руки.',
         when: [
           // кто враг в этом бою: id игрока (не список), чтобы подставить его и в руку, и в окно
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
@@ -95,6 +98,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Каждая Гарпия может пройти до трёх клеток.',
         // живых Гарпий нет — двигать некого, эффект не срабатывает
         when: [
           {
@@ -128,6 +132,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Оппонент, чей боец участвовал в этой битве, сбрасывает 1 карту из своей руки.',
         when: [
           // враг в этом бою — тот, кто играл против этой карты (карта hybrid: играет любая сторона)
           { fact: 'COMBAT', params: { player: 'opponent' }, var: 'enemy' },
@@ -160,6 +165,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Ваш боец, участвовавший в этой битве, может пройти до трёх клеток.',
         when: [
           // свой боец в этом бою: у атакующего — атакующий, у защитника — тот, кого били
           { fact: 'COMBAT', params: { select: 'self' }, var: 'battleFighters' },
@@ -195,6 +201,7 @@ export default [
     rules: [
       {
         moment: 'afterCombat',
+        text: 'Доберите 1 карту из колоды.',
         // добор обязательный: пустая колода бьёт главного героя истощением (правило SET_CARDS draw)
         then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
       },
@@ -212,6 +219,7 @@ export default [
     rules: [
       {
         moment: 'immediately',
+        text: 'Свойства карты оппонента в этой битве не действуют.',
         // у карты противника нет ни одного эффекта — отменять нечего, шаг помечается skipped
         when: [{ fact: 'COMBAT', params: { effects: 'opponent' }, min: 1 }],
         // отменяем тексты карты противника: её шаги в очереди боя помечаются cancelled.
@@ -230,17 +238,16 @@ export default [
     fighter: 'any',
     text: 'ПОСЛЕ БИТВЫ: Доберите карту. В случае вашей победы доберите две.',
     rules: [
-      // победа: вместо одной карты две. Условия правил взаимоисключающие, поэтому срабатывает ровно одно.
+      // победа: вместо одной карты две. Условия взаимоисключающие — срабатывает ровно одно, и в окне
+      // битвы у каждого своя строка: видно, какое именно сошлось, а не только итог свойства
       {
         moment: 'afterCombat',
-        property: 'breath',
         text: 'В случае вашей победы доберите две карты.',
         when: [{ fact: 'COMBAT', params: { winner: 'self' } }],
         then: [{ action: 'SET_CARDS', op: 'draw', count: 2 }],
       },
       {
         moment: 'afterCombat',
-        property: 'breath',
         text: 'Доберите карту.',
         when: [{ fact: 'COMBAT', params: { winner: 'opponent' } }],
         then: [{ action: 'SET_CARDS', op: 'draw', count: 1 }],
@@ -259,6 +266,7 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'Выберите любого бойца в одной области с Медузой: он получает 2 урона.',
         // «любого бойца» — и своих, и чужих: выбор обязательный (окно required), действие уже потрачено
         when: [
           {
@@ -280,6 +288,7 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Нанесите 2 урона выбранному бойцу.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [{ action: 'SET_HEALTH', fighterIds: '$picked', delta: -2 }],
       },
@@ -297,6 +306,7 @@ export default [
     rules: [
       {
         moment: 'effect',
+        text: 'Ваши бойцы могут пройти до трёх клеток каждый, в том числе сквозь занятые врагами.',
         // все свои бойцы, каждому до 3 клеток, враги путь не блокируют
         when: [{ fact: 'FIGHTERS', params: { side: 'self' }, min: 1, var: 'fighters' }],
         then: [
@@ -312,6 +322,7 @@ export default [
       },
       {
         moment: 'effect',
+        text: 'Затем в игру можно вернуть одну убитую Гарпию — на свободную клетку в области Медузы.',
         // убитой Гарпии нет или в области Медузы нет свободной клетки — воскрешать некуда
         when: [
           { fact: 'LOST', params: { group: 'harpies' }, min: 1 },
@@ -335,6 +346,7 @@ export default [
       },
       {
         moment: 'picked',
+        text: 'Верните убитую Гарпию на выбранную клетку.',
         when: [{ fact: 'PICKED', var: 'picked' }],
         then: [
           {

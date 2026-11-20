@@ -55,6 +55,7 @@
         :dead="isDead(heroOf(player))"
         :silent="Boolean(panelOf(player))"
         :label="hexLabel(player)"
+        :effects="effectsOf(player)"
         @click="openHero(player)"
       />
     </div>
@@ -63,6 +64,7 @@
 
 <script setup>
 import HeroHex from '~/components/molecules/game/HeroHex.vue';
+import { persistentEffectsOf } from '#shared/constants/effects.js';
 import HeroInfo from '~/components/molecules/game/HeroInfo.vue';
 import PilesInfo from '~/components/molecules/game/PilesInfo.vue';
 import SlotCard from '~/components/molecules/game/SlotCard.vue';
@@ -88,6 +90,10 @@ const sidekicksOf = player =>
   [...(player?.fighters ?? []), ...(player?.lost ?? [])].filter(fighter => fighter.type !== 'hero');
 
 const isDead = fighter => Number(fighter?.currentHp ?? 0) <= 0;
+
+// Постоянный эффект на героя (сниженный лимит руки, включённое умение): круг у гекса рисуется только
+// у того, на кого эффект действует, и только пока он действует (`shared/constants/effects.js`)
+const effectsOf = player => persistentEffectsOf(player);
 
 const countOf = (player, zone) => Number(player?.[`${zone}Count`] ?? player?.[zone]?.length ?? 0);
 

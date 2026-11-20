@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { effectWorth } from '../../../bot/play/cards.js';
 import { actionsFor } from '../../../bot/play/duel.js';
-import { weightsFor } from '../../../bot/play/policy.js';
+import { weightsFor, keepPrice, KEEP_FUEL } from '../../../bot/play/policy.js';
 import ifritCards from '../../../server/content/heroes/ifrit/cards.js';
 import { createState, player } from '../../fixtures/state.js';
 
@@ -38,7 +38,7 @@ describe('оценка эффекта: карта без свойств и ка�
     const plain = { id: 'plain', type: 'effect', value: 3, bonus: 1, rules: [] };
     const worth = effectWorth(plain, { players: [] }, '0');
 
-    expect(worth).toEqual({ value: 0, cost: 0, fires: 0, known: false });
+    expect(worth).toEqual({ value: 0, cost: 0, fires: 0, known: false, ruleFires: [] });
     expect(weightFrom(worth, weights)).toBe(weights.card);
   });
 
@@ -86,5 +86,33 @@ describe('оценка эффекта: карта без свойств и ка�
     const worth = effectWorth(empty, { players: [] }, '0');
 
     expect(weightFrom(worth, weights)).toBeGreaterThan(0);
+  });
+
+  describe('карта как запас колоды', () => {
+    const keepWeights = { ...weights, keep: 1 };
+
+    it('при здоровой колоде карта ничего не стоит: цена нулевая', () => {
+      expect(keepPrice(keepWeights, { fuel: KEEP_FUEL, rivalFuel: 10 })).toBe(0);
+      expect(keepPrice(keepWeights, { fuel: 20, rivalFuel: 20 })).toBe(0);
+    });
+
+    it('тонкая колода делает трату дороже, и тем сильнее, чем она тоньше', () => {
+      const middle = keepPrice(keepWeights, { fuel: 5, rivalFuel: 5 });
+      const thin = keepPrice(keepWeights, { fuel: 1, rivalFuel: 1 });
+
+      expect(middle).toBeGreaterThan(0);
+      expect(thin).toBeGreaterThan(middle);
+    });
+
+    it('соперник по колоде впереди добавляет к цене карты', () => {
+      const equal = keepPrice(keepWeights, { fuel: 4, rivalFuel: 4 });
+      const behind = keepPrice(keepWeights, { fuel: 4, rivalFuel: 14 });
+
+      expect(behind).toBeGreaterThan(equal);
+    });
+
+    it('ген выключен — прежнее поведение', () => {
+      expect(keepPrice({ ...keepWeights, keep: 0 }, { fuel: 0, rivalFuel: 20 })).toBe(0);
+    });
   });
 });

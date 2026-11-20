@@ -288,7 +288,7 @@ describe('окно руки выбирает карту из руки', () => {
     combat.value = { choice: { playerId: 'medusa', source: 'mirror_1', effect: 'discard' } };
     const wrapper = mount(HandWindow);
     expect(wrapper.text()).toContain('Медуза выбирает карту из руки');
-    expect(wrapper.text()).toContain('она уйдёт в сброс');
+    expect(wrapper.text()).toContain('она уйдёт в свой сброс');
   });
 
   it('и своего выбора тоже подписывает героем, а не словом «Вы»', () => {
@@ -337,7 +337,8 @@ describe('окно руки выбирает карту из руки', () => {
     );
     expect(titlesOf(wrapper)).toEqual(['Погребальный звон', 'Путь на закат']);
     expect(wrapper.text()).toContain('Дороти выбирает карту из колоды');
-    expect(wrapper.text()).toContain('это карта колоды');
+    // место карты названо в начале строки: дальше только её судьба и адресат, без повтора «это карта колоды»
+    expect(wrapper.text()).toContain('— она уйдёт в свою руку');
 
     await wrapper.findAll('[data-hand-choice]')[1].trigger('click');
     await wrapper.find('[data-hand-choice-ok]').trigger('click');
@@ -345,5 +346,42 @@ describe('окно руки выбирает карту из руки', () => {
     expect(pickChoiceCard.mock.calls[0][0].optionId).toBe('top_2');
     // окно вариантов подтверждают тем же нажатием: отметка + «Подтвердить» — одно действие
     expect(onFinishAction).toHaveBeenCalled();
+  });
+
+  it('выбор из чужой зоны называет адресата: карту берёт выбравший', () => {
+    players.value = [
+      ...players.value,
+      {
+        id: 'ifrit',
+        order: 2,
+        name: 'Игрок 2',
+        hand: [],
+        fighters: [{ id: 'ifrit-hero', type: 'hero', name: 'Ифрит' }],
+        lost: [],
+      },
+    ];
+    const top = [
+      {
+        optionId: 'top_1',
+        cardId: 'top_1',
+        id: 'top_1',
+        title: 'Погребальный звон',
+        type: 'effect',
+        value: 0,
+        bonus: 2,
+        zone: 'deck',
+        ownerId: 'dorothy',
+      },
+    ];
+    // воровство: колода Дороти, а выбирает Ифрит — карта уйдёт в руку выбравшему, а не владелице колоды
+    choiceHand.value = { zone: 'deck', playerId: 'dorothy', name: 'Дороти', cards: top };
+    targeting.value = { kind: 'options', count: 1, required: true, playerId: 'ifrit' };
+    const wrapper = mount(HandWindow);
+
+    expect(wrapper.find('[data-pile-window]').attributes('data-pile-window')).toBe(
+      'Колода: Дороти',
+    );
+    expect(wrapper.text()).toContain('Ифрит выбирает карту из колоды');
+    expect(wrapper.text()).toContain('— она уйдёт в руку выбравшего');
   });
 });

@@ -201,8 +201,10 @@ describe('карта эффекта предлагается, только ес�
 
     const lost = buildState({
       cardId: 'anubis_10',
-      mineFighters: [unit('anubis', 1, 15)],
+      // раненый Анубис и спящая Пелена: карте есть что изменить, кроме мёртвой Амат
+      mineFighters: [{ ...unit('anubis', 1, 15), currentHp: 12 }],
       lost: [unit('amat', null, 0, { type: 'assistant', group: 'amat' })],
+      items: [{ id: 'shroud', group: 'shroud', name: 'Пелена', type: 'item', count: 1, state: 'inactive' }],
       deck: [{ id: 'deck_a', title: 'A', bonus: 1 }],
     });
     expect(playableFor(lost, 'anubis_10')).toBe(true);

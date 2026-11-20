@@ -111,21 +111,33 @@ const PLACE_NAMES = { hand: 'руки', deck: 'колоды', discard: 'сбро
 
 const zone = computed(() => String(choiceHand.value?.zone ?? 'hand'));
 
+// Чья зона: своя или чужая. Пока выбор идёт по своим колоде и сбросу, разницы нет, но герой-вор
+// будет брать из чужой — и голое «в руку» станет двусмысленным. Имя героя не склоняем
+// («Амат», «Тото»), поэтому чужую сторону называем «выбравший»/«владелец», а имя уже в начале строки
+const ownZone = computed(
+  () => String(choiceHand.value?.playerId ?? '') === String(chooserId.value ?? ''),
+);
+
 const reason = computed(() => {
   const effect = combat.value?.choice?.effect;
   const own = String(chooserId.value) === String(you.value ?? '');
   if (effect === 'bonus') {
     return own ? 'её бонус добавится к вашей карте боя' : 'её бонус добавится к его карте боя';
   }
-  if (effect === 'discard') return 'она уйдёт в сброс';
-  // выбор карты не из руки: карта колоды или сброса — выбранная возвращается в руку владельцу
-  if (picking.value && zone.value === 'deck') return 'это карта колоды: выбранная уйдёт в руку';
+  if (effect === 'discard') {
+    return ownZone.value ? 'она уйдёт в свой сброс' : 'она уйдёт в сброс владельца руки';
+  }
+  // выбор карты не из руки: карта колоды или сброса — выбранная возвращается в руку выбравшему.
+  // Место карты уже названо в начале строки, поэтому здесь только её судьба и адресат
+  if (picking.value && zone.value === 'deck') {
+    return ownZone.value ? 'она уйдёт в свою руку' : 'она уйдёт в руку выбравшего';
+  }
   if (picking.value && zone.value === 'discard') {
-    return 'это карта сброса: выбранная вернётся в руку';
+    return ownZone.value ? 'она вернётся в свою руку' : 'она вернётся в руку выбравшего';
   }
   // окно по чужой руке (обзор, «Клёв в темноте»): карта уходит из руки противника
   if (String(choiceHand.value?.playerId ?? '') !== String(you.value ?? '')) {
-    return 'это рука противника: карта уйдёт в сброс';
+    return 'карта уйдёт в сброс владельца руки';
   }
   return '';
 });

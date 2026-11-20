@@ -31,7 +31,11 @@
  *   платят за обещанную правилами карты пользу: «Погребальный звон» — 6 при покое). Ноль отключает
  *   оценку: так `random` не теряет покрытие, а эталоны остаются без этих признаков;
  * - позиция и усталость: `terrain` (шаг на свою стихию из паспорта героя) и `fatigue` (не крутить
- *   колоду, когда до истощения близко). Ноль — эталонное поведение.
+ *   колоду, когда до истощения близко). Ноль — эталонное поведение;
+ * - признаки поля с **той стороны** (`contact`, `foeterrain`, `foeguard`, `foeroom`, `flee`): опасная
+ *   дистанция, клетка чужой стихии, путь чужого героя к моему дешёвому бойцу, закрытый выход, отход в тыл;
+ * - скрытое и отложенное (`cancel`, `defer`, `estimate`, `scales`): вероятность отмены в чужой руке,
+ *   цена раннего розыгрыша, распределение чужого усиления и свойств по остатку колоды.
  *
  * Признаки, а не только числа: политика смотрит на **свою руку** (`hand`, `canDraw`) и на **открытое
  * состояние чужих бойцов** (здоровье, тип). Скрытого она по-прежнему не видит: ни чужой руки, ни
@@ -66,6 +70,8 @@ const greedyBase = ({ canAttack = false, hand = 3, canDraw = true } = {}) => {
     pick: 1,
     // окно усиления/сброса: сильные карты берегутся (вес падает с ростом бонуса)
     cardCost: 6,
+    // карта как запас колоды: тонкая колода делает каждую трату дороже (`keepPrice`, m02166)
+    keep: 1,
     // бой: сила карты, добор раненого и цена свойства
     cardValue: 1.5,
     option: 1,
@@ -74,11 +80,40 @@ const greedyBase = ({ canAttack = false, hand = 3, canDraw = true } = {}) => {
     finish: 12,
     heroTarget: 6,
     target: 2,
+    // добивание тела: обычный помощник с 2 hp не стоит карты с запасом, важный (Амат, ворона) — стоит
+    finishBody: 1,
+    // позиция тела: шаг на клетку, которая перекрывает путь к моему герою, и штраф за подставу под удар
+    guard: 3,
+    // потолок премии за перекрытие у шага «в никуда»: встать в коридор — тоже ход, хотя дистанция не
+    // меняется. Без него блокер физически не мог занять место: шаг без смены дистанции весит 0
+    guardFloor: 1,
+    exposed: 2.5,
+    // защита тела: карту тратят на спасение помощника, только если он важен герою (Амат, ворона)
+    defendBody: 0.85,
+    // телепорт и обмен — не шаг: путь не тратится, поэтому позиция в той же шкале, но со своей ценой.
+    // `teleport` — шаг, срезанный переносом (за каждый сэкономленный шаг); `swap` — обмен бойцов
+    // местами (умение Дороти, «Тото отвлекает»); `banish` — чужой перенос: врага выгодно ставить под
+    // мои удары и подальше от своих (m02358)
+    teleport: 1.5,
+    swap: 1,
+    banish: 1,
   };
 };
 
 /** Признаки позиции и усталости выключены: эталон замеров §13–§14. */
-const NO_POSITION = { stepAway: 0, hold: 0, terrain: 0, fatigue: 0 };
+const NO_POSITION = {
+  stepAway: 0,
+  hold: 0,
+  terrain: 0,
+  fatigue: 0,
+  guard: 0,
+  guardFloor: 0,
+  exposed: 0,
+  defendBody: 0,
+  teleport: 0,
+  swap: 0,
+  banish: 0,
+};
 
 /**
  * Переключатели генов через переменные среды: `BOT_GENE_<ИМЯ>=0` выключает ген, `=число` задаёт его
@@ -98,6 +133,37 @@ if (typeof process !== 'undefined' && process?.env) {
 
 /** Значение гена: переменная среды важнее проектного. */
 export const gene = (name, fallback) => (envGenes[name] != null ? envGenes[name] : fallback);
+
+/** Запас чужой колоды, с которого начинается «бомба истощения»: одну карту он доберёт и останется пустым. */
+const BOMB_FUEL = 1;
+/** Насколько бомба снимает тягу к размену (`attack`) и к сближению (`stepCloser`), и их полы: вес 0
+ *  значит «вариант не предлагаем», а выключать бой целиком нельзя — добивать всё равно придётся. */
+const BOMB_ATTACK = 0.4;
+const BOMB_APPROACH = 0.5;
+const BOMB_ATTACK_FLOOR = 0.25;
+const BOMB_APPROACH_FLOOR = 0.2;
+/** Насколько бомба поднимает отход (`stepAway`) и удержание позиции (`hold`): ищем, где встать. */
+const BOMB_ESCAPE = 2;
+const BOMB_HOLD = 1;
+
+/**
+ * **Бомба истощения**: у соперника колода кончается, поэтому каждый его *обязательный* добор — это
+ * истощение (2 урона всем его бойцам, `rules.exhaustionDamage`). Бить его для этого не нужно: удар он
+ * встретит картой защиты, а вот шаг к нам — маневром, то есть добором. Значит в этой фазе выгодно
+ * держать дистанцию и не подставляться.
+ *
+ * Условия: его запас ≤ `BOMB_FUEL` **и** его колода тоньше нашей — иначе размен колодами мы проиграем
+ * сами. Ген `BOT_GENE_BOMB=0` выключает.
+ */
+const bombPressure = ({ fuel = 0, rivalFuel = 0 } = {}) => {
+  const power = gene('bomb', 1);
+  if (!(power > 0)) return 0;
+  const theirs = Number(rivalFuel);
+  if (!Number.isFinite(theirs) || theirs > Math.max(0, gene('bombfuel', BOMB_FUEL))) return 0;
+  if (theirs >= (Number(fuel) || 0)) return 0;
+
+  return power;
+};
 
 export const policies = {
   /** Наугад: разброс весов от сида нужен, чтобы прогоны не были однообразными. */
@@ -195,19 +261,37 @@ export const policies = {
    */
   trade: situation => {
     const base = greedyBase(situation);
+    // Позиционные гены берутся у жадной политики, а не у базы: в самой `greedyBase` их нет, и живой
+    // предлагатель (`PROPOSER_POLICY`) оставался без кайта, удержания выгодной клетки, своей стихии и
+    // цены добора — то есть шаг «из-под удара» и шаг «на свою землю» в перечисление не попадали вовсе
+    // (вес 0 = «не предлагаем»). `BOT_GENE_POSITION=0` возвращает прежнее поведение.
+    const sited = policies.greedy(situation);
+    const position = gene('position', 1);
     const fuel = Number(situation?.fuel) || 0;
     const rivalFuel = Number(situation?.rivalFuel) || 0;
     const clock = Math.max(-1, Math.min(1, (fuel - rivalFuel) / 8));
     // впереди (clock > 0) — жить долго; позади (clock < 0) — давить; равенство — без надбавки
     const press = 1 + 1.2 * Math.max(0, -clock);
     const hold = 1 + 0.8 * Math.max(0, clock);
+    // Бомба истощения: у соперника в колоде последняя карта, а у нас толще — тогда его следующий маневр
+    // и есть добор на пустой колоде (2 урона всем его бойцам). Бой ему не даём: атака дешевеет, отход и
+    // удержание дистанции дорожают — пусть тратит карту на шаг. `BOT_GENE_BOMB=0` выключает.
+    // Запас передаётся **как есть**: неизвестный (нет числа) — это не «ноль карт», бомбы нет.
+    const bomb = bombPressure({ fuel, rivalFuel: Number(situation?.rivalFuel) });
     return {
       ...base,
-      attack: base.attack * press,
-      stepCloser: base.stepCloser * (1 + 0.6 * Math.max(0, -clock)),
+      attack: base.attack * press * Math.max(BOMB_ATTACK_FLOOR, 1 - BOMB_ATTACK * bomb),
+      stepCloser:
+        base.stepCloser *
+        (1 + 0.6 * Math.max(0, -clock)) *
+        Math.max(BOMB_APPROACH_FLOOR, 1 - BOMB_APPROACH * bomb),
       draw: base.draw * (1 - 0.5 * Math.max(0, clock)),
-      stepAway: (base.stepAway ?? 0) * 0.75 * hold,
-      hold: (base.hold ?? 0) * hold,
+      stepAway: sited.stepAway * 0.75 * hold * position * (1 + BOMB_ESCAPE * bomb),
+      hold: sited.hold * hold * position * (1 + BOMB_HOLD * bomb),
+      terrain: sited.terrain * position,
+      fatigue: sited.fatigue * position,
+      // сушка руки: при полной руке добор уходит в сброс, а не в игру (`drawWeight`)
+      choke: gene('choke', 1),
       pass: Math.max(0.5, base.pass * (1 - 0.4 * Math.max(0, -clock))),
       // Оценка размена (§37): усиление карты сгорает вместе с ней (`tradeCost`), ответный удар
       // считается, если боец может его не пережить (`tradeRisk`), материал сторон сравнивается
@@ -237,23 +321,65 @@ export const policies = {
       dealRound: 15,
       focus: 0,
       focusLow: 5,
+      // Условия карт в **живом** предлагателе (`.docs/bot-strategies.md`, «Стратегии по героям»).
+      // До §74 ген был нулевым у всех политик рантайма: «Погребальный звон» бил 3 вместо 6, пороги
+      // «Трещины»/«Оцепенения»/«Сосульки» не отличались, условия Дороти не работали. Обещание карты
+      // считается в предлагателе (один раз на решение), роллаут остаётся без него — там цена иная.
+      condition: gene('condition', 3),
+      // Отмены по остатку чужой колоды (п. 6): обещанная польза карты гасится вероятностью, что у
+      // соперника в руке есть отмена (`counting.js: cancelRiskOf`), а своя отмена не уходит на защиту
+      // от слабого удара (`defenseWeight`).
+      cancel: gene('cancel', 1),
+      // Опасная дистанция без атаки (п. 7): шаг в контакт, из которого не бьёшь, дешевеет.
+      contact: gene('contact', 1),
+      // Чужая стихия и перекрытие пути чужого героя к моим дешёвым бойцам (п. 2 «б»).
+      foeterrain: gene('foeterrain', 1),
+      foeguard: gene('foeguard', 1),
+      // Теснота вокруг чужого героя (п. 8): шаг, закрывающий ему выход, стоит премии.
+      foeroom: gene('foeroom', 1),
+      // Приговорённый важный помощник уходит в тыл (Амат, ворона): шаг **от** врага получает премию.
+      flee: gene('flee', 1),
+      // Обмен «герой дороже помощника»: прирост позиции взвешивается по типу бойца (Дороти).
+      swaphero: gene('swaphero', 1),
+      // Выбор карты из чужой руки: брать самую дорогую для соперника, а не первую (Снежная королева).
+      foecard: gene('foecard', 1),
+      // Карта с `noReturn` («Зал суда») уходит из партии навсегда — ранняя трата дороже напечатанной.
+      noreturn: gene('noreturn', 1),
+      // Последнего духа не жгут: пока он жив, работают ступени пака (Ифрит).
+      lastspirit: gene('lastspirit', 1),
+      // Обещание ветки `picked` (урон, толчок, добор в момент выбора) — «Ожог», «Смена караула».
+      picked: gene('picked', 1),
+      // Сброс карты в колоду — это счётчик ресурса: у Снежной королевы он роняет порог осколков.
+      resonance: gene('resonance', 1),
+      // Прибавка за номер действия (`AP { spentMin }`): объявлять карту раньше её окна — потеря обещания.
+      defer: gene('defer', 1),
     };
   },
 
   /**
-   * Доигрывающая политика для поиска: тот же `greedy`, но с усиленной атакой и без кайта. Нужна, чтобы
-   * роллаут видел бой, а не перетягивание: с осторожной политикой поиск откладывает невыгодный размен, и
-   * партия тянется до истощения (бесплатного паса в игре нет — каждый маневр сжигает карту колоды).
-   * Сама боевая политика остаётся `greedy` — агрессия нужна только для оценки последствий.
+   * Доигрывающая политика для поиска: тот же `greedy`, но с усиленной атакой. Нужна, чтобы роллаут видел
+   * бой, а не перетягивание: с осторожной политикой поиск откладывает невыгодный размен, и партия тянется
+   * до истощения (бесплатного паса в игре нет — каждый маневр сжигает карту колоды). Сама боевая политика
+   * остаётся `greedy` — агрессия нужна только для оценки последствий.
+   *
+   * **Позиционные гены в симуляции** (`.docs/bot-strategies.md` п. 5). Раньше роллаут шёл без
+   * `stepAway`/`hold`/`terrain`/`fatigue`: шаг «из-под удара» в симуляции не предлагался вовсе (вес 0 =
+   * «не предлагаем»), поэтому поиск **не предвидел** кайт и бомбу истощения — он видел их только весом
+   * варианта у корня. Теперь кайт и удержание позиции живут и в доигрывании: цены взяты у `trade`
+   * (тот же шаг, что у живой политики). `BOT_GENE_ROLLOUTPOS=0` возвращает прежнее поведение.
    */
   aggressive: situation => {
     const base = greedyBase(situation);
+    const sited = policies.greedy(situation);
+    const position = gene('rolloutpos', 1);
     return {
       ...base,
       attack: base.attack * 3,
       draw: Math.max(1, base.draw * 0.5),
-      stepAway: 0,
-      hold: 0,
+      stepAway: sited.stepAway * 0.75 * position,
+      hold: sited.hold * position,
+      terrain: sited.terrain * position,
+      fatigue: sited.fatigue * position,
       pass: Math.max(0.5, base.pass * 0.5),
     };
   },
@@ -368,7 +494,7 @@ export const policies = {
 
   /**
    * Тот же жадный, но **без признаков вообще**: рука, ценность карты, свойства и выбор цели не
-   * учитываются. Эталон первого замера (`docs/hero-balance.md` §12): сравнение `greedy` против `basic`
+   * учитываются. Эталон первого замера (`.docs/hero-balance.md` §12): сравнение `greedy` против `basic`
    * показывает, что дали все признаки вместе.
    */
   basic: ({ canAttack = false } = {}) => ({
@@ -419,12 +545,16 @@ export const weightsFor = (policy, situation = {}) => {
  *
  * `fuels` — карта кормит ресурс героя (метка осколка Снежной королевы): её сброс не трата, а вложение,
  * поэтому штрафа за бонус нет. Считается только политикой, которая сравнивает карты (`cardValue > 0`).
+ *
+ * `own` — своя механика карты (отмена, добор, лечение) в единицах оценки: она сгорает вместе с картой,
+ * поэтому «отмену» и «добор» на усиление шага почти не сбрасывают (ген `stock`).
  */
-export const cardCostWeight = (card, weights, { fuels = false } = {}) => {
+export const cardCostWeight = (card, weights, { fuels = false, own = 0 } = {}) => {
   const cost = Number(weights?.cardCost) || 0;
   if (cost <= 0) return 1;
   if (fuels && Number(weights?.cardValue) > 0) return cost;
-  return Math.max(1, cost - (Number(card?.bonus) || 0));
+  const keep = gene('stock', 1) > 0 ? Math.max(0, Number(own) || 0) * STOCK_OWN : 0;
+  return Math.max(1, cost - (Number(card?.bonus) || 0) - keep);
 };
 
 /**
@@ -496,6 +626,14 @@ export const attackWeight = (
     actionsLeft = null,
     inFight = true,
     enemyHp = 0,
+    enemyType = null,
+    enemyImportant = 0,
+    stock = null,
+    rivalCards = 0,
+    attackerType = null,
+    attackerImportant = 0,
+    cancelRisk = 0,
+    deferred = 0,
   } = {},
 ) => {
   const attack = Number(weights?.attack) || 0;
@@ -504,8 +642,22 @@ export const attackWeight = (
   const printed = Math.max(0, Number(card?.value) || 0);
   const effective =
     pays > 0 && strength != null ? Math.max(printed, Number(strength) || 0) : printed;
-  const premium = pays * (Number(promise) || 0);
-  if (worth <= 0 || average <= 0) return attack + premium;
+  const premium = pays * (Number(promise) || 0) * cancelFactor(weights, cancelRisk);
+  // цена «объявил раньше окна»: обещание, которое карта получила бы на своём номере действия, теряется
+  // вместе с картой (`deferred` считает `bot/play/cards.js: cardPromise`)
+  const deferGene = gene('defer', Number(weights?.defer) || 0);
+  const deferredLoss =
+    deferGene > 0 ? deferGene * Math.max(0, Number(deferred) || 0) : 0;
+  // последний щит: гибрид в атаку дешевеет, когда защит в руке и колоде почти не осталось (ген `stock`)
+  const stockGain = stockFactor(weights, {
+    stock,
+    hybrid: String(card?.type) === 'hybrid',
+    rivalCards,
+  });
+  // порог перевеса по здоровью: при явном перевесе партию упрощают — давим, а не берегём карту
+  const leadGain = leadFactor(weights, material ?? {});
+  if (worth <= 0 || average <= 0)
+    return Math.max(0, (attack + premium) * stockGain * leadGain - deferredLoss);
 
   const kills = weakness > 0 && effective >= weakness;
   const useful = kills ? Math.min(effective, weakness) : effective;
@@ -528,6 +680,11 @@ export const attackWeight = (
           1 - (riskGene * Math.max(0, Number(threat) - Number(hp))) / Math.max(1, Number(threat)),
         )
       : 1;
+
+  // приманка: слабый удар дешёвого помощника по полной чужой руке — ответ всё равно потратят на него,
+  // поэтому часть `tradeRisk` прощаем (ген `bait`)
+  const bait = baitFactor(weights, { attackerType, attackerImportant, card, rivalCards });
+  const riskNow = bait > 0 ? risk + (1 - risk) * bait : risk;
 
   // цена ранения в общей шкале: **отставание по материалу** (моё здоровье против чужого) поднимает
   // цену атаки — отставать нельзя, а перевес разрешает поберечь карту. Считается по открытым числам:
@@ -609,6 +766,17 @@ export const attackWeight = (
       ? 1 + focusGene * (1 - Number(enemyHp) / focusLow)
       : 1;
 
+  // За что платит добивание: убрать героя — победа; важного помощника (Амат держит пелену, ворона носит
+  // «Клёв в темноте») — половина цены; обычное тело — мелочь. Без этой доли карта с 5 атаки на помощника
+  // с 2 hp получала ту же премию, что и удар по герою (жалоба владельца, m01732).
+  const finishGene = Number(weights?.finish) || 0;
+  const finishBody = Math.max(0, Math.min(1, gene('finishbody', Number(weights?.finishBody) || 0)));
+  const bodyWorth =
+    enemyType == null || String(enemyType) === 'hero'
+      ? 1
+      : 0.15 + 0.85 * Math.min(1, Math.max(0, Number(enemyImportant) || 0));
+  const finishGain = kills ? finishGene * (1 - finishBody * (1 - bodyWorth)) : 0;
+
   return Math.max(
     0,
     (attack *
@@ -616,17 +784,20 @@ export const attackWeight = (
       fuelGain *
       cardsGain *
       deckGain *
-      risk *
+      riskNow *
       wound *
       tempoGain *
       lethalTrade *
       lastGain *
       dealGain *
-      focusGain -
+      focusGain *
+      stockGain *
+      leadGain -
       (attack * worth * waste) / Math.max(1, average) / 2) /
       Math.max(1, cost) +
-      (kills ? Number(weights?.finish) || 0 : 0) +
-      premium,
+      finishGain +
+      premium -
+      deferredLoss,
   );
 };
 
@@ -638,7 +809,11 @@ export const attackWeight = (
  * `strength` — эффективное число карты из её правил: у «Санава» значение равно усилению чужой атаки,
  * и в открытом бою это уже известно (`cardPromise` с `open: true`). Платит за него ген `condition`.
  */
-export const defenseWeight = (card, weights, { threat = 0, strength = null } = {}) => {
+export const defenseWeight = (
+  card,
+  weights,
+  { threat = 0, strength = null, save = null, cancels = false } = {},
+) => {
   const defend = Number(weights?.defend) || 0;
   const worth = Number(weights?.cardValue) || 0;
   const printed = Math.max(0, Number(card?.value) || 0);
@@ -646,14 +821,33 @@ export const defenseWeight = (card, weights, { threat = 0, strength = null } = {
     (Number(weights?.condition) || 0) > 0 && strength != null
       ? Math.max(printed, Number(strength) || 0)
       : printed;
-  if (worth <= 0) return defend;
+  const keep = saveFactor(weights, save, threat) * cancelKeepFactor(weights, { cancels, save, threat, effective });
+  if (worth <= 0) return defend * keep;
 
-  if (threat <= 0) return defend + worth * effective;
+  if (threat <= 0) return (defend + worth * effective) * keep;
 
-  return Math.max(
-    0,
-    defend + worth * Math.min(effective, threat) - worth * Math.max(0, effective - threat),
+  return (
+    Math.max(
+      0,
+      defend + worth * Math.min(effective, threat) - worth * Math.max(0, effective - threat),
+    ) * keep
   );
+};
+
+/**
+ * Стоит ли вообще спасать того, по кому бьют. Карта защиты — это тоже карта, и тратить её на тело с
+ * 2 hp обычно глупо: помощник вернётся картой возврата, а защита ушла. Исключение — **важный** помощник
+ * (`bot/play/pool.js: assistantImportance`): у Анубиса от Амат зависит активность пелены, у Снежной
+ * королевы ворона — атака «Клёв в темноте», поэтому за них держатся. Приговорённое тело (урон уже не
+ * меньше здоровья) не спасают вовсе: карта уйдёт впустую.
+ */
+const saveFactor = (weights, save, threat) => {
+  const body = gene('defendbody', Number(weights?.defendBody) || 0);
+  if (body <= 0 || save == null || save.type !== 'assistant') return 1;
+  if (save.important === true) return 1 + body;
+
+  const doomed = Number(threat) > 0 && Number(threat) >= (Number(save.hp) || 0);
+  return Math.max(0.05, 1 - body * (doomed ? 1 : 0.7));
 };
 
 /**
@@ -689,8 +883,29 @@ export const targetWeight = (fighter, weights) => {
  * Шаг на **свою** стихию получает премию `terrain`: паспорт героя подсказывает, где ему выгодно стоять.
  * У эталонов `terrain: 0`, но шаг «в никуда» с нулевым весом всё равно не предлагается — иначе бот
  * топчется и партия не заканчивается.
+ *
+ * Сверх этого три признака поля (`.docs/bot-strategies.md` пп. 1, 2 «б», 8):
+ * - `noAttack` — **опасная дистанция**: с клетки не достаём никого, а враг оттуда достаёт. Такой шаг
+ *   оплачивает чужой ход, поэтому множитель `contactFactor` его снимает;
+ * - `foeTerrain` — клетка чужой стихии: встать туда, где срабатывают карты соперника, — контроль поля;
+ * - `foeRoute`/`foeRoom` — перекрыть кратчайший путь чужого героя к моим дешёвым бойцам и закрыть ему
+ *   выход: это те же единицы, что у `guard` (перекрытие пути к своему герою), только с той стороны.
+ * - `flee` — отход в тыл: приговорённый важный помощник (Амат, ворона) уходит, пока держит механику пака.
  */
-export const movementWeight = (weights, { kind = 'idle', affinity = false } = {}) => {
+export const movementWeight = (
+  weights,
+  {
+    kind = 'idle',
+    affinity = false,
+    guard = 0,
+    exposed = 0,
+    noAttack = false,
+    foeTerrain = false,
+    foeRoute = 0,
+    foeRoom = 0,
+    flee = 0,
+  } = {},
+) => {
   const base =
     kind === 'step'
       ? weights?.step
@@ -700,8 +915,101 @@ export const movementWeight = (weights, { kind = 'idle', affinity = false } = {}
           ? weights?.stepAway
           : weights?.stepIdle;
   const bonus = affinity ? Number(weights?.terrain) || 0 : 0;
+  // тело в проходе: клетка, после которой врагу до героя дольше, стоит премии `guard`; клетка под
+  // тремя стволами — штрафа `exposed`. Премия не перевешивает сам шаг: позиция важна, но не вместо хода.
+  // Потолок у топтания — `guardFloor`: перекрыть проход можно и стоя в стороне (шаг «в никуда» весит 0
+  // и не предлагается), иначе помощник-блокер физически не мог встать в коридор
+  const cap = Math.max(Number(base) || 0, gene('guardfloor', Number(weights?.guardFloor) || 0));
+  const cover = Math.min(
+    cap,
+    gene('guard', Number(weights?.guard) || 0) * Math.max(0, Number(guard) || 0),
+  );
+  const risk = gene('exposed', Number(weights?.exposed) || 0) * Math.max(0, Number(exposed) || 0);
+  const contact = noAttack ? contactFactor(weights) : 1;
+  const ground = foeTerrain
+    ? gene('foeterrain', Number(weights?.foeterrain) || 0) * FOE_TERRAIN
+    : 0;
+  const route = gene('foeguard', Number(weights?.foeguard) || 0) * FOE_ROUTE * share01(foeRoute);
+  const room = gene('foeroom', Number(weights?.foeroom) || 0) * FOE_ROOM * share01(foeRoom);
+  const rear = gene('flee', Number(weights?.flee) || 0) * FLEE_STEP * share01(flee);
 
-  return Math.max(0, (Number(base) || 0) + bonus);
+  return Math.max(
+    0,
+    ((Number(base) || 0) + bonus + cover - risk) * contact + ground + route + room + rear,
+  );
+};
+
+/**
+ * Вес клетки для **телепорта** — постановки без прохода («Немой приговор», перенос Анубиса на песок,
+ * «Путь на закате»). Телепорт от шага отличается не ценой пути, а его отсутствием: маршрут не тратится,
+ * поэтому клетка оценивается **сама по себе** — вышел ли из-под удара, достаёшь ли оттуда, срезало ли
+ * путь. Шаг и телепорт считаются разными функциями, иначе перенос получал цену топтания (`stepIdle: 0`)
+ * и окно закрывалось первым попавшимся вариантом. `shortcut` — сколько шагов перенос срезал.
+ */
+export const TELEPORT_SHORTCUT = 1.2;
+/** «Ничего не изменилось» в шкале телепорта: клетка равна отказу от переноса (`pick`). */
+export const TELEPORT_BASE = 1;
+/** Дотянуться до цели оттуда, куда перенос ставит, — главная причина телепорта (Дороти к дальнику). */
+export const TELEPORT_REACH = 3;
+export const TELEPORT_CLOSER = 1.2;
+export const TELEPORT_ESCAPE = 1.6;
+export const TELEPORT_HOLD = 0.5;
+export const TELEPORT_RISK = 2;
+
+export const teleportWeight = (
+  weights,
+  { kind = 'idle', affinity = false, guard = 0, exposed = 0, shortcut = 0 } = {},
+) => {
+  // Своя база, а не `movementWeight`: у шага «топтание» и «уход» весят 0 (иначе бот топчется), а у
+  // переноса 0 значил бы «отказ выгоднее любого выхода из-под удара» — окно закрывалось бы первым
+  // попавшимся вариантом. Здесь 1 — «позиция не изменилась», всё, что лучше, добавляет, что хуже, снимает
+  const reach =
+    kind === 'step'
+      ? TELEPORT_REACH
+      : kind === 'closer'
+        ? TELEPORT_CLOSER
+        : kind === 'away'
+          ? TELEPORT_ESCAPE
+          : 0;
+  const terrain = affinity ? Math.max(0, Number(weights?.terrain) || 0) * 0.2 : 0;
+  const cover =
+    gene('guard', Number(weights?.guard) || 0) * TELEPORT_HOLD * Math.max(0, Number(guard) || 0);
+  const risk =
+    gene('exposed', Number(weights?.exposed) || 0) *
+    TELEPORT_RISK *
+    Math.max(0, Number(exposed) || 0);
+  const cut =
+    gene('teleport', Number(weights?.teleport) ?? 1) *
+    Math.max(0, Number(shortcut) || 0) *
+    TELEPORT_SHORTCUT;
+
+  return Math.max(0, TELEPORT_BASE + reach + terrain + cover - risk + cut);
+};
+
+/**
+ * Вес обмена бойцов местами (`SWAP_FIGHTERS` — умение Дороти и «Тото отвлекает»). Обмен бесплатен и не
+ * трогает бюджет движения, поэтому его цена — прирост позиции **двух** бойцов: `delta` считается той же
+ * шкалой, что и вес шага (`movementWeight`), и приходит от `bot/play/decide.js: swapDelta`.
+ */
+export const swapWeight = (weights, { delta = 0 } = {}) => {
+  const base = Number(weights?.pick) || 0;
+  const gain = gene('swap', Number(weights?.swap) ?? 1) * Number(delta);
+
+  return Math.max(0.01, base + gain);
+};
+
+/** Во сколько единиц веса обходится шаг «плохой» клетки при чужом переносе (`banishWeight: value`). */
+export const BANISH_STEP = 1.5;
+
+/**
+ * Вес клетки для **чужого** переноса: врага выгодно выселить под свои удары и подальше от своих
+ * (`banishWeight`), а не жребием, как было (`weights.pick` на все клетки).
+ */
+export const banishWeight = (weights, { value = 0 } = {}) => {
+  const base = Number(weights?.pick) || 0;
+  const gain = gene('banish', Number(weights?.banish) ?? 1);
+
+  return Math.max(0.01, base + gain * BANISH_STEP * Number(value));
 };
 
 /**
@@ -715,6 +1023,36 @@ export const holdWeight = (weights, { useful = false, good = false, affinity = f
   return Math.max(0, (Number(base) || 0) + bonus);
 };
 
+/**
+ * Вес **своего** бойца, когда выбирают, кто будет бить. Раньше все свои были равны (`pick` = 1), то есть
+ * бот одинаково охотно посылал в бой полного героя и помощника с одним здоровьем — решал только
+ * роллаут. Здесь два правила, оба про размен:
+ *
+ * - **здоровье**: ответный урон достаётся тому, кто ударил, поэтому полный боец охотнее;
+ * - **важность** (`bot/play/pool.js: assistantImportance`): важного помощника (Амат, ворона) в размен не
+ *   посылают — на нём держится механика пака.
+ *
+ * Усиление ограничено: это перевес между своими, а не замена решения «бить или нет». Ноль гена
+ * (`BOT_GENE_ATTACKERS=0`) возвращает прежнее равенство — так правка меряется.
+ */
+export const ATTACKER_HEALTH = 0.4;
+export const ATTACKER_IMPORTANT = 0.5;
+
+export const attackerWeight = (weights, fighter, { importance = 0 } = {}) => {
+  const base = Number(weights?.pick) || 0;
+  const power = gene('attackers', 1);
+  if (!(power > 0) || fighter == null) return base;
+
+  const hp = Math.max(0, Number(fighter.currentHp) || 0);
+  const max = Math.max(hp, Number(fighter.startHp) || hp) || 1;
+  const health = hp / max;
+  // важность считается только у помощников: у героя она и так единица по смыслу
+  const keyed =
+    String(fighter.type) === 'hero' ? 0 : Math.max(0, Math.min(1, Number(importance) || 0));
+
+  return base * (1 + ATTACKER_HEALTH * power * health) * (1 - ATTACKER_IMPORTANT * power * keyed);
+};
+
 /** До какого запаса колоды добор считается рискованным: пустая колода — это 2 урона за карту. */
 export const FATIGUE_MARGIN = 6;
 
@@ -723,11 +1061,219 @@ export const FATIGUE_MARGIN = 6;
  * поэтому каждый добор приближает истощение: при запасе меньше `FATIGUE_MARGIN` добор дешевеет
  * (`fatigue` — насколько сильно). Исключение — почти пустая рука: без карт боец не бьёт и не защищается,
  * поэтому там добор нужен любой ценой, и вес `draw` остаётся как задан политикой.
+ *
+ * **Сушка руки** (`choke`): добор при полной руке — это карта из колоды сразу в сброс, потому что в конце
+ * хода рука сбрасывается до лимита. Такая карта сожжена, а не сыграна, поэтому вес добора падает на долю,
+ * которая не влезет. Ноль гена — прежнее поведение.
  */
-export const drawWeight = (weights, { fuel = FATIGUE_MARGIN, hand = 3 } = {}) => {
+export const drawWeight = (
+  weights,
+  { fuel = FATIGUE_MARGIN, hand = 3, handLimit = 7, amount = 1 } = {},
+) => {
   const draw = Number(weights?.draw) || 0;
   const fatigue = Number(weights?.fatigue) || 0;
-  if (fatigue <= 0 || hand <= 1 || fuel >= FATIGUE_MARGIN) return draw;
+  const choke = chokeFactor(weights, { hand, handLimit, amount });
+  if (fatigue <= 0 || hand <= 1 || fuel >= FATIGUE_MARGIN) return draw * choke;
 
-  return draw * Math.max(0, fuel / FATIGUE_MARGIN) ** fatigue;
+  return draw * Math.max(0, fuel / FATIGUE_MARGIN) ** fatigue * choke;
 };
+
+/**
+ * Множитель «рука и так полная»: сколько добра теряется в конце хода, столько и снимается с веса.
+ * `hand` и `handLimit` — свои; лимит берётся у игрока, а не из правил, потому что умение его понижает.
+ *
+ * Не ноль: маневр — это ещё и **перемещение**, а не только добор, и запирать бойца «на месте, пока рука
+ * полная» нельзя — бывает, что уйти дороже, чем сжечь карту. Это вычет (как `keepPrice`), а не вето.
+ */
+const CHOKE_FLOOR = 0.3;
+
+const chokeFactor = (weights, { hand = 3, handLimit = 7, amount = 1 } = {}) => {
+  const choke = Number(weights?.choke) || 0;
+  if (choke <= 0 || amount <= 0) return 1;
+  const room = Math.max(0, Number(handLimit) - Number(hand));
+
+  return Math.max(CHOKE_FLOOR, 1 - choke * Math.max(0, 1 - room / amount));
+};
+
+/** Запас колоды, с которого израсходованная карта начинает чего-то стоить: топливо кончается раньше нуля. */
+export const KEEP_FUEL = 10;
+
+/**
+ * Цена одной израсходованной карты в общей шкале веса. Считается по делу: карта ушла из руки — рука
+ * доберётся до лимита, а пустая колода это **2 урона за карту** истощения. Одна карта в бою весит
+ * несколько единиц, поэтому и цена карты мерится не десятыми.
+ */
+export const KEEP_CARD = 4;
+
+/**
+ * Цена карты **как запаса** (запрос владельца, m02166). Разыгранная карта уходит в сброс, а рука всё равно
+ * доберётся до лимита, поэтому каждая трата приближает конец колоды — а пустая колода это истощение, 2 урона
+ * за карту. Ошибка прежних версий — оценивать только пользу эффекта: карта стоит ещё и как топливо будущих
+ * боёв, и когда колода тонкая или соперник по колоде впереди, слабую пользу гасим. Возвращает **вычитаемое**
+ * из веса, поэтому решает не «играть или нет», а «стоит ли эта польза такой карты».
+ *
+ * Ноль у гена — прежнее поведение: `$env:BOT_GENE_KEEP='0'`.
+ */
+export const keepPrice = (weights, { fuel = KEEP_FUEL, rivalFuel = null } = {}) => {
+  const keep = Number(weights?.keep) || 0;
+  if (keep <= 0) return 0;
+  const mine = Number(fuel) || 0;
+  const deficit = Math.max(0, KEEP_FUEL - mine) / KEEP_FUEL;
+  // соперник по колоде впереди — его часы идут медленнее: тянуть нам нельзя, но и сбрасывать нечего
+  const behind =
+    rivalFuel == null ? 0 : Math.max(0, (Number(rivalFuel) || 0) - mine) / (2 * KEEP_FUEL);
+
+  return keep * KEEP_CARD * (deficit + behind);
+};
+
+/** Запас защит (рука + колода), ниже которого гибрид в атаку — это трата последнего щита (`defenseStock`). */
+export const KEEP_DEFENSE = 2;
+
+/** Насколько гибрид в атаку дешевеет при пустом запасе защит и полной чужой руке; пол — `STOCK_FLOOR`. */
+const STOCK_ATTACK = 0.5;
+const STOCK_FLOOR = 0.25;
+
+/** Насколько своя механика карты (отмена, добор, лечение) поднимает её цену в окне «карту тратят». */
+const STOCK_OWN = 0.5;
+
+/**
+ * Порог «важного» помощника: на нём держится механика пака (Амат, ворона, Тото) — таким в размен не
+ * ходят, и приманкой он быть не может. Тот же порог читает `decide.js` (`assistantImportance`).
+ */
+export const BODY_KEY = 0.5;
+
+/** Перевес по материалу (в hp), за которым цена атаки меняется сразу, а не плавно. */
+const LEAD_HP = 5;
+/** Насколько дороже атака при перевесе (`×1,28`) и дешевле при таком же отставании (`×0,85`). */
+const LEAD_ATTACK = 0.28;
+const LEAD_BEHIND = 0.15;
+
+/**
+ * **Порог перевеса по здоровью** (`.docs/bot-strategies.md` п. 9). `wound` считает перевес плавно, а на
+ * 4 hp разницы даёт всего ~10% скидки — при явном перевесе партию надо упрощать, а не отсиживаться.
+ * Поэтому за порогом `LEAD_HP` цена атаки падает сразу на `LEAD_ATTACK`, а при таком же отставании —
+ * растёт на `LEAD_BEHIND`. Материал приходит симметричным: герой 1, помощник 0.5 (`decide.js`).
+ *
+ * `BOT_GENE_LEAD=0` возвращает прежнее поведение — так правка меряется.
+ */
+export const leadFactor = (weights, { mine = 0, theirs = 0 } = {}) => {
+  const power = gene('lead', 1);
+  if (!(power > 0)) return 1;
+  const lead = (Number(mine) || 0) - (Number(theirs) || 0);
+  if (lead >= LEAD_HP) return 1 + LEAD_ATTACK * power;
+  if (lead <= -LEAD_HP) return Math.max(0.5, 1 - LEAD_BEHIND * power);
+
+  return 1;
+};
+
+/** Карта, которой бьют **приманкой**: не убить, а выбить защиту из чужой руки. */
+const BAIT_CARD = 2;
+
+/** Насколько приманка снимает риск ответного удара: ответ по дешёвому телу — не потеря героя. */
+const BAIT_RISK = 0.6;
+
+/**
+ * **Приманка помощником** (`.docs/bot-strategies.md` п. 2). Помощник бьёт **слабой** картой, чтобы
+ * соперник потратил ответ, — и удар героя потом встречает уже пустая рука. Риск ответного удара для
+ * такого удара считается иначе: тело дешёвое, а рука соперника полна, значит ответ всё равно потратят на
+ * него. Возвращает долю, на которую нужно «простить» `tradeRisk` (0 — приманки нет).
+ *
+ * Условия: бьёт помощник, он не важный (`BODY_KEY`), карта не сильнее `BAIT_CARD`, у соперника 4+ карт.
+ * `BOT_GENE_BAIT=0` возвращает прежнее поведение — так правка меряется.
+ */
+export const baitFactor = (
+  weights,
+  { attackerType = null, attackerImportant = 0, card = null, rivalCards = 0 } = {},
+) => {
+  const power = gene('bait', 1);
+  if (!(power > 0)) return 0;
+  if (String(attackerType) !== 'assistant') return 0;
+  if ((Number(attackerImportant) || 0) >= BODY_KEY) return 0;
+  if (Math.max(0, Number(card?.value) || 0) > BAIT_CARD) return 0;
+  if ((Number(rivalCards) || 0) < 4) return 0;
+
+  return Math.min(1, power) * BAIT_RISK;
+};
+
+/**
+ * **Запас защит** (`defenseStock`, `.docs/bot-strategies.md` п. 3). Гибрид — это и удар, и защита: бить
+ * им, когда в руке и колоде осталась одна защитная карта или ни одной, значит отдать последний щит
+ * в обмен, на который ответят картой. Множитель к весу атаки гибридом; условия включения — защит
+ * меньше `KEEP_DEFENSE` **и** у соперника в руке 3+ карты (иначе ответа не будет и беречь нечего).
+ *
+ * `BOT_GENE_STOCK=0` возвращает прежнее поведение — так правка меряется.
+ */
+export const stockFactor = (weights, { stock = null, hybrid = false, rivalCards = 0 } = {}) => {
+  const power = gene('stock', 1);
+  if (!(power > 0) || !hybrid) return 1;
+  const left = Number(stock);
+  if (!Number.isFinite(left) || left >= KEEP_DEFENSE) return 1;
+  if ((Number(rivalCards) || 0) < 3) return 1;
+
+  return Math.max(STOCK_FLOOR, 1 - STOCK_ATTACK * power);
+};
+
+/** Доля признака в 0…1: премии шага приходят нормализованными, но округления их не гарантируют. */
+const share01 = value => Math.max(0, Math.min(1, Number(value) || 0));
+
+/**
+ * **Опасная дистанция** (`.docs/bot-strategies.md` п. 1): насколько дешевеет шаг в контакт, из которого не
+ * бьёшь. Это тот самый размен темпа, на котором опытный игрок и проигрывает: подошёл, потратил действие,
+ * не ударил — и получил чужой ход в упор. Порог не ноль: бывают позиции, где подойти выгодно (перевес по
+ * колоде, дешёвая приманка), и выключать шаги целиком нельзя — партия встанет.
+ */
+const CONTACT_PENALTY = 0.55;
+
+export const contactFactor = weights => {
+  const power = gene('contact', Number(weights?.contact) || 0);
+  if (!(power > 0)) return 1;
+
+  return Math.max(0.2, 1 - CONTACT_PENALTY * Math.min(1, power));
+};
+
+/**
+ * **Отмены по остатку колоды** (`.docs/bot-strategies.md` п. 5, `counting.js: cancelRiskOf`): обещанная
+ * картой польза гасится вероятностью, что у соперника в руке лежит отмена. Карта-отмена живёт в чужой
+ * колоде до боя, поэтому «Гробницу» с большим обещанием больше не бьют в полную руку вслепую.
+ */
+const CANCEL_PREMIUM = 0.8;
+
+const cancelFactor = (weights, risk) => {
+  const power = gene('cancel', Number(weights?.cancel) || 0);
+  const chance = Math.max(0, Math.min(1, Number(risk) || 0));
+  if (!(power > 0) || chance <= 0) return 1;
+
+  return Math.max(0.2, 1 - CANCEL_PREMIUM * power * chance);
+};
+
+/** Насколько своя отмена дешевеет, когда ею закрывают удар без свойств и без риска для бойца. */
+const CANCEL_DEFENSE = 0.45;
+
+const cancelKeepFactor = (weights, { cancels = false, save = null, threat = 0, effective = 0 } = {}) => {
+  const power = gene('cancel', Number(weights?.cancel) || 0);
+  if (!(power > 0) || cancels !== true) return 1;
+  const hp = Number(save?.hp) || 0;
+  if (hp <= 0 || Number(threat) <= 0) return 1;
+  // карта спасает: урон после защиты сравним с остатком здоровья — тут отмена уместна
+  const damage = Math.max(0, Number(threat) - Number(effective));
+  if (damage >= hp - 1) return 1;
+
+  return Math.max(0.2, 1 - CANCEL_DEFENSE * power);
+};
+
+/** Премия за шаг на **чужую** стихию: там срабатывают карты соперника, и стоять на них ему не дают. */
+const FOE_TERRAIN = 2.4;
+/** Премия за перекрытие кратчайшего пути чужого героя к моему дешёвому бойцу (в единицах веса шага). */
+const FOE_ROUTE = 2.6;
+/** Премия за закрытый выход чужого героя: шаг уменьшает число его свободных клеток. */
+const FOE_ROOM = 2.2;
+/** Премия за шаг в тыл приговорённому важному помощнику (за клетку отрыва, до трёх). */
+const FLEE_STEP = 2;
+
+/**
+ * Обмен бойцов местами (`SWAP_FIGHTERS`): **герой дороже помощника**. Позиция героя решает партию, а тело
+ * помощника — расход, поэтому прирост позиции считается с разным весом (`decide.js: swapDelta`).
+ * Числа — из разбора Дороти (`.docs/bot-strategies.md`, «Асимметрия размена»): ×2,5 и ×0,5.
+ */
+export const SWAP_HERO = 2.5;
+export const SWAP_BODY = 0.5;

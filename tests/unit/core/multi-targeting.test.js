@@ -5,7 +5,7 @@ import { runAction, runFact, runUi } from '#shared/publicApi.js';
 import { card, createState, fighter, player, PHASES } from '../../fixtures/state.js';
 
 /**
- * Мультивыбор цели («выберите 2 из 3», `docs/reference-heroes.md` §5): окно просит несколько целей,
+ * Мультивыбор цели («выберите 2 из 3», `.docs/reference-heroes.md` §5): окно просит несколько целей,
  * клик добавляет цель к набору, набор применяет общая кнопка. Окно на одну цель при этом не меняется —
  * его отметка по-прежнему скаляр и закрывает окно сама.
  *

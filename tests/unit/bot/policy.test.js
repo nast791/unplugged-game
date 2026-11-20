@@ -3,12 +3,16 @@ import { runAction, runUi } from '#shared/publicApi.js';
 import { actionsFor } from '../../../bot/play/duel.js';
 import {
   attackWeight,
+  attackerWeight,
+  baitFactor,
   cardCostWeight,
   defenseWeight,
   drawWeight,
   holdWeight,
+  leadFactor,
   movementWeight,
   optionWeight,
+  stockFactor,
   policies,
   policyNames,
   targetWeight,
@@ -590,5 +594,462 @@ describe('окно на несколько целей: ядро решений �
     expect(hpOf(state, 'beta')).toBe(12);
     expect(hpOf(state, 'gamma')).toBe(4);
     expect(hpOf(state, 'delta')).toBe(5);
+  });
+});
+
+/**
+ * Экономика руки в **живой** политике (`trade` — она перечисляет варианты и в браузере, и в замерах).
+ *
+ * Два механизма:
+ * - **сушка руки**: добор при полной руке — карта из колоды сразу в сброс (в конце хода рука
+ *   сбрасывается до лимита), поэтому вес добора падает ровно на ту долю, что не влезет;
+ * - **бомба истощения**: у соперника в колоде последняя карта и его запас тоньше нашего — его маневр
+ *   станет добором на пустой колоде (2 урона всем его бойцам), поэтому бой дешевеет, а отход дорожает.
+ */
+describe('рука: сушка перебора и бомба истощения', () => {
+  it('позиционные гены у живой политики не нулевые: кайт, удержание, стихия и усталость включены', () => {
+    const trade = weightsFor('trade', { hand: 3, canDraw: true, fuel: 10, rivalFuel: 10 });
+    for (const gene of ['stepAway', 'hold', 'terrain', 'fatigue'])
+      expect(trade[gene], gene).toBeGreaterThan(0);
+    // шаг «из-под удара» герою предлагается: вес вида шага берётся у политики, а не у базы
+    expect(movementWeight(trade, { kind: 'away' })).toBeGreaterThan(0);
+  });
+
+  it('сушка руки: при полной руке вес добора падает, но маневр остаётся возможным', () => {
+    const trade = weightsFor('trade', { hand: 7, canDraw: true, fuel: 20, rivalFuel: 20 });
+    const full = drawWeight(trade, { hand: 7, handLimit: 7, fuel: 20 });
+
+    // маневр — это ещё и перемещение, поэтому не ноль: вычет, а не запрет
+    expect(full).toBeGreaterThan(0);
+    expect(full).toBeLessThan(trade.draw);
+    // один слот есть — вес не тронут: добранная карта влезет
+    expect(drawWeight(trade, { hand: 6, handLimit: 7, fuel: 20 })).toBe(trade.draw);
+    expect(drawWeight(trade, { hand: 3, handLimit: 7, fuel: 20 })).toBe(trade.draw);
+    // лимит поставлен умением («Вечная мерзлота» даёт 5 врагам королевы): полная рука при пяти
+    expect(drawWeight(trade, { hand: 5, handLimit: 5, fuel: 20 })).toBe(full);
+    // пустая рука важнее перебора: без карт боец не бьёт и не защищается, а место в руке есть
+    expect(drawWeight(trade, { hand: 1, handLimit: 7, fuel: 20 })).toBe(trade.draw);
+  });
+
+  it('бомба истощения: тонкая чужая колода снимает тягу к размену и поднимает отход', () => {
+    const calm = weightsFor('trade', { hand: 3, canDraw: true, fuel: 12, rivalFuel: 8 });
+    const bomb = weightsFor('trade', { hand: 3, canDraw: true, fuel: 12, rivalFuel: 1 });
+
+    expect(bomb.attack).toBeLessThan(calm.attack);
+    expect(bomb.stepAway).toBeGreaterThan(calm.stepAway);
+    // бой не выключается целиком: добивать всё равно придётся
+    expect(bomb.attack).toBeGreaterThan(0);
+    // бомбы нет, когда колода соперника не тоньше нашей: размен колодами проиграем сами
+    const even = weightsFor('trade', { hand: 3, canDraw: true, fuel: 1, rivalFuel: 1 });
+    expect(even.attack).toBeGreaterThan(0);
+    expect(even.stepAway).toBeLessThan(bomb.stepAway);
+    // и когда у него колода ещё не на последней карте
+    const early = weightsFor('trade', { hand: 3, canDraw: true, fuel: 12, rivalFuel: 4 });
+    expect(early.attack).toBeGreaterThan(bomb.attack);
+  });
+});
+
+/**
+ * Выбор **своего** атакующего: раньше все свои были равны (`pick`), поэтому в бой одинаково охотно шёл и
+ * полный герой, и помощник с одним здоровьем — решал только роллаут. Теперь полного посылают охотнее, а
+ * важного помощника (на нём держится механика пака) в размен не отдают.
+ */
+describe('кто бьёт: здоровье и важность помощника', () => {
+  const trade = () => weightsFor('trade', { hand: 3, canDraw: true, fuel: 12, rivalFuel: 8 });
+  const fighter = patch => ({
+    type: 'assistant',
+    currentHp: 4,
+    startHp: 4,
+    ...patch,
+  });
+
+  it('полный боец охотнее раненого, герой — без поправки на важность', () => {
+    const weights = trade();
+    const full = attackerWeight(weights, fighter({ currentHp: 4, startHp: 4 }));
+    const half = attackerWeight(weights, fighter({ currentHp: 2, startHp: 4 }));
+    const hero = attackerWeight(weights, fighter({ type: 'hero', currentHp: 2, startHp: 4 }));
+
+    expect(full).toBeGreaterThan(half);
+    expect(full).toBeGreaterThan(weights.pick);
+    // у героя важность не учитывается, поэтому он весит столько же, сколько помощник тех же hp
+    expect(hero).toBe(half);
+  });
+
+  it('важного помощника в размен не отдают', () => {
+    const weights = trade();
+    const body = attackerWeight(weights, fighter({}), { importance: 0 });
+    const key = attackerWeight(weights, fighter({}), { importance: 1 });
+
+    expect(key).toBeLessThan(body);
+  });
+
+  it('без бойца и на нулевом здоровье вес не ломается', () => {
+    const weights = trade();
+
+    // нет бойца — базовый вес: окно не должно оставаться без вариантов
+    expect(attackerWeight(weights, null)).toBe(weights.pick);
+    // приговорённый (0 hp) всё ещё получает вес: это перевес между своими, а не запрет бить
+    expect(attackerWeight(weights, fighter({ currentHp: 0, startHp: 4 }))).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Запас защит (`defenseStock`, `.docs/bot-strategies.md` п. 3). Гибрид — и удар, и защита: бить им,
+ * когда защитных карт в руке и колоде почти не осталось, значит отдать последний щит в обмен, на
+ * который ответят картой. Ген `stock`: ноль возвращает прежнее поведение.
+ */
+describe('запас защит: последний гибрид не уходит в атаку', () => {
+  const trade = () => weightsFor('trade', { hand: 3, canDraw: true, fuel: 12, rivalFuel: 8 });
+  const hybridCard = { type: 'hybrid', value: 4, bonus: 2 };
+  const attackCard = { type: 'attack', value: 4, bonus: 2 };
+  const fight = {
+    average: 3,
+    weakness: 0,
+    hp: 12,
+    threat: 4,
+    fuel: 12,
+    rivalFuel: 8,
+    rivalCards: 4,
+  };
+
+  it('гибрид дешевеет только при пустом запасе и полной чужой руке', () => {
+    const weights = trade();
+
+    expect(stockFactor(weights, { stock: 3, hybrid: true, rivalCards: 4 })).toBe(1);
+    expect(stockFactor(weights, { stock: 1, hybrid: true, rivalCards: 4 })).toBeLessThan(1);
+    // не гибрид — не штрафуется: обычную атаку защищать было нельзя
+    expect(stockFactor(weights, { stock: 0, hybrid: false, rivalCards: 4 })).toBe(1);
+    // ответа не будет (рука соперника коротка) — беречь щит незачем
+    expect(stockFactor(weights, { stock: 0, hybrid: true, rivalCards: 2 })).toBe(1);
+  });
+
+  it('вес атаки гибридом падает, вес атаки обычной картой — нет', () => {
+    const weights = trade();
+
+    expect(attackWeight(hybridCard, weights, { ...fight, stock: 0 })).toBeLessThan(
+      attackWeight(hybridCard, weights, { ...fight, stock: 3 }),
+    );
+    expect(attackWeight(attackCard, weights, { ...fight, stock: 0 })).toBe(
+      attackWeight(attackCard, weights, { ...fight, stock: 3 }),
+    );
+  });
+
+  it('своя механика карты поднимает её цену в окне траты', () => {
+    const weights = trade();
+
+    // «отмену» и «добор» на усиление шага почти не сбрасывают: своя польза вычитается из охоты тратить
+    expect(cardCostWeight({ type: 'hybrid', bonus: 1 }, weights, { own: 3 })).toBeLessThan(
+      cardCostWeight({ type: 'hybrid', bonus: 1 }, weights),
+    );
+    // ниже единицы вес не падает: сжечь карту всё равно можно
+    expect(cardCostWeight({ type: 'hybrid', bonus: 1 }, weights, { own: 100 })).toBe(1);
+  });
+});
+
+/**
+ * Приманка помощником (`.docs/bot-strategies.md` п. 2): слабый удар дешёвого помощника по полной чужой
+ * руке выбивает ответ, поэтому риск ответного удара за него считается иначе. Ген `bait`.
+ */
+describe('приманка: слабая карта помощника по полной чужой руке', () => {
+  // веса заданы явно: проверяется множитель риска, а не конкретная политика
+  const weights = { attack: 10, cardValue: 1, tradeRisk: 0.5, condition: 0 };
+  const weak = { type: 'attack', value: 2, bonus: 1 };
+
+  it('условия приманки: помощник, слабая карта, 4+ карты у соперника', () => {
+    const helper = { attackerType: 'assistant', card: weak, rivalCards: 5 };
+
+    expect(baitFactor(weights, helper)).toBeGreaterThan(0);
+    // важный помощник в приманку не идёт: на нём держится механика пака
+    expect(baitFactor(weights, { ...helper, attackerImportant: 0.8 })).toBe(0);
+    // герой — не приманка
+    expect(baitFactor(weights, { ...helper, attackerType: 'hero' })).toBe(0);
+    // сильная карта нужна для удара, а не для выбивания ответа
+    expect(baitFactor(weights, { ...helper, card: { type: 'attack', value: 5 } })).toBe(0);
+    // короткая чужая рука: ответа не будет, беречь нечего
+    expect(baitFactor(weights, { ...helper, rivalCards: 2 })).toBe(0);
+  });
+
+  it('вес удара помощника выше, чем героя, при тех же условиях', () => {
+    const fight = { average: 3, hp: 1, threat: 4, rivalCards: 5, stock: 5 };
+
+    expect(attackWeight(weak, weights, { ...fight, attackerType: 'assistant' })).toBeGreaterThan(
+      attackWeight(weak, weights, { ...fight, attackerType: 'hero', attackerImportant: 1 }),
+    );
+  });
+});
+
+/**
+ * Порог перевеса по здоровью (`.docs/bot-strategies.md` п. 9): при явном перевесе партию упрощают —
+ * атака дорожает, при таком же отставании дешевеет. Ген `lead`.
+ */
+describe('порог перевеса по здоровью', () => {
+  const weights = { attack: 10, cardValue: 1, tradeWound: 0.5, condition: 0 };
+  const card = { type: 'attack', value: 4, bonus: 1 };
+  const fight = { average: 3, hp: 12, threat: 3 };
+
+  it('порог в 5 hp: выше — множитель больше единицы, ниже — ровно единица', () => {
+    expect(leadFactor(weights, { mine: 15, theirs: 10 })).toBeGreaterThan(1);
+    expect(leadFactor(weights, { mine: 14, theirs: 10 })).toBe(1);
+    expect(leadFactor(weights, { mine: 10, theirs: 15 })).toBeLessThan(1);
+    expect(leadFactor(weights, { mine: 10, theirs: 10 })).toBe(1);
+  });
+
+  it('при перевесе удар весит больше, чем при равенстве', () => {
+    const ahead = attackWeight(card, weights, { ...fight, material: { mine: 18, theirs: 10 } });
+    const even = attackWeight(card, weights, { ...fight, material: { mine: 10, theirs: 10 } });
+    const behind = attackWeight(card, weights, { ...fight, material: { mine: 10, theirs: 18 } });
+
+    expect(ahead).toBeGreaterThan(even);
+    expect(behind).toBeLessThan(even);
+  });
+});
+
+/**
+ * Пункты 5–8 очереди (`.docs/bot-strategies.md`) и хвост «б»: позиция в **симуляции** поиска, опасная
+ * дистанция, отмены по остатку колоды, чужая стихия, перекрытие пути чужого героя и теснота вокруг него.
+ */
+describe('позиция в роллауте: кайт и бомба истощения (п. 5)', () => {
+  const situation = { fuel: 10, rivalFuel: 14, hand: 4 };
+
+  it('доигрывание видит уход из-под удара, удержание позиции, свою землю и цену добора', () => {
+    const rollout = weightsFor('aggressive', situation);
+    const live = weightsFor('trade', situation);
+
+    expect(rollout.stepAway).toBeGreaterThan(0);
+    expect(rollout.hold).toBeGreaterThan(0);
+    expect(rollout.terrain).toBeGreaterThan(0);
+    expect(rollout.fatigue).toBeGreaterThan(0);
+    // агрессия роллаута осталась: бой он всё равно ценит выше живой политики
+    expect(rollout.attack).toBeGreaterThan(live.attack);
+    // а кайт в симуляции не дороже живого: доигрывание всё-таки агрессивнее
+    expect(rollout.stepAway).toBeLessThanOrEqual(live.stepAway);
+    // обещание карт в роллаут не входит: там своя цена и своя скорость
+    expect(rollout.condition).toBeUndefined();
+  });
+
+  it('вес шага в симуляции: уход предлагается, топтание — нет', () => {
+    const rollout = weightsFor('aggressive', situation);
+
+    expect(movementWeight(rollout, { kind: 'away' })).toBeGreaterThan(0);
+    expect(movementWeight(rollout, { kind: 'idle' })).toBe(0);
+  });
+});
+
+describe('опасная дистанция без атаки (п. 7)', () => {
+  const weights = weightsFor('trade', {});
+
+  it('шаг в контакт, из которого не бьёшь, дешевле обычного сближения', () => {
+    const plain = movementWeight(weights, { kind: 'closer' });
+    const contact = movementWeight(weights, { kind: 'closer', noAttack: true });
+
+    expect(contact).toBeLessThan(plain);
+    // не вето: бывает, что подойти выгодно (перевес по колоде, дешёвая приманка)
+    expect(contact).toBeGreaterThan(0);
+  });
+
+  it('опасная дистанция снимает и вес «шага в проход», но не обнуляет шаг', () => {
+    const cover = movementWeight(weights, { kind: 'closer', guard: 1 });
+    const risky = movementWeight(weights, { kind: 'closer', guard: 1, noAttack: true });
+
+    expect(risky).toBeLessThan(cover);
+    expect(risky).toBeGreaterThan(0);
+  });
+});
+
+describe('чужая земля, путь и теснота (хвост «б», п. 8)', () => {
+  const weights = weightsFor('trade', {});
+
+  it('клетка чужой стихии, путь чужого героя и закрытый выход дают премию', () => {
+    const plain = movementWeight(weights, { kind: 'closer' });
+
+    expect(movementWeight(weights, { kind: 'closer', foeTerrain: true })).toBeGreaterThan(plain);
+    expect(movementWeight(weights, { kind: 'closer', foeRoute: 1 })).toBeGreaterThan(plain);
+    expect(movementWeight(weights, { kind: 'closer', foeRoom: 1 })).toBeGreaterThan(plain);
+    expect(movementWeight(weights, { kind: 'closer', flee: 1 })).toBeGreaterThan(plain);
+  });
+
+  it('премия растёт с признаком, а не срабатывает как флаг', () => {
+    expect(movementWeight(weights, { kind: 'closer', foeRoom: 1 })).toBeGreaterThan(
+      movementWeight(weights, { kind: 'closer', foeRoom: 0.2 }),
+    );
+    // премия за путь не перебивает сам шаг: вес клетки остаётся в том же порядке
+    expect(movementWeight(weights, { kind: 'closer', foeRoute: 1 })).toBeGreaterThan(
+      movementWeight(weights, { kind: 'closer' }),
+    );
+  });
+});
+
+describe('отмены по остатку чужой колоды (п. 6)', () => {
+  const weights = { ...weightsFor('trade', {}), tradeCards: 0, tradeRisk: 0, tradeWound: 0 };
+  const card = { type: 'attack', value: 4, bonus: 1 };
+  const fight = { average: 4, hp: 12, promise: 4, rivalCards: 4 };
+
+  it('обещанная польза гасится вероятностью отмены', () => {
+    const safe = attackWeight(card, weights, { ...fight, cancelRisk: 0 });
+    const risky = attackWeight(card, weights, { ...fight, cancelRisk: 0.6 });
+    const hopeless = attackWeight(card, weights, { ...fight, cancelRisk: 1 });
+
+    expect(risky).toBeLessThan(safe);
+    expect(hopeless).toBeLessThan(risky);
+    // обещание не исчезает совсем: карта всё равно играется за своё число
+    expect(hopeless).toBeGreaterThan(0);
+  });
+
+  it('без гена обещания нет — отмены не на что гасить', () => {
+    const off = { ...weights, condition: 0 };
+
+    expect(attackWeight(card, off, { ...fight, cancelRisk: 1 })).toBe(
+      attackWeight(card, off, { ...fight, cancelRisk: 0 }),
+    );
+  });
+
+  it('свою отмену не тратят на удар без свойств и без риска для бойца', () => {
+    const cancel = { value: 3, bonus: 1 };
+    const plainCard = { value: 3, bonus: 1 };
+    const safe = { threat: 2, save: { type: 'hero', hp: 14, important: true } };
+
+    expect(defenseWeight(cancel, weights, { ...safe, cancels: true })).toBeLessThan(
+      defenseWeight(plainCard, weights, safe),
+    );
+    // карта спасает бойца — тут отмена уместна, штрафа нет
+    const fatal = { threat: 10, save: { type: 'hero', hp: 6, important: true } };
+    expect(defenseWeight(cancel, weights, { ...fatal, cancels: true })).toBe(
+      defenseWeight(plainCard, weights, fatal),
+    );
+  });
+
+  it('обещание, которое наступит позже в этом ходу, стоит в весе атаки', () => {
+    const now = attackWeight(card, weights, fight);
+    const early = attackWeight(card, weights, { ...fight, deferred: 3 });
+
+    expect(early).toBeLessThan(now);
+    expect(early).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Правило «последнего духа» (`.docs/bot-strategies.md`, Ифрит): умение платит жизнью духа за лишнее
+ * действие, но пока жив хоть один дух, работают ступени пака («Пепельная стая», «Плата пеплом» на 6).
+ * Клик по последнему духу поэтому дешевле, чем по одному из трёх.
+ */
+describe('жертва последнего духа', () => {
+  const lineMap = {
+    id: 'line',
+    name: 'Line',
+    nodes: [1, 2, 3, 4, 5].map((id, index, list) => ({
+      id,
+      terrain: 'ice',
+      x: index,
+      y: 0,
+      neighbors: [list[index - 1], list[index + 1]].filter(neighbour => neighbour != null),
+    })),
+  };
+  const zone = list => ({ visibility: [], cards: list });
+  const stateOf = spirits => {
+    const state = createState({
+      map: lineMap,
+      turn: { index: 1, playerId: '0', actionsLeft: 2 },
+      _enteredHooks: { gameStart: true, turn: true },
+      players: [
+        {
+          id: '0',
+          name: 'Ифрит',
+          order: 1,
+          heroId: 'ifrit',
+          deck: zone([]),
+          hand: zone([]),
+          discard: zone([]),
+          skill: {
+            id: 'ifrit_skill',
+            rules: [
+              {
+                moment: 'turnStart',
+                when: [
+                  { fact: 'FIGHTERS', params: { side: 'self', group: 'ash', min: 1 }, var: 'spirits' },
+                ],
+                then: [
+                  {
+                    action: 'SET_TARGETING',
+                    op: 'open',
+                    candidates: '$spirits',
+                    count: 1,
+                    required: false,
+                  },
+                ],
+              },
+              {
+                moment: 'picked',
+                when: [{ fact: 'PICKED', var: 'picked' }],
+                then: [
+                  { action: 'SET_HEALTH', fighterIds: '$picked', delta: -1 },
+                  { action: 'SET_ACTIONS', delta: 1 },
+                ],
+              },
+            ],
+          },
+          fighters: [
+            fighter({ id: 'ifrit', type: 'hero', currentPosition: 1, currentHp: 14 }),
+            ...Array.from({ length: spirits }, (_, index) =>
+              fighter({
+                id: `ash${index}`,
+                type: 'assistant',
+                group: 'ash',
+                currentPosition: 2 + index,
+                currentHp: 1,
+              }),
+            ),
+          ],
+        },
+        {
+          id: '1',
+          name: 'Соперник',
+          order: 2,
+          heroId: 'anubis',
+          deck: zone([]),
+          hand: zone([]),
+          discard: zone([]),
+          fighters: [fighter({ id: 'rival', type: 'hero', currentPosition: 5, currentHp: 14 })],
+        },
+      ],
+    });
+    const me = player(state, '0');
+    state.targeting = {
+      playerId: '0',
+      source: 'ifrit_skill',
+      kind: 'fighters',
+      required: false,
+      count: 1,
+      picked: [],
+      candidates: me.fighters
+        .filter(fighter => fighter.type === 'assistant')
+        .map(fighter => ({ fighterId: fighter.id })),
+    };
+    return state;
+  };
+  const clickWeight = (state, fighterId) =>
+    actionsFor(state, '0', { policy: 'trade', skipAllowed: true }).find(
+      option => option.action.kind === 'fighter' && option.action.id === fighterId,
+    )?.weight ?? 0;
+
+  it('последний дух стоит дороже, чем один из трёх', () => {
+    const many = clickWeight(stateOf(3), 'ash0');
+    const last = clickWeight(stateOf(1), 'ash0');
+
+    expect(many).toBeGreaterThan(0);
+    expect(last).toBeLessThan(many);
+    // отказ от умения остаётся доступным: жертвовать не обязаны
+    expect(clickWeight(stateOf(1), 'ash0')).toBeGreaterThan(0);
+  });
+
+  it('жертва одного из трёх не дешевле отказа, а жертва последнего — дешевле', () => {
+    const many = stateOf(3);
+    const last = stateOf(1);
+    const skipOf = state =>
+      actionsFor(state, '0', { policy: 'trade', skipAllowed: true }).find(
+        option => option.action.type === 'UI_OK',
+      )?.weight ?? 0;
+
+    expect(clickWeight(many, 'ash0')).toBeGreaterThanOrEqual(skipOf(many));
+    expect(clickWeight(last, 'ash0')).toBeLessThan(skipOf(last));
   });
 });

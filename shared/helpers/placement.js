@@ -15,7 +15,7 @@ export const findNode = (partyState, cellId) => {
 
 /**
  * Стихии клетки. Обычно одна, но у двух- и трёхцветных клеток их несколько: такая клетка
- * принадлежит сразу всем своим областям (стык зон, см. `docs/terrain.md`).
+ * принадлежит сразу всем своим областям (стык зон, см. `.docs/terrain.md`).
  */
 export const nodeTerrains = node => {
   const raw = node?.terrain;

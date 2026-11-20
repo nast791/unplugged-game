@@ -7,6 +7,7 @@ import {
   ref,
   watch as vueWatch,
 } from 'vue';
+import { fighterStatuses } from '#shared/constants/statuses.js';
 import { terrainColor } from '#shared/constants/terrain.js';
 import { nodeAllTerrains, nodeTerrains } from '#shared/helpers/placement.js';
 import {
@@ -526,12 +527,32 @@ export const useBoardMap = source => {
       groups.get(key).push(token);
     }
 
+    // Кто сейчас идёт: в пошаговом проходе боец стоит на клетке вместе с другим, и его токен должен
+    // «парить» над стоящим, а не спорить с ним за центр клетки (m02680).
+    const moving = new Set((read(source.movingFighterIds) || []).map(id => String(id)));
+    const HOVER = Math.max(6, radius.value * 0.45);
+
     const placed = [];
     for (const group of groups.values()) {
-      group.forEach((token, index) => {
-        const shift = group.length > 1 ? (index - (group.length - 1) / 2) * 16 : 0;
-        placed.push({ ...token, x: token.x + shift, y: token.y - shift });
-      });
+      if (group.length === 1) {
+        placed.push(group[0]);
+        continue;
+      }
+
+      const moverIndex = group.findIndex(token => moving.has(String(token.fighter.id)));
+      if (moverIndex < 0) {
+        group.forEach((token, index) => {
+          const shift = (index - (group.length - 1) / 2) * 16;
+          placed.push({ ...token, x: token.x + shift, y: token.y - shift });
+        });
+        continue;
+      }
+
+      // идущий — сверху (позже в списке значит выше по слою), стоящий — внизу на своём месте
+      const resting = group.filter((_, index) => index !== moverIndex);
+      const mover = group[moverIndex];
+      for (const token of resting) placed.push(token);
+      placed.push({ ...mover, x: mover.x + HOVER * 0.25, y: mover.y - HOVER });
     }
     return placed;
   });
@@ -878,7 +899,6 @@ export const useBoardMap = source => {
     y: token.y - tokenRadius(radius.value) - 12,
     listening: false,
   });
-
   const fighterTipTagConfig = () => ({
     fill: '#15151a',
     stroke: 'rgba(255, 255, 255, 0.16)',
@@ -906,6 +926,80 @@ export const useBoardMap = source => {
       listening: false,
     };
   };
+
+  /**
+   * Статусы бойца — плашки **слева-снизу** от фишки, друг над другом: сердце торчит справа-снизу
+   * (`hpHeartOf`), поэтому свободное место зеркально ему, а не поверх фишки. Порядок реестра
+   * (`shared/constants/statuses.js`) — снизу вверх, значит первый статус ближе к сердцу.
+   *
+   * Иконка рисуется геометрией, а не картинкой: три луча через центр под 0/60/120 — снежинка, которая
+   * масштабируется вместе с полем и не требует ни шрифтов, ни SVG. От «снежинки-осколка» в счётчике
+   * предметов её отличает сама форма значка: синяя плашка с обводкой, а не голая пиктограмма.
+   */
+  const statusBoxOf = index => {
+    const body = tokenRadius(radius.value);
+    const reach = body * 0.84;
+    const size = Math.max(11, body * 0.6);
+
+    return { x: -reach, y: reach - index * size * 1.2, size };
+  };
+
+  const statusGlyphArms = (x, y, size) =>
+    [0, 60, 120].map(angle => ({
+      x,
+      y,
+      rotation: angle,
+      points: [-size * 0.32, 0, size * 0.32, 0],
+      stroke: '#ffffff',
+      strokeWidth: Math.max(1, size * 0.12),
+      lineCap: 'round',
+      listening: false,
+    }));
+
+  const fighterStatusBadges = token =>
+    fighterStatuses(token?.fighter).map((status, index) => {
+      const { x, y, size } = statusBoxOf(index);
+
+      return {
+        id: status.id,
+        title: status.title,
+        text: status.text,
+        anchor: { x, y, size },
+        rect: {
+          x,
+          y,
+          width: size,
+          height: size,
+          offsetX: size / 2,
+          offsetY: size / 2,
+          cornerRadius: size * 0.28,
+          fill: '#1d4ed8',
+          stroke: 'rgba(255, 255, 255, 0.9)',
+          strokeWidth: Math.max(1, size * 0.08),
+          shadowColor: 'rgba(0, 0, 0, 0.45)',
+          shadowBlur: Math.max(2, size * 0.25),
+          shadowOffsetY: 1,
+          listening: true,
+        },
+        arms: statusGlyphArms(x, y, size),
+      };
+    });
+
+  /** Подсказка статуса — над его плашкой, остриём вниз: та же форма, что у подсказки бойца. */
+  const statusTipAnchorConfig = anchor => ({
+    x: anchor.x - anchor.size,
+    y: anchor.y - anchor.size / 2 - 16,
+    listening: false,
+  });
+
+  const statusTipTextConfig = badge => ({
+    text: `${badge.title}\n${badge.text}`,
+    fontSize: 12,
+    lineHeight: 1.35,
+    padding: 9,
+    fill: '#f5f5f7',
+    listening: false,
+  });
 
   const clickTargetOf = target => clickTarget(target);
 
@@ -962,6 +1056,9 @@ export const useBoardMap = source => {
     fighterTipAnchorConfig,
     fighterTipTagConfig,
     fighterTipTextConfig,
+    fighterStatusBadges,
+    statusTipAnchorConfig,
+    statusTipTextConfig,
     clickTargetOf,
     cellAt,
   };

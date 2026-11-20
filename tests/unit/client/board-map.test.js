@@ -101,6 +101,53 @@ describe('useBoardMap: подсказка бойца', () => {
   });
 });
 
+describe('useBoardMap: статусы бойца', () => {
+  const tokenWith = fighter => ({ x: 120, y: 340, fighter });
+
+  it('без статусов плашек нет — строка и значки не рисуются', () => {
+    const { board } = mountMap();
+
+    expect(board.fighterStatusBadges(tokenWith({ id: 'amat', name: 'Амат' }))).toEqual([]);
+    expect(
+      board.fighterStatusBadges(tokenWith({ id: 'amat', name: 'Амат', frozen: false })),
+    ).toEqual([]);
+  });
+
+  it('«Заморозка» — плашка слева-снизу от фишки, кликам доступна', () => {
+    const { board } = mountMap();
+    const [badge] = board.fighterStatusBadges(
+      tokenWith({ id: 'amat', name: 'Амат', frozen: true }),
+    );
+
+    expect(badge.id).toBe('frozen');
+    expect(badge.title).toBe('Заморозка');
+    // слева от центра и ниже центра: сердце торчит справа-снизу, место зеркально ему
+    expect(badge.rect.x).toBeLessThan(0);
+    expect(badge.rect.y).toBeGreaterThan(0);
+    // плашка ловит наведение — подсказку показывает именно она
+    expect(badge.rect.listening).toBe(true);
+    // снежинка — три луча, они не мешают кликам
+    expect(badge.arms).toHaveLength(3);
+    expect(badge.arms.every(arm => arm.listening === false)).toBe(true);
+    expect(badge.anchor.size).toBeGreaterThan(0);
+  });
+
+  it('подсказка статуса — название и описание из реестра, остриём вниз над плашкой', () => {
+    const { board } = mountMap();
+    const [badge] = board.fighterStatusBadges(
+      tokenWith({ id: 'amat', name: 'Амат', frozen: true }),
+    );
+    const tip = board.statusTipTextConfig(badge);
+    const anchor = board.statusTipAnchorConfig(badge.anchor);
+
+    expect(tip.text).toBe('Заморозка\nНе может перемещаться и телепортироваться.');
+    expect(tip.listening).toBe(false);
+    // подсказка встаёт выше плашки и левее её центра, чтобы не лезть на сердце
+    expect(anchor.y).toBeLessThan(badge.anchor.y);
+    expect(anchor.x).toBeLessThan(badge.anchor.x);
+  });
+});
+
 describe('useBoardMap: что рисуется', () => {
   it('клетки берутся из карты, радиус — из размера узла', () => {
     const { board } = mountMap();
